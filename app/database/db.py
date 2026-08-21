@@ -34,6 +34,7 @@ class Database:
                 extracted_text TEXT NOT NULL,
                 summary TEXT,
                 concepts TEXT,
+                key_points TEXT,
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE
             );
@@ -41,6 +42,8 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 lesson_id INTEGER NOT NULL,
                 questions_json TEXT NOT NULL,
+                question_count INTEGER NOT NULL DEFAULT 0,
+                difficulty TEXT NOT NULL DEFAULT 'medium',
                 created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (lesson_id) REFERENCES lessons(id) ON DELETE CASCADE
             );
@@ -57,9 +60,15 @@ class Database:
                 FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE
             );
             """)
-
-    def _row(self, cursor) -> sqlite3.Row | None:
-        return cursor.fetchone()
+            # Safe migrations for databases created by older versions.
+            columns = {row[1] for row in conn.execute("PRAGMA table_info(lessons)").fetchall()}
+            if "key_points" not in columns:
+                conn.execute("ALTER TABLE lessons ADD COLUMN key_points TEXT")
+            qcolumns = {row[1] for row in conn.execute("PRAGMA table_info(quizzes)").fetchall()}
+            if "question_count" not in qcolumns:
+                conn.execute("ALTER TABLE quizzes ADD COLUMN question_count INTEGER NOT NULL DEFAULT 0")
+            if "difficulty" not in qcolumns:
+                conn.execute("ALTER TABLE quizzes ADD COLUMN difficulty TEXT NOT NULL DEFAULT 'medium'")
 
     def ensure_user(self, telegram_id: int, first_name: str = "") -> None:
         with self._connect() as conn:
@@ -85,9 +94,12 @@ class Database:
             )
             return int(cur.lastrowid)
 
-    def update_lesson_analysis(self, lesson_id: int, summary: str, concepts: str) -> None:
+    def update_lesson_analysis(self, lesson_id: int, summary: str, concepts: str, key_points: str = "") -> None:
         with self._connect() as conn:
-            conn.execute("UPDATE lessons SET summary=?, concepts=? WHERE id=?", (summary, concepts, lesson_id))
+            conn.execute(
+                "UPDATE lessons SET summary=?, concepts=?, key_points=? WHERE id=?",
+                (summary, concepts, key_points, lesson_id),
+            )
 
     def get_lessons(self, telegram_id: int, limit: int = 20) -> list[sqlite3.Row]:
         with self._connect() as conn:
@@ -99,10 +111,29 @@ class Database:
                 return conn.execute("SELECT * FROM lessons WHERE id=?", (lesson_id,)).fetchone()
             return conn.execute("SELECT * FROM lessons WHERE id=? AND telegram_id=?", (lesson_id, telegram_id)).fetchone()
 
-    def create_quiz(self, lesson_id: int, questions_json: str) -> int:
+    def create_quiz(self, lesson_id: int, questions_json: str, question_count: int = 0, difficulty: str = "medium") -> int:
         with self._connect() as conn:
-            cur = conn.execute("INSERT INTO quizzes(lesson_id,questions_json) VALUES(?,?)", (lesson_id, questions_json))
+            cur = conn.execute(
+                "INSERT INTO quizzes(lesson_id,questions_json,question_count,difficulty) VALUES(?,?,?,?)",
+                (lesson_id, questions_json, question_count, difficulty),
+            )
             return int(cur.lastrowid)
+
+    def get_cached_quiz(self, lesson_id: int, question_count: int, difficulty: str, group_only: bool = False) -> sqlite3.Row | None:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM quizzes WHERE lesson_id=? AND question_count=? AND difficulty=? ORDER BY id DESC LIMIT 20",
+                (lesson_id, question_count, difficulty),
+            ).fetchall()
+            for row in rows:
+                try:
+                    questions = __import__("json").loads(row["questions_json"])
+                except Exception:
+                    continue
+                if group_only and any(q.get("type") == "short" for q in questions):
+                    continue
+                return row
+            return None
 
     def get_quiz(self, quiz_id: int) -> sqlite3.Row | None:
         with self._connect() as conn:
