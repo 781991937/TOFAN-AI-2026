@@ -11,7 +11,7 @@ from aiogram.types import CallbackQuery, Message
 from app.bot.keyboards import count_menu, difficulty_menu, lesson_menu, main_menu, settings_menu
 from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
-from app.services.file_extractor import chunk_text, clean_text
+from app.services.file_extractor import clean_text
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -22,21 +22,23 @@ class QuizState(StatesGroup):
 
 
 def register_user(db: Database, message: Message) -> None:
-    user = message.from_user
-    db.ensure_user(user.id, user.first_name or "")
+    db.ensure_user(message.from_user.id, message.from_user.first_name or "")
 
 
 def answer_matches(question: dict, answer: str) -> bool:
     expected = str(question.get("answer", "")).strip().lower()
     actual = answer.strip().lower()
-    return actual == expected or (question.get("type") == "short" and expected in actual)
+    if question.get("type") == "short":
+        return expected == actual or (expected and expected in actual)
+    return actual == expected
 
 
 def question_keyboard(options: list[str], index: int):
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=option, callback_data=f"ans:{index}:{i}") for i, option in enumerate(options)]
-    ])
+    rows = []
+    for i, option in enumerate(options):
+        rows.append([InlineKeyboardButton(text=str(option), callback_data=f"ans:{index}:{i}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.message(CommandStart())
@@ -44,7 +46,7 @@ async def start(message: Message, db: Database) -> None:
     register_user(db, message)
     await message.answer(
         "🌟 أهلاً بك في TOFAN AI 2026!\n\n"
-        "مساعدك التعليمي الذكي: أرسل ملف درس PDF أو DOCX أو TXT وسأستخرج محتواه وأحلله وأجهز لك اختبارًا تفاعليًا.\n\n"
+        "مساعدك التعليمي الذكي: أرسل PDF أو DOCX أو TXT وسأستخرج النص وأحلله وأجهز لك اختبارًا تفاعليًا.\n\n"
         "اختر من القائمة أو استخدم /help.", reply_markup=main_menu()
     )
 
@@ -53,7 +55,7 @@ async def start(message: Message, db: Database) -> None:
 async def help_command(message: Message) -> None:
     await message.answer(
         "📘 الأوامر المتاحة:\n"
-        "/start — تشغيل البوت\n/help — المساعدة\n/lessons — دروسك\n/quiz — إنشاء اختبار من آخر درس\n"
+        "/start — تشغيل البوت\n/help — المساعدة\n/lessons — دروسك\n/quiz — اختبار آخر درس\n"
         "/summary — ملخص آخر درس\n/profile — تقدمك وإحصاءاتك\n\n"
         "📎 أرسل PDF أو DOCX أو TXT مباشرةً لمعالجة الدرس."
     )
@@ -64,12 +66,12 @@ async def lessons(message: Message, db: Database) -> None:
     register_user(db, message)
     rows = db.get_lessons(message.from_user.id)
     if not rows:
-        await message.answer("📚 لا توجد دروس بعد. أرسل أول ملف درس ليبدأ TOFAN AI العمل.")
+        await message.answer("📚 لا توجد دروس بعد. أرسل أول ملف درس.")
         return
-    text = "📚 دروسك السابقة:\n\n"
+    lines = ["📚 دروسك السابقة:", ""]
     for row in rows:
-        text += f"• #{row['id']} — {row['file_name']}\n"
-    await message.answer(text + "\nاستخدم /summary أو اختر درسًا من القائمة لاحقًا.")
+        lines.append(f"• #{row['id']} — {row['file_name']}")
+    await message.answer("\n".join(lines), reply_markup=main_menu())
 
 
 @router.message(Command("profile"))
@@ -78,11 +80,9 @@ async def profile(message: Message, db: Database) -> None:
     user = db.get_user(message.from_user.id)
     stats = db.get_stats(message.from_user.id)
     await message.answer(
-        f"👤 ملفك في TOFAN AI 2026\n\n"
-        f"📚 الدروس: {stats['lessons']}\n"
-        f"📝 الاختبارات المكتملة: {stats['quizzes']}\n"
-        f"📊 متوسط النتائج: {stats['average']}%\n"
-        f"🎯 إعداداتك: {user['question_count']} أسئلة / {user['difficulty']}"
+        f"👤 ملفك في TOFAN AI 2026\n\n📚 الدروس: {stats['lessons']}\n"
+        f"📝 الاختبارات المكتملة: {stats['quizzes']}\n📊 متوسط النتائج: {stats['average']}%\n"
+        f"🎯 الإعدادات: {user['question_count']} أسئلة / {user['difficulty']}"
     )
 
 
@@ -96,56 +96,81 @@ async def summary_command(message: Message, db: Database) -> None:
 
 
 @router.message(Command("quiz"))
-async def quiz_command(message: Message, db: Database, quiz_generator: QuizGenerator) -> None:
+async def quiz_command(message: Message, state: FSMContext, db: Database, quiz_generator: QuizGenerator) -> None:
     rows = db.get_lessons(message.from_user.id, 1)
     if not rows:
         await message.answer("📝 أرسل درسًا أولًا ثم اطلب الاختبار.")
         return
-    await create_quiz_for_lesson(message, rows[0], db, quiz_generator)
+    await create_quiz_for_lesson(message, rows[0], state, db, quiz_generator)
 
 
-async def create_quiz_for_lesson(message: Message, lesson, db: Database, quiz_generator: QuizGenerator) -> None:
+async def create_quiz_for_lesson(message: Message, lesson, state: FSMContext, db: Database, quiz_generator: QuizGenerator) -> None:
     user = db.get_user(message.from_user.id)
     await message.answer("🧠 جاري إنشاء الاختبار من محتوى الدرس...")
     questions = await quiz_generator.create(lesson["extracted_text"], user["question_count"], user["difficulty"])
     quiz_id = db.create_quiz(lesson["id"], quiz_generator.serialize(questions))
+    await state.set_state(QuizState.active)
+    await state.update_data(quiz_id=quiz_id, questions=questions, answers=[])
     await message.answer(f"🎯 تم إنشاء الاختبار #{quiz_id}. نبدأ الآن!")
-    await send_question(message, quiz_id, questions, 0, [], db)
+    await send_question(message, state, quiz_id, questions, 0, [], db)
 
 
-async def send_question(message: Message, quiz_id: int, questions: list[dict], index: int, answers: list[str], db: Database) -> None:
+async def finish_quiz(message: Message, state: FSMContext, quiz_id: int, questions: list[dict], answers: list[str], db: Database) -> None:
+    score = sum(answer_matches(q, a) for q, a in zip(questions, answers))
+    total = len(questions)
+    percentage = round(score / total * 100, 1) if total else 0
+    db.save_result(message.from_user.id, quiz_id, score, total, percentage, json.dumps(answers, ensure_ascii=False))
+    lines = [f"🏁 انتهى الاختبار!", "", f"✅ النتيجة: {score}/{total}", f"📊 النسبة: {percentage}%", "", "📋 المراجعة:"]
+    for i, (question, answer) in enumerate(zip(questions, answers), 1):
+        mark = "✅" if answer_matches(question, answer) else "❌"
+        lines.append(f"{mark} {i}. إجابتك: {answer or 'بدون إجابة'}")
+        if mark == "❌":
+            lines.append(f"   الصحيحة: {question.get('answer', '')}")
+            lines.append(f"   الشرح: {question.get('explanation', '')}")
+    await message.answer("\n".join(lines)[:3900])
+    await state.clear()
+
+
+async def send_question(message: Message, state: FSMContext, quiz_id: int, questions: list[dict], index: int, answers: list[str], db: Database) -> None:
     if index >= len(questions):
-        score = sum(answer_matches(q, a) for q, a in zip(questions, answers))
-        total = len(questions)
-        percentage = round(score / total * 100, 1) if total else 0
-        db.save_result(message.from_user.id, quiz_id, score, total, percentage, json.dumps(answers, ensure_ascii=False))
-        await message.answer(f"🏁 انتهى الاختبار!\n\n✅ النتيجة: {score}/{total}\n📊 النسبة: {percentage}%")
+        await finish_quiz(message, state, quiz_id, questions, answers, db)
         return
     q = questions[index]
-    options = q.get("options") or []
-    await message.answer(f"❓ السؤال {index + 1}/{len(questions)}\n\n{q.get('question', '')}", reply_markup=question_keyboard(options, index))
+    text = f"❓ السؤال {index + 1}/{len(questions)}\n\n{q.get('question', '')}"
+    if q.get("type") == "short":
+        await message.answer(text + "\n\n✍️ اكتب إجابتك وأرسلها.")
+    else:
+        await message.answer(text, reply_markup=question_keyboard(q.get("options") or [], index))
 
 
 @router.callback_query(F.data.startswith("ans:"))
 async def quiz_answer(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
     data = await state.get_data()
-    quiz_id = data.get("quiz_id")
-    questions = data.get("questions", [])
-    answers = data.get("answers", [])
-    index = int(callback.data.split(":")[1])
-    option_index = int(callback.data.split(":")[2])
+    quiz_id, questions, answers = data.get("quiz_id"), data.get("questions", []), data.get("answers", [])
+    index, option_index = map(int, callback.data.split(":")[1:])
     if not quiz_id or index != len(answers) or index >= len(questions):
         await callback.answer("هذا السؤال لم يعد نشطًا.")
         return
     options = questions[index].get("options", [])
-    answer = options[option_index] if option_index < len(options) else ""
+    answer = str(options[option_index]) if option_index < len(options) else ""
     answers.append(answer)
     await state.update_data(answers=answers)
     await callback.answer("تم تسجيل إجابتك ✅")
     await callback.message.edit_reply_markup(reply_markup=None)
-    await send_question(callback.message, quiz_id, questions, index + 1, answers, db)
-    if index + 1 >= len(questions):
-        await state.clear()
+    await send_question(callback.message, state, quiz_id, questions, index + 1, answers, db)
+
+
+@router.message(QuizState.active, F.text)
+async def short_answer(message: Message, state: FSMContext, db: Database) -> None:
+    data = await state.get_data()
+    quiz_id, questions, answers = data.get("quiz_id"), data.get("questions", []), data.get("answers", [])
+    index = len(answers)
+    if not quiz_id or index >= len(questions) or questions[index].get("type") != "short":
+        await message.answer("استخدم زر الإجابة الظاهر للسؤال الحالي.")
+        return
+    answers.append(message.text.strip())
+    await state.update_data(answers=answers)
+    await send_question(message, state, quiz_id, questions, index + 1, answers, db)
 
 
 @router.callback_query(F.data == "lessons")
@@ -175,6 +200,9 @@ async def home_button(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == "settings")
 async def settings_button(callback: CallbackQuery, db: Database) -> None:
     user = db.get_user(callback.from_user.id)
+    if not user:
+        db.ensure_user(callback.from_user.id, callback.from_user.first_name or "")
+        user = db.get_user(callback.from_user.id)
     await callback.answer()
     await callback.message.edit_text("⚙️ إعدادات الاختبارات", reply_markup=settings_menu(user["question_count"], user["difficulty"]))
 
@@ -211,8 +239,7 @@ async def set_difficulty_value(callback: CallbackQuery, db: Database) -> None:
 
 @router.callback_query(F.data.startswith("summary:"))
 async def lesson_summary(callback: CallbackQuery, db: Database) -> None:
-    lesson_id = int(callback.data.split(":")[1])
-    lesson = db.get_lesson(lesson_id, callback.from_user.id)
+    lesson = db.get_lesson(int(callback.data.split(":")[1]), callback.from_user.id)
     await callback.answer()
     if not lesson:
         await callback.message.answer("الدرس غير موجود.")
@@ -221,14 +248,13 @@ async def lesson_summary(callback: CallbackQuery, db: Database) -> None:
 
 
 @router.callback_query(F.data.startswith("quiz:"))
-async def lesson_quiz(callback: CallbackQuery, db: Database, quiz_generator: QuizGenerator) -> None:
-    lesson_id = int(callback.data.split(":")[1])
-    lesson = db.get_lesson(lesson_id, callback.from_user.id)
+async def lesson_quiz(callback: CallbackQuery, state: FSMContext, db: Database, quiz_generator: QuizGenerator) -> None:
+    lesson = db.get_lesson(int(callback.data.split(":")[1]), callback.from_user.id)
     await callback.answer()
     if not lesson:
         await callback.message.answer("الدرس غير موجود.")
         return
-    await create_quiz_for_lesson(callback.message, lesson, db, quiz_generator)
+    await create_quiz_for_lesson(callback.message, lesson, state, db, quiz_generator)
 
 
 @router.message(F.document)
@@ -239,8 +265,6 @@ async def document_handler(message: Message, db: Database, bot, extractor: FileE
     if suffix not in extractor.SUPPORTED:
         await message.answer("❌ الصيغة غير مدعومة. أرسل PDF أو DOCX أو TXT.")
         return
-    max_bytes = db.get_user(message.from_user.id)  # keeps user registered
-    del max_bytes
     if document.file_size and document.file_size > 20 * 1024 * 1024:
         await message.answer("❌ الملف أكبر من الحد المسموح (20 MB).")
         return
@@ -254,7 +278,7 @@ async def document_handler(message: Message, db: Database, bot, extractor: FileE
         if len(text) < 20:
             raise ValueError("لم أستطع استخراج نص كافٍ من الملف.")
         lesson_id = db.create_lesson(message.from_user.id, safe_name, suffix[1:], str(path), text)
-        analysis = await ai_service.analyze_lesson(text[:30000])
+        analysis = await ai_service.analyze_lesson(text)
         summary = analysis.get("summary", "لم يتم إنشاء ملخص.")
         concepts = json.dumps(analysis.get("concepts", []), ensure_ascii=False)
         db.update_lesson_analysis(lesson_id, summary, concepts)
