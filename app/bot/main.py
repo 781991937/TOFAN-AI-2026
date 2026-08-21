@@ -1,6 +1,8 @@
 import asyncio
 import logging
+import os
 
+from aiohttp import web
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
@@ -12,6 +14,23 @@ from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
+
+
+async def health(request: web.Request) -> web.Response:
+    return web.json_response({"status": "ok", "service": "TOFAN AI 2026"})
+
+
+async def run_health_server() -> web.AppRunner:
+    app = web.Application()
+    app.router.add_get("/", health)
+    app.router.add_get("/health", health)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.getenv("PORT", "10000"))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+    logging.info("Health server listening on port %s", port)
+    return runner
 
 
 async def main() -> None:
@@ -33,11 +52,13 @@ async def main() -> None:
     dp["quiz_generator"] = quiz_generator
     dp.include_router(router)
 
+    health_runner = await run_health_server()
     await bot.delete_webhook(drop_pending_updates=True)
     logging.info("TOFAN AI 2026 is starting with Gemini")
     try:
         await dp.start_polling(bot)
     finally:
+        await health_runner.cleanup()
         await bot.session.close()
 
 
