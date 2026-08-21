@@ -58,6 +58,9 @@ class Database:
             );
             """)
 
+    def _row(self, cursor) -> sqlite3.Row | None:
+        return cursor.fetchone()
+
     def ensure_user(self, telegram_id: int, first_name: str = "") -> None:
         with self._connect() as conn:
             conn.execute(
@@ -112,6 +115,15 @@ class Database:
                 (telegram_id, quiz_id, score, total, percentage, answers_json),
             )
             return int(cur.lastrowid)
+
+    def get_quiz_leaderboard(self, quiz_id: int, limit: int = 10) -> list[sqlite3.Row]:
+        with self._connect() as conn:
+            return conn.execute(
+                """SELECT r.telegram_id, u.first_name, r.score, r.total, r.percentage
+                   FROM quiz_results r JOIN users u ON u.telegram_id=r.telegram_id
+                   WHERE r.quiz_id=? ORDER BY r.percentage DESC, r.score DESC, r.id ASC LIMIT ?""",
+                (quiz_id, limit),
+            ).fetchall()
 
     def get_stats(self, telegram_id: int) -> dict[str, Any]:
         with self._connect() as conn:
