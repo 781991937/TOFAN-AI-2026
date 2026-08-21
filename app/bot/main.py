@@ -9,6 +9,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.bot.handlers import router
+from app.bot.enhancements import router as enhancements_router
 from app.config_gemini import Settings
 from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
@@ -50,11 +51,14 @@ async def main() -> None:
     dp["extractor"] = extractor
     dp["ai_service"] = ai_service
     dp["quiz_generator"] = quiz_generator
+    # Enhancement handlers must come first so their correction/delete callbacks
+    # take precedence over the legacy handlers in app.bot.handlers.
+    dp.include_router(enhancements_router)
     dp.include_router(router)
 
     health_runner = await run_health_server()
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("TOFAN AI 2026 is starting with Gemini (SQLite cache enabled)")
+    logging.info("TOFAN AI 2026 is starting with Gemini (SQLite cache + corrections enabled)")
     try:
         await dp.start_polling(bot)
     finally:
