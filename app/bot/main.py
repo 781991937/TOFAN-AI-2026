@@ -7,7 +7,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.bot.handlers import router
-from app.config import Settings
+from app.config_gemini import Settings
 from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
 
@@ -19,7 +19,7 @@ async def main() -> None:
     settings.ensure_directories()
     db = Database(settings.database_path)
     extractor = FileExtractor()
-    ai_service = AIService(settings.openai_api_key, settings.openai_model)
+    ai_service = AIService(settings.gemini_api_key, settings.gemini_model)
     quiz_generator = QuizGenerator(ai_service)
 
     bot = Bot(
@@ -34,7 +34,7 @@ async def main() -> None:
     dp.include_router(router)
 
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("TOFAN AI 2026 is starting")
+    logging.info("TOFAN AI 2026 is starting with Gemini")
     try:
         await dp.start_polling(bot)
     finally:
