@@ -1,13 +1,13 @@
 # TOFAN AI 2026
 
-مساعد تعليمي ذكي على Telegram يستقبل ملفات الدروس، يستخرج النص منها، يحلل المحتوى، وينشئ ملخصات واختبارات تفاعلية للطالب.
+مساعد تعليمي ذكي على Telegram يستقبل ملفات الدروس، يستخرج النص منها، يحلل المحتوى باستخدام Google Gemini، وينشئ ملخصات واختبارات تفاعلية للطالب.
 
 ## المزايا
 
 - استقبال PDF وDOCX وTXT من Telegram.
 - استخراج النص وتنظيفه وتقسيمه إلى أجزاء.
 - حفظ الدروس ونتائج الاختبارات في SQLite.
-- تحليل الدروس باستخدام OpenAI.
+- تحليل الدروس باستخدام Google Gemini.
 - إنشاء ملخص ومفاهيم ونقاط رئيسية.
 - إنشاء MCQ وTrue/False وShort Answer.
 - اختبار تفاعلي داخل Telegram مع تصحيح وشرح للأخطاء.
@@ -15,38 +15,11 @@
 - إعداد عدد الأسئلة ومستوى الصعوبة.
 - بنية Modular قابلة لإضافة صيغ وخدمات أخرى لاحقًا.
 
-## هيكل المشروع
-
-```text
-app/
-  bot/
-    handlers.py
-    keyboards.py
-    main.py
-  database/
-    db.py
-  services/
-    ai_service.py
-    file_extractor.py
-    quiz_generator.py
-  config.py
-
-data/
-  uploads/
-  processed/
-
-tests/
-requirements.txt
-.env.example
-.gitignore
-README.md
-```
-
 ## المتطلبات
 
 - Python 3.11 أو أحدث.
 - Telegram Bot Token من BotFather.
-- OpenAI API key.
+- Gemini API key من Google AI Studio.
 
 ## التثبيت
 
@@ -76,8 +49,8 @@ cp .env.example .env
 
 ```env
 TELEGRAM_BOT_TOKEN=ضع_توكن_البوت_هنا
-OPENAI_API_KEY=ضع_مفتاح_OpenAI_هنا
-OPENAI_MODEL=gpt-4o-mini
+GEMINI_API_KEY=ضع_مفتاح_Gemini_هنا
+GEMINI_MODEL=gemini-2.5-flash
 MAX_FILE_SIZE_MB=20
 ```
 
@@ -95,7 +68,7 @@ python -m app.bot.main
 
 1. افتح البوت في Telegram واضغط `/start`.
 2. أرسل ملف PDF أو DOCX أو TXT.
-3. ينتظر البوت استخراج النص ثم تحليل المحتوى.
+3. ينتظر البوت استخراج النص ثم تحليل المحتوى باستخدام Gemini.
 4. سيحفظ الدرس في SQLite ويعرض الملخص.
 5. اضغط `إنشاء اختبار` أو استخدم `/quiz`.
 6. أجب عن الأسئلة من أزرار Telegram، أو اكتب الإجابة عندما يكون السؤال قصيرًا.
@@ -113,13 +86,14 @@ python -m app.bot.main
 ## التصميم البرمجي
 
 - `file_extractor.py`: مسؤول عن PDF/DOCX/TXT والتنظيف والتقسيم.
-- `ai_service.py`: مسؤول عن OpenAI وتحليل المحتوى وتوليد الأسئلة.
+- `ai_service.py`: مسؤول عن Google Gemini وتحليل المحتوى وتوليد الأسئلة.
 - `quiz_generator.py`: طبقة مستقلة لإنشاء الاختبارات وتخزينها بصيغة JSON.
 - `database/db.py`: طبقة SQLite للمستخدمين والدروس والاختبارات والنتائج.
 - `bot/handlers.py`: أوامر Telegram ومعالجة الملفات والاختبارات التفاعلية.
+- `config_gemini.py`: إعدادات متغيرات البيئة الخاصة بـ Telegram وGemini.
 
 ## ملاحظات
 
-- يتم حفظ النص الكامل المستخرج من الملف في قاعدة البيانات، بينما تُقسّم نسخة المعالجة إلى أجزاء عند إرسالها إلى خدمة الذكاء الاصطناعي.
+- يتم حفظ النص الكامل المستخرج من الملف في قاعدة البيانات، بينما تُقسّم نسخة المعالجة إلى أجزاء عند إرسالها إلى Gemini.
 - النسخة الحالية تستخدم polling، ويمكن إضافة webhook لاحقًا.
 - يمكن إضافة OCR للملفات المصورة، وصيغ PowerPoint، وحسابات متعددة، ولوحة إدارة في إصدارات لاحقة.
