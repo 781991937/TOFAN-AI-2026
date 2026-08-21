@@ -1,5 +1,8 @@
+import hashlib
 import json
 import logging
+import sqlite3
+from pathlib import Path
 
 from google import genai
 from google.genai import types
@@ -10,15 +13,20 @@ logger = logging.getLogger(__name__)
 
 
 class AIService:
-    """Gemini service optimized to minimize API calls.
+    """Gemini service optimized to minimize API calls with SQLite caching."""
 
-    A lesson analysis is intentionally done in one request. Quiz generation is
-    also one request and the caller caches its result in SQLite.
-    """
-
-    def __init__(self, api_key: str, model: str = "gemini-2.5-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-2.5-flash", cache_path: Path | None = None):
         self.client = genai.Client(api_key=api_key)
         self.model = model
+        self.cache_path = Path(cache_path) if cache_path else None
+        if self.cache_path:
+            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(self.cache_path) as conn:
+                conn.execute("CREATE TABLE IF NOT EXISTS ai_analysis_cache (content_hash TEXT PRIMARY KEY, model TEXT NOT NULL, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+
+    @staticmethod
+    def _hash(text: str) -> str:
+        return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
 
     async def _json(self, prompt: str, temperature: float = 0.2) -> dict:
         try:
@@ -40,9 +48,18 @@ class AIService:
         if not chunks:
             raise ValueError("Lesson text is empty")
 
+        cache_key = self._hash(text)
+        if self.cache_path:
+            with sqlite3.connect(self.cache_path) as conn:
+                row = conn.execute(
+                    "SELECT result_json FROM ai_analysis_cache WHERE content_hash=? AND model=?",
+                    (cache_key, self.model),
+                ).fetchone()
+            if row:
+                logger.info("Gemini analysis cache hit: %s", cache_key[:12])
+                return json.loads(row[0])
+
         # One compact request instead of 8 partial requests + 1 merge request.
-        # If the document is large, keep the first 10 chunks; this still costs
-        # only one generation request and avoids quota explosions.
         source = "\n\n--- جزء ---\n\n".join(chunks[:10])
         prompt = f"""أنت مساعد تعليمي دقيق. حلل الدرس التالي وأعد JSON صالحًا فقط بهذا الشكل:
 {{
@@ -56,7 +73,14 @@ class AIService:
 
 نص الدرس:
 {source}"""
-        return await self._json(prompt, temperature=0.15)
+        result = await self._json(prompt, temperature=0.15)
+        if self.cache_path:
+            with sqlite3.connect(self.cache_path) as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO ai_analysis_cache(content_hash,model,result_json) VALUES(?,?,?)",
+                    (cache_key, self.model, json.dumps(result, ensure_ascii=False)),
+                )
+        return result
 
     async def generate_questions(self, text: str, count: int, difficulty: str) -> list[dict]:
         chunks = chunk_text(text, max_chars=9000)
