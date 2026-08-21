@@ -13,6 +13,16 @@ def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="📝 اختبار جديد", callback_data=f"quiz:{lesson_id}"), InlineKeyboardButton(text="🔁 إعادة الاختبار", callback_data=f"repeat:{lesson_id}")],
         [InlineKeyboardButton(text="👥 اختبار جماعي", callback_data=f"groupquiz:{lesson_id}")],
         [InlineKeyboardButton(text="📖 شرح الدرس", callback_data=f"explain:{lesson_id}")],
+        [InlineKeyboardButton(text="🗑️ حذف الدرس", callback_data=f"delete_lesson:{lesson_id}")],
+        [InlineKeyboardButton(text="⬅️ رجوع للدروس", callback_data="lessons")],
+        [InlineKeyboardButton(text="🏠 الرئيسية", callback_data="home")],
+    ])
+
+
+def delete_lesson_confirm(lesson_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🗑️ نعم، احذف الدرس", callback_data=f"confirm_delete:{lesson_id}")],
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data=f"lesson:{lesson_id}")],
     ])
 
 
@@ -24,7 +34,7 @@ def lessons_list_menu(lessons: list) -> InlineKeyboardMarkup:
         if len(name) > 28:
             name = name[:25] + "..."
         rows.append([InlineKeyboardButton(text=f"📘 {name}", callback_data=f"lesson:{lesson_id}")])
-    rows.append([InlineKeyboardButton(text="⬅️ الرئيسية", callback_data="home")])
+    rows.append([InlineKeyboardButton(text="🏠 الرئيسية", callback_data="home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -43,10 +53,11 @@ def result_menu(lesson_id: int, group: bool = False) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text="🔁 إعادة الاختبار", callback_data=f"repeat:{lesson_id}")],
         [InlineKeyboardButton(text="📝 اختبار جديد", callback_data=f"quiz:{lesson_id}")],
+        [InlineKeyboardButton(text="📖 شرح الدرس", callback_data=f"explain:{lesson_id}")],
+        [InlineKeyboardButton(text="⬅️ رجوع للدرس", callback_data=f"lesson:{lesson_id}")],
     ]
     if group:
-        rows.append([InlineKeyboardButton(text="👥 اختبار جماعي جديد", callback_data=f"groupquiz:{lesson_id}")])
-    rows.append([InlineKeyboardButton(text="📖 شرح الدرس", callback_data=f"explain:{lesson_id}")])
+        rows.insert(2, [InlineKeyboardButton(text="👥 اختبار جماعي جديد", callback_data=f"groupquiz:{lesson_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
