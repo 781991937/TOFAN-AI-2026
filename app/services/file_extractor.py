@@ -63,6 +63,10 @@ def _repair_arabic_line(line: str) -> str:
 
 
 def clean_text(text: str) -> str:
+    # PostgreSQL TEXT cannot store NUL (0x00). Some PDFs and malformed text
+    # extraction can produce it, so remove it before the extracted text reaches
+    # the database. This is harmless for normal lesson text.
+    text = text.replace("\x00", "")
     text = text.replace("\u00ad", "").replace("\ufeff", "")
     cleaned = []
     for raw_line in text.splitlines():
