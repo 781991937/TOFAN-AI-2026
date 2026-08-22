@@ -11,7 +11,7 @@ from app.bot.handlers import QuizState, send_question
 from app.bot.keyboards import lesson_menu
 from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
-from app.services.file_extractor import clean_text
+from app.services.file_extractor import clean_text, split_lessons
 from app.services.local_engine import local_analysis
 
 logger = logging.getLogger(__name__)
@@ -38,26 +38,75 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
     if document.file_size and document.file_size > 20 * 1024 * 1024:
         await message.answer("❌ الملف أكبر من الحد المسموح (20 MB).")
         return
+
     safe_name = Path(document.file_name or "lesson").name
     path = Path("data/uploads") / f"{owner_id}_{message.message_id}_{safe_name}"
     path.parent.mkdir(parents=True, exist_ok=True)
-    await message.answer("📥 استلمت الملف. استخراج النص وتنظيفه وتحليل محلي سريع ⚡ …")
+    await message.answer("📥 استلمت الملف. استخراج النص وتقسيمه إلى دروس مستقلة ⚡ …")
+
     try:
         await bot.download(document, destination=path)
         text = clean_text(extractor.extract(path))
         if len(text) < 20:
             raise ValueError("لم أستطع استخراج نص كافٍ من الملف.")
+
+        lessons = split_lessons(text)
+        if not lessons:
+            raise ValueError("لم أجد محتوى صالحًا لإنشاء الدروس.")
+
         if owner_id != 0:
             db.ensure_user(owner_id, getattr(message.from_user, "first_name", "") or "")
-        lesson_id = db.create_lesson(owner_id, safe_name, suffix[1:], str(path), text)
-        analysis = local_analysis(text)
-        db.update_lesson_analysis(lesson_id, analysis["summary"], json.dumps(analysis["concepts"], ensure_ascii=False))
-        await message.answer(
-            f"✅ <b>تم حفظ الدرس #{lesson_id}</b>\n📚 <b>{html.escape(safe_name)}</b>\n\n"
-            f"{_format_local_analysis(analysis)}\n\n"
-            "⚡ الشرح الأساسي يعمل محليًا بدون Gemini. استخدم 🧠 الشرح الذكي عند الحاجة فقط.",
-            reply_markup=lesson_menu(lesson_id),
-        )
+
+        saved = []
+        for number, (lesson_title, lesson_text) in enumerate(lessons, start=1):
+            lesson_text = clean_text(lesson_text)
+            if len(lesson_text) < 20:
+                continue
+
+            # Each detected lesson gets its own database record and therefore
+            # its own summary, concepts, quiz and navigation menu.
+            if len(lessons) == 1:
+                lesson_name = safe_name
+            else:
+                clean_title = lesson_title.replace("/", "-").replace("\\", "-").strip()
+                lesson_name = f"{Path(safe_name).stem} - {clean_title or f'الدرس {number}'}{suffix}"
+
+            lesson_id = db.create_lesson(owner_id, lesson_name, suffix[1:], str(path), lesson_text)
+            analysis = local_analysis(lesson_text)
+            db.update_lesson_analysis(
+                lesson_id,
+                analysis["summary"],
+                json.dumps(analysis["concepts"], ensure_ascii=False),
+            )
+            saved.append((lesson_id, lesson_name, analysis))
+
+        if not saved:
+            raise ValueError("لم أجد دروسًا تحتوي على نص كافٍ.")
+
+        if len(saved) == 1:
+            lesson_id, lesson_name, analysis = saved[0]
+            await message.answer(
+                f"✅ <b>تم حفظ الدرس #{lesson_id}</b>\n📚 <b>{html.escape(lesson_name)}</b>\n\n"
+                f"{_format_local_analysis(analysis)}\n\n"
+                "⚡ الشرح الأساسي يعمل محليًا بدون Gemini.",
+                reply_markup=lesson_menu(lesson_id),
+            )
+            return
+
+        lines = [
+            f"✅ <b>تم تقسيم الملف إلى {len(saved)} دروس مستقلة</b>",
+            f"📚 <b>الملف:</b> {html.escape(safe_name)}",
+            "",
+        ]
+        for number, (lesson_id, lesson_name, analysis) in enumerate(saved, start=1):
+            summary = html.escape((analysis.get("summary") or "").replace("\n", " ")[:180])
+            lines.append(f"{number}. 📖 <b>الدرس #{lesson_id}</b> — {html.escape(lesson_name)}")
+            if summary:
+                lines.append(f"   ↳ {summary}")
+
+        lines.append("\n💡 كل درس الآن محفوظ بشكل منفصل ويمكن فتح شرحه واختباره independently من قائمة الدروس.")
+        await message.answer("\n".join(lines))
+
     except Exception as exc:
         logger.exception("Local lesson processing failed")
         await message.answer(f"⚠️ حدث خطأ أثناء معالجة الملف: {html.escape(str(exc))}")
