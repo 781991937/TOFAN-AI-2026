@@ -14,6 +14,7 @@ class Settings:
     gemini_api_key: str
     gemini_model: str = "gemini-2.5-flash"
     max_file_size_mb: int = 20
+    database_url: str = ""
     database_path: Path = ROOT_DIR / "data" / "tofan_ai.sqlite3"
     upload_dir: Path = ROOT_DIR / "data" / "uploads"
     processed_dir: Path = ROOT_DIR / "data" / "processed"
@@ -31,9 +32,12 @@ class Settings:
             gemini_api_key=api_key,
             gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
             max_file_size_mb=int(os.getenv("MAX_FILE_SIZE_MB", "20")),
+            database_url=os.getenv("DATABASE_URL", "").strip(),
         )
 
     def ensure_directories(self) -> None:
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
+        # Database storage is local only when DATABASE_URL is not configured.
+        if not self.database_url:
+            self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.upload_dir.mkdir(parents=True, exist_ok=True)
         self.processed_dir.mkdir(parents=True, exist_ok=True)
