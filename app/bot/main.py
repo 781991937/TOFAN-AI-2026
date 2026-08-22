@@ -36,24 +36,27 @@ async def run_web_server(dp: Dispatcher, bot: Bot) -> web.AppRunner:
     ).rstrip("/")
     webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET") or None
 
-    if external_url:
-        webhook_path = "/telegram/webhook"
-        webhook_url = f"{external_url}{webhook_path}"
-        SimpleRequestHandler(
-            dispatcher=dp,
-            bot=bot,
-            handle_in_background=True,
-            secret_token=webhook_secret,
-        ).register(app, path=webhook_path)
-        await bot.set_webhook(
-            url=webhook_url,
-            secret_token=webhook_secret,
-            drop_pending_updates=True,
-            allowed_updates=dp.resolve_used_update_types(),
+    if not external_url:
+        raise RuntimeError(
+            "TELEGRAM_WEBHOOK_URL or RENDER_EXTERNAL_URL is required in production. "
+            "Polling is intentionally disabled on Render to prevent Telegram getUpdates conflicts."
         )
-        logging.info("Telegram webhook configured: %s", webhook_url)
-    else:
-        logging.warning("No Render external URL found; falling back to polling")
+
+    webhook_path = "/telegram/webhook"
+    webhook_url = f"{external_url}{webhook_path}"
+    SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+        handle_in_background=True,
+        secret_token=webhook_secret,
+    ).register(app, path=webhook_path)
+    await bot.set_webhook(
+        url=webhook_url,
+        secret_token=webhook_secret,
+        drop_pending_updates=True,
+        allowed_updates=dp.resolve_used_update_types(),
+    )
+    logging.info("Telegram webhook configured: %s", webhook_url)
 
     setup_application(app, dp, bot=bot)
 
@@ -69,7 +72,6 @@ async def run_web_server(dp: Dispatcher, bot: Bot) -> web.AppRunner:
 async def main() -> None:
     settings = Settings.from_env()
     settings.ensure_directories()
-    # DATABASE_URL is used in production; SQLite remains the local-development fallback.
     database_target = settings.database_url or str(settings.database_path)
     db = Database(database_target)
     extractor = FileExtractor()
@@ -94,7 +96,16 @@ async def main() -> None:
     storage_mode = "PostgreSQL" if settings.database_url else "SQLite-local"
     logging.info("TOFAN AI 2026 started | storage=%s | Gemini=explicit-only", storage_mode)
 
-    if external_url:
+    # Render production must use webhook mode. Local development can explicitly opt into polling.
+    is_render = bool(os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_EXTERNAL_URL"))
+    if is_render:
+        web_runner = await run_web_server(dp, bot)
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await web_runner.cleanup()
+            await bot.session.close()
+    elif external_url:
         web_runner = await run_web_server(dp, bot)
         try:
             await asyncio.Event().wait()
@@ -102,7 +113,6 @@ async def main() -> None:
             await web_runner.cleanup()
             await bot.session.close()
     else:
-        # Local development / Termux fallback.
         await bot.delete_webhook(drop_pending_updates=True)
         try:
             await dp.start_polling(bot)
