@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from docx import Document
 from pypdf import PdfReader
@@ -32,9 +33,40 @@ class FileExtractor:
         return "\n".join(parts)
 
 
+def _fix_reversed_arabic_word(word: str) -> str:
+    """Repair the common PDF extraction case where Arabic glyph order is reversed."""
+    if re.fullmatch(r"[\u0600-\u06FF]+", word) and len(word) >= 2:
+        return word[::-1]
+    return word
+
+
+def _repair_arabic_line(line: str) -> str:
+    arabic = len(re.findall(r"[\u0600-\u06FF]", line))
+    latin = len(re.findall(r"[A-Za-z]", line))
+    if arabic < 4 or arabic < latin:
+        return line
+
+    # pypdf may return Arabic words character-reversed while keeping word order.
+    # Reverse only Arabic words so English terms, numbers, URLs and punctuation stay intact.
+    tokens = re.split(r"(\s+)", line)
+    return "".join(_fix_reversed_arabic_word(t) for t in tokens)
+
+
 def clean_text(text: str) -> str:
-    lines = [" ".join(line.split()) for line in text.splitlines()]
-    return "\n".join(line for line in lines if line).strip()
+    text = text.replace("\u00ad", "").replace("\ufeff", "")
+    cleaned = []
+    for raw_line in text.splitlines():
+        line = " ".join(raw_line.split()).strip()
+        if not line:
+            continue
+        line = _repair_arabic_line(line)
+        # Remove repeated PDF page headers/footers that pollute summaries and quizzes.
+        if re.fullmatch(r"(?:Page|صفحة)\s*\d+", line, flags=re.I):
+            continue
+        if re.fullmatch(r"[-_=·•\s]{3,}", line):
+            continue
+        cleaned.append(line)
+    return "\n".join(cleaned).strip()
 
 
 def chunk_text(text: str, max_chars: int = 10000) -> list[str]:
