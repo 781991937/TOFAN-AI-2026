@@ -1,10 +1,13 @@
 import hashlib
 import json
+import logging
 import sqlite3
 from pathlib import Path
 
 from .ai_service import AIService
 from .local_engine import generate_local_questions
+
+logger = logging.getLogger(__name__)
 
 
 class QuizGenerator:
@@ -16,7 +19,9 @@ class QuizGenerator:
         if self.cache_path:
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             with sqlite3.connect(self.cache_path) as conn:
-                conn.execute("CREATE TABLE IF NOT EXISTS quiz_cache (cache_key TEXT PRIMARY KEY, mode TEXT NOT NULL, questions_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS quiz_cache (cache_key TEXT PRIMARY KEY, mode TEXT NOT NULL, questions_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
+                )
 
     @staticmethod
     def _key(text: str, count: int, difficulty: str, mode: str) -> str:
@@ -53,8 +58,15 @@ class QuizGenerator:
         return questions
 
     async def create_smart(self, text: str, count: int = 10, difficulty: str = "medium") -> list[dict]:
-        """Explicit AI mode. This is the only quiz path that calls Gemini."""
-        return await self.create(text, count, difficulty, use_ai=True)
+        """Explicit AI mode with a local fallback so Gemini downtime never breaks quizzes."""
+        try:
+            return await self.create(text, count, difficulty, use_ai=True)
+        except Exception as exc:
+            logger.warning("Smart quiz Gemini failed; using local fallback: %s", exc)
+            questions = generate_local_questions(text, count, difficulty)
+            if not questions:
+                raise
+            return questions
 
     @staticmethod
     def serialize(questions: list[dict]) -> str:
