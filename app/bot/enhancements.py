@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 
 from aiogram import F, Router
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
@@ -19,19 +20,33 @@ logger = logging.getLogger(__name__)
 router = Router(name="enhancements")
 
 
+async def safe_edit_text(callback: CallbackQuery, text: str, reply_markup=None) -> None:
+    """Edit the current message without turning Telegram's no-op into an error."""
+    if not callback.message:
+        return
+    try:
+        await callback.message.edit_text(text, reply_markup=reply_markup)
+    except TelegramBadRequest as exc:
+        if "message is not modified" not in str(exc).lower():
+            raise
+        logger.debug("Ignored no-op Telegram message edit")
+
+
 async def render_lessons(callback: CallbackQuery, db: Database) -> None:
     """Render the user's real lesson list in the current Telegram message."""
     user_id = callback.from_user.id
     rows = db.get_lessons(user_id)
     if rows:
-        await callback.message.edit_text(
-            "📚 **مكتبة دروسك**\n\nاختر درسًا للوصول إلى الشرح والاختبارات:",
-            reply_markup=lessons_list_menu(rows),
+        await safe_edit_text(
+            callback,
+            "📚 <b>مكتبة دروسك</b>\n\nاختر درسًا للوصول إلى الشرح والاختبارات:",
+            lessons_list_menu(rows),
         )
     else:
-        await callback.message.edit_text(
-            "📚 **مكتبة دروسك**\n\nلا توجد دروس بعد. أرسل أول ملف درس.",
-            reply_markup=main_menu(),
+        await safe_edit_text(
+            callback,
+            "📚 <b>مكتبة دروسك</b>\n\nلا توجد دروس بعد. أرسل أول ملف درس.",
+            main_menu(),
         )
 
 
@@ -47,22 +62,25 @@ async def lesson_navigation(callback: CallbackQuery, db: Database) -> None:
     lesson = db.get_lesson(lesson_id, callback.from_user.id)
     await callback.answer()
     if not lesson:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "❌ الدرس غير موجود أو لا تملك صلاحية الوصول إليه.",
-            reply_markup=main_menu(),
+            main_menu(),
         )
         return
-    await callback.message.edit_text(
-        f"📘 **{lesson['file_name']}**\n\nاختر ما تريد:",
-        reply_markup=lesson_menu(lesson_id),
+    await safe_edit_text(
+        callback,
+        f"📘 <b>{lesson['file_name']}</b>\n\nاختر ما تريد:",
+        lesson_menu(lesson_id),
     )
 
 
 @router.callback_query(F.data == "help")
 async def help_navigation(callback: CallbackQuery) -> None:
     await callback.answer()
-    await callback.message.edit_text(
-        "📘 **مساعدة TOFAN AI 2026**\n\n"
+    await safe_edit_text(
+        callback,
+        "📘 <b>مساعدة TOFAN AI 2026</b>\n\n"
         "/start — تشغيل البوت\n"
         "/help — المساعدة\n"
         "/lessons — مكتبة الدروس\n"
@@ -70,9 +88,9 @@ async def help_navigation(callback: CallbackQuery) -> None:
         "/summary — شرح آخر درس\n"
         "/profile — تقدم الطالب\n\n"
         "📎 أرسل PDF أو DOCX أو TXT لمعالجة الدرس.\n"
-        "🧠 شرح ذكي واختبار ذكي يستخدمان Gemini عند الطلب فقط.\n"
+        "🧠 الشرح والاختبار الذكيان يستخدمان Gemini عند الطلب فقط.\n"
         "🇬🇧 المصطلحات الإنجليزية تظهر مع شرحها العربي.",
-        reply_markup=main_menu(),
+        main_menu(),
     )
 
 
@@ -83,13 +101,14 @@ async def profile_navigation(callback: CallbackQuery, db: Database) -> None:
     user = db.get_user(user_id)
     stats = db.get_stats(user_id)
     await callback.answer()
-    await callback.message.edit_text(
-        f"👤 **ملفك في TOFAN AI 2026**\n\n"
+    await safe_edit_text(
+        callback,
+        f"👤 <b>ملفك في TOFAN AI 2026</b>\n\n"
         f"📚 الدروس: {stats['lessons']}\n"
         f"📝 الاختبارات المكتملة: {stats['quizzes']}\n"
         f"📊 متوسط النتائج: {stats['average']}%\n"
         f"🎯 الإعدادات: {user['question_count']} أسئلة / {user['difficulty']}",
-        reply_markup=main_menu(),
+        main_menu(),
     )
 
 
@@ -99,16 +118,18 @@ async def delete_lesson_request(callback: CallbackQuery, db: Database) -> None:
     lesson = db.get_lesson(lesson_id, callback.from_user.id)
     await callback.answer()
     if not lesson:
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "❌ الدرس غير موجود أو لا تملك صلاحية حذفه.",
-            reply_markup=main_menu(),
+            main_menu(),
         )
         return
-    await callback.message.edit_text(
-        f"⚠️ **هل تريد حذف الدرس نهائيًا؟**\n\n"
+    await safe_edit_text(
+        callback,
+        f"⚠️ <b>هل تريد حذف الدرس نهائيًا؟</b>\n\n"
         f"📘 {lesson['file_name']}\n\n"
         "سيتم حذف الدرس والاختبارات والنتائج المرتبطة به.",
-        reply_markup=delete_lesson_confirm(lesson_id),
+        delete_lesson_confirm(lesson_id),
     )
 
 
@@ -119,10 +140,7 @@ async def delete_lesson_confirmed(callback: CallbackQuery, db: Database) -> None
     lesson = db.get_lesson(lesson_id, user_id)
     await callback.answer()
     if not lesson:
-        await callback.message.edit_text(
-            "❌ الدرس غير موجود.",
-            reply_markup=main_menu(),
-        )
+        await safe_edit_text(callback, "❌ الدرس غير موجود.", main_menu())
         return
 
     file_path = Path(lesson["file_path"] or "")
@@ -134,22 +152,25 @@ async def delete_lesson_confirmed(callback: CallbackQuery, db: Database) -> None
             file_path.unlink()
     except Exception:
         logger.exception("Failed to delete lesson %s", lesson_id)
-        await callback.message.edit_text(
+        await safe_edit_text(
+            callback,
             "⚠️ تعذر حذف الدرس. حاول مرة أخرى.",
-            reply_markup=lesson_menu(lesson_id),
+            lesson_menu(lesson_id),
         )
         return
 
     rows = db.get_lessons(user_id)
     if rows:
-        await callback.message.edit_text(
-            "🗑️ **تم حذف الدرس بنجاح.**\n\n📚 اختر درسًا آخر:",
-            reply_markup=lessons_list_menu(rows),
+        await safe_edit_text(
+            callback,
+            "🗑️ <b>تم حذف الدرس بنجاح.</b>\n\n📚 اختر درسًا آخر:",
+            lessons_list_menu(rows),
         )
     else:
-        await callback.message.edit_text(
-            "🗑️ **تم حذف الدرس بنجاح.**\n\n📚 لم تعد لديك دروس محفوظة.",
-            reply_markup=main_menu(),
+        await safe_edit_text(
+            callback,
+            "🗑️ <b>تم حذف الدرس بنجاح.</b>\n\n📚 لم تعد لديك دروس محفوظة.",
+            main_menu(),
         )
 
 
@@ -160,7 +181,7 @@ async def explanation_navigation(callback: CallbackQuery, db: Database) -> None:
     lesson = db.get_lesson(lesson_id, callback.from_user.id)
     await callback.answer()
     if not lesson:
-        await callback.message.edit_text("❌ الدرس غير موجود.", reply_markup=main_menu())
+        await safe_edit_text(callback, "❌ الدرس غير موجود.", main_menu())
         return
 
     summary = lesson["summary"] or "لا يوجد شرح جاهز لهذا الدرس."
@@ -176,10 +197,10 @@ async def explanation_navigation(callback: CallbackQuery, db: Database) -> None:
     else:
         concepts_text = str(concepts)
 
-    text = f"📖 **شرح الدرس: {lesson['file_name']}**\n\n{summary}"
+    text = f"📖 <b>شرح الدرس: {lesson['file_name']}</b>\n\n{summary}"
     if concepts_text:
-        text += f"\n\n🧠 **أهم المفاهيم:**\n{concepts_text}"
-    await callback.message.edit_text(text[:3900], reply_markup=lesson_menu(lesson_id))
+        text += f"\n\n🧠 <b>أهم المفاهيم:</b>\n{concepts_text}"
+    await safe_edit_text(callback, text[:3900], lesson_menu(lesson_id))
 
 
 @router.callback_query(F.data.startswith("ans:"))
@@ -215,10 +236,10 @@ async def corrected_quiz_answer(callback: CallbackQuery, state: FSMContext, db: 
         except Exception:
             pass
         if correct:
-            await callback.message.answer("✅ **إجابة صحيحة!** أحسنت 👏")
+            await callback.message.answer("✅ <b>إجابة صحيحة!</b> أحسنت 👏")
         else:
             await callback.message.answer(
-                f"❌ **تصحيح الخطأ**\n\n"
+                f"❌ <b>تصحيح الخطأ</b>\n\n"
                 f"إجابتك: {answer or 'بدون إجابة'}\n"
                 f"✅ الإجابة الصحيحة: {question.get('answer', '')}\n"
                 f"💡 الشرح: {question.get('explanation', '') or 'راجع شرح الدرس لفهم النقطة.'}"
@@ -242,10 +263,10 @@ async def corrected_short_answer(message: Message, state: FSMContext, db: Databa
     answers.append(answer)
     await state.update_data(answers=answers)
     if correct:
-        await message.answer("✅ **إجابة صحيحة!** أحسنت 👏")
+        await message.answer("✅ <b>إجابة صحيحة!</b> أحسنت 👏")
     else:
         await message.answer(
-            f"❌ **تصحيح الخطأ**\n\n"
+            f"❌ <b>تصحيح الخطأ</b>\n\n"
             f"إجابتك: {answer or 'بدون إجابة'}\n"
             f"✅ الإجابة الصحيحة: {question.get('answer', '')}\n"
             f"💡 الشرح: {question.get('explanation', '') or 'راجع شرح الدرس.'}"
