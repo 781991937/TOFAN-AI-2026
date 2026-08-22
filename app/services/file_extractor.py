@@ -33,21 +33,31 @@ class FileExtractor:
         return "\n".join(parts)
 
 
+# Common markers seen when pypdf returns Arabic glyphs character-reversed.
+_REVERSED_HINTS = {
+    "ىلإ", "نم", "يف", "نع", "ىلع", "اذه", "هذه", "وه", "يه", "فصن", "مرتلا",
+    "رابتخا", "ىنعملا", "ةملكلا", "قطنلا", "يبرعلاب", "ةلماك", "تابيردتلا", "لاثملاب",
+    "ةليللا", "مهفا", "ظفحلل", "ةدعاقلا", "تاملعم", "تاملك", "ثحب",
+}
+
+
 def _fix_reversed_arabic_word(word: str) -> str:
-    """Repair the common PDF extraction case where Arabic glyph order is reversed."""
     if re.fullmatch(r"[\u0600-\u06FF]+", word) and len(word) >= 2:
         return word[::-1]
     return word
 
 
 def _repair_arabic_line(line: str) -> str:
-    arabic = len(re.findall(r"[\u0600-\u06FF]", line))
-    latin = len(re.findall(r"[A-Za-z]", line))
-    if arabic < 4 or arabic < latin:
+    arabic_words = re.findall(r"[\u0600-\u06FF]+", line)
+    if len(arabic_words) < 2:
         return line
 
-    # pypdf may return Arabic words character-reversed while keeping word order.
-    # Reverse only Arabic words so English terms, numbers, URLs and punctuation stay intact.
+    # Only reverse when the extracted line contains strong evidence of the
+    # character-reversed PDF pattern. Normal Arabic text must remain untouched.
+    hints = sum(1 for word in arabic_words if word in _REVERSED_HINTS)
+    if hints == 0:
+        return line
+
     tokens = re.split(r"(\s+)", line)
     return "".join(_fix_reversed_arabic_word(t) for t in tokens)
 
@@ -60,7 +70,6 @@ def clean_text(text: str) -> str:
         if not line:
             continue
         line = _repair_arabic_line(line)
-        # Remove repeated PDF page headers/footers that pollute summaries and quizzes.
         if re.fullmatch(r"(?:Page|صفحة)\s*\d+", line, flags=re.I):
             continue
         if re.fullmatch(r"[-_=·•\s]{3,}", line):
