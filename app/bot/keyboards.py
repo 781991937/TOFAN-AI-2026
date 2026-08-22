@@ -24,7 +24,7 @@ def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
 def delete_lesson_confirm(lesson_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗑️ نعم، احذف الدرس", callback_data=f"confirm_delete:{lesson_id}")],
-        [InlineKeyboardButton(text="❌ إلغاء", callback_data=f"lesson:{lesson_id}")],
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data="lessons")],
     ])
 
 
