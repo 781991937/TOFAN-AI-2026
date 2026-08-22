@@ -18,8 +18,7 @@ class Database:
     def _connect(self):
         if self.database_url:
             import psycopg
-            conn = psycopg.connect(self.database_url)
-            return conn
+            return psycopg.connect(self.database_url)
         conn = sqlite3.connect(self.path)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
@@ -151,6 +150,12 @@ class Database:
                 return self._row(self._execute(conn, "SELECT * FROM lessons WHERE id=?", (lesson_id,)))
             return self._row(self._execute(conn, "SELECT * FROM lessons WHERE id=? AND telegram_id=?", (lesson_id, telegram_id)))
 
+    def delete_lesson(self, lesson_id: int, telegram_id: int) -> bool:
+        """Delete a lesson owned by the user. PostgreSQL/SQLite cascades quizzes and results."""
+        with self._connect() as conn:
+            cur = self._execute(conn, "DELETE FROM lessons WHERE id=? AND telegram_id=?", (lesson_id, telegram_id))
+            return cur.rowcount > 0
+
     def create_quiz(self, lesson_id: int, questions_json: str, question_count: int = 0, difficulty: str = "medium") -> int:
         with self._connect() as conn:
             if self.database_url:
@@ -164,7 +169,7 @@ class Database:
             rows = self._rows(self._execute(conn, "SELECT * FROM quizzes WHERE lesson_id=? AND question_count=? AND difficulty=? ORDER BY id DESC LIMIT 20", (lesson_id,question_count,difficulty)))
             for row in rows:
                 try:
-                    questions = json.loads(row["questions_json"] if isinstance(row, dict) else row["questions_json"])
+                    questions = json.loads(row["questions_json"])
                 except Exception:
                     continue
                 if group_only and any(q.get("type") == "short" for q in questions):
