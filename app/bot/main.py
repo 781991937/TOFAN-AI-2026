@@ -38,7 +38,9 @@ async def run_health_server() -> web.AppRunner:
 async def main() -> None:
     settings = Settings.from_env()
     settings.ensure_directories()
-    db = Database(settings.database_path)
+    # DATABASE_URL is used in production; SQLite remains the local-development fallback.
+    database_target = settings.database_url or str(settings.database_path)
+    db = Database(database_target)
     extractor = FileExtractor()
     ai_service = AIService(settings.gemini_api_key, settings.gemini_model, settings.database_path)
     quiz_generator = QuizGenerator(ai_service, settings.database_path)
@@ -50,14 +52,14 @@ async def main() -> None:
     dp["ai_service"] = ai_service
     dp["quiz_generator"] = quiz_generator
 
-    # Local-first router handles files and explicit AI actions before legacy handlers.
     dp.include_router(local_first_router)
     dp.include_router(enhancements_router)
     dp.include_router(router)
 
     health_runner = await run_health_server()
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("TOFAN AI 2026 is starting in LOCAL-FIRST mode; Gemini is used only on explicit Smart actions")
+    storage_mode = "PostgreSQL" if settings.database_url else "SQLite-local"
+    logging.info("TOFAN AI 2026 started | storage=%s | Gemini=explicit-only", storage_mode)
     try:
         await dp.start_polling(bot)
     finally:
