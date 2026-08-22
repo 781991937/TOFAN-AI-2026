@@ -7,6 +7,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 from app.bot.handlers import router
 from app.bot.enhancements import router as enhancements_router
@@ -22,16 +23,46 @@ async def health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "service": "TOFAN AI 2026"})
 
 
-async def run_health_server() -> web.AppRunner:
+async def run_web_server(dp: Dispatcher, bot: Bot) -> web.AppRunner:
+    """Run Render's health endpoint and Telegram webhook on the same port."""
     app = web.Application()
     app.router.add_get("/", health)
     app.router.add_get("/health", health)
+
+    external_url = (
+        os.getenv("TELEGRAM_WEBHOOK_URL")
+        or os.getenv("RENDER_EXTERNAL_URL")
+        or ""
+    ).rstrip("/")
+    webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET") or None
+
+    if external_url:
+        webhook_path = "/telegram/webhook"
+        webhook_url = f"{external_url}{webhook_path}"
+        SimpleRequestHandler(
+            dispatcher=dp,
+            bot=bot,
+            handle_in_background=True,
+            secret_token=webhook_secret,
+        ).register(app, path=webhook_path)
+        await bot.set_webhook(
+            url=webhook_url,
+            secret_token=webhook_secret,
+            drop_pending_updates=True,
+            allowed_updates=dp.resolve_used_update_types(),
+        )
+        logging.info("Telegram webhook configured: %s", webhook_url)
+    else:
+        logging.warning("No Render external URL found; falling back to polling")
+
+    setup_application(app, dp, bot=bot)
+
+    port = int(os.getenv("PORT", "10000"))
     runner = web.AppRunner(app)
     await runner.setup()
-    port = int(os.getenv("PORT", "10000"))
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
-    logging.info("Health server listening on port %s", port)
+    logging.info("Health/webhook server listening on port %s", port)
     return runner
 
 
@@ -45,7 +76,10 @@ async def main() -> None:
     ai_service = AIService(settings.gemini_api_key, settings.gemini_model, settings.database_path)
     quiz_generator = QuizGenerator(ai_service, settings.database_path)
 
-    bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(
+        token=settings.telegram_bot_token,
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
+    )
     dp = Dispatcher(storage=MemoryStorage())
     dp["db"] = db
     dp["extractor"] = extractor
@@ -56,15 +90,24 @@ async def main() -> None:
     dp.include_router(enhancements_router)
     dp.include_router(router)
 
-    health_runner = await run_health_server()
-    await bot.delete_webhook(drop_pending_updates=True)
+    external_url = os.getenv("TELEGRAM_WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL")
     storage_mode = "PostgreSQL" if settings.database_url else "SQLite-local"
     logging.info("TOFAN AI 2026 started | storage=%s | Gemini=explicit-only", storage_mode)
-    try:
-        await dp.start_polling(bot)
-    finally:
-        await health_runner.cleanup()
-        await bot.session.close()
+
+    if external_url:
+        web_runner = await run_web_server(dp, bot)
+        try:
+            await asyncio.Event().wait()
+        finally:
+            await web_runner.cleanup()
+            await bot.session.close()
+    else:
+        # Local development / Termux fallback.
+        await bot.delete_webhook(drop_pending_updates=True)
+        try:
+            await dp.start_polling(bot)
+        finally:
+            await bot.session.close()
 
 
 if __name__ == "__main__":
