@@ -18,7 +18,6 @@ def _meaningful_lines(text: str) -> list[str]:
         line = " ".join(raw.split()).strip()
         if not line or _NOISE_RE.fullmatch(line):
             continue
-        # Ignore repeated document branding/header lines.
         normalized = re.sub(r"[^A-Za-z0-9\u0600-\u06FF ]", "", line).lower().strip()
         if normalized in {"english", "english midterm study pack tofan", "english midterm study pack"}:
             continue
@@ -27,7 +26,6 @@ def _meaningful_lines(text: str) -> list[str]:
 
 
 def summarize(text: str, max_sentences: int = 8) -> str:
-    """Fast local summary without an API call, with PDF noise removed."""
     lines = _meaningful_lines(text)
     source = "\n".join(lines)
     sentences = [s.strip() for s in re.split(r"(?<=[.!؟?。])\s+|\n{2,}", source) if len(s.strip()) >= 35]
@@ -56,7 +54,6 @@ def english_terms(text: str, limit: int = 20) -> list[str]:
     lines = _meaningful_lines(text)
     candidates = []
     for line in lines:
-        # Prefer vocabulary-looking entries rather than every word in the PDF.
         m = re.match(r"^([A-Za-z][A-Za-z0-9_-]{2,}(?:\s+[A-Za-z][A-Za-z0-9_-]{2,}){0,2})\s*(?:[-–—:|]|\s{2,})", line)
         if m:
             candidates.append(m.group(1).strip())
@@ -95,6 +92,21 @@ def _sentences(text: str) -> list[str]:
     return [s.strip() for s in re.split(r"(?<=[.!؟?。])\s+|\n{2,}", text) if len(s.strip()) >= 25]
 
 
+def _full_explanation(sentence: str, answer: str, question_type: str = "mcq") -> str:
+    """Build a useful correction from the actual lesson text, not a generic phrase."""
+    if question_type == "true_false":
+        return (
+            f"📖 <b>الشرح الكامل:</b> العبارة المعروضة مأخوذة من محتوى الدرس:\n"
+            f"«{sentence[:1200]}»\n\n"
+            f"لذلك فالإجابة الصحيحة هي «{answer}». راجع هذه المعلومة في الدرس لأنها تمثل النقطة التي بُني عليها السؤال."
+        )
+    return (
+        f"📖 <b>الشرح الكامل:</b> الإجابة «{answer}» هي المقصودة في السؤال لأنها مرتبطة مباشرة بالمعلومة التالية من الدرس:\n"
+        f"«{sentence[:1200]}»\n\n"
+        f"🔎 <b>لماذا؟</b> لأن محتوى الدرس يذكر هذه المعلومة صراحة، ولذلك نختار «{answer}» بدل إجابتك السابقة."
+    )
+
+
 def _make_mcq(sentence: str, candidates: list[str], index: int) -> dict:
     words = re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}|[\u0600-\u06FF]{4,}", sentence)
     answer = next((w for w in reversed(words) if w.lower() not in _STOPWORDS), words[-1] if words else "المعلومة")
@@ -109,7 +121,7 @@ def _make_mcq(sentence: str, candidates: list[str], index: int) -> dict:
         "question": f"أي خيار وردت حوله المعلومة التالية؟\n{sentence[:500]}",
         "options": options,
         "answer": answer,
-        "explanation": f"الإجابة الصحيحة هي «{answer}» لأنها واردة في محتوى الدرس.",
+        "explanation": _full_explanation(sentence, answer, "mcq"),
         "source": "local",
     }
 
@@ -132,7 +144,7 @@ def generate_local_questions(text: str, count: int = 10, difficulty: str = "medi
                 "question": sentence[:650],
                 "options": ["صح", "خطأ"],
                 "answer": "صح",
-                "explanation": "العبارة مأخوذة مباشرة من محتوى الدرس.",
+                "explanation": _full_explanation(sentence, "صح", "true_false"),
                 "source": "local",
             })
         else:
