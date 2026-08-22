@@ -10,6 +10,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from app.bot.handlers import router
 from app.bot.enhancements import router as enhancements_router
+from app.bot.local_first import router as local_first_router
 from app.config_gemini import Settings
 from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
@@ -42,23 +43,21 @@ async def main() -> None:
     ai_service = AIService(settings.gemini_api_key, settings.gemini_model, settings.database_path)
     quiz_generator = QuizGenerator(ai_service, settings.database_path)
 
-    bot = Bot(
-        token=settings.telegram_bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
     dp["db"] = db
     dp["extractor"] = extractor
     dp["ai_service"] = ai_service
     dp["quiz_generator"] = quiz_generator
-    # Enhancement handlers must come first so their correction/delete callbacks
-    # take precedence over the legacy handlers in app.bot.handlers.
+
+    # Local-first router handles files and explicit AI actions before legacy handlers.
+    dp.include_router(local_first_router)
     dp.include_router(enhancements_router)
     dp.include_router(router)
 
     health_runner = await run_health_server()
     await bot.delete_webhook(drop_pending_updates=True)
-    logging.info("TOFAN AI 2026 is starting with Gemini (SQLite cache + corrections enabled)")
+    logging.info("TOFAN AI 2026 is starting in LOCAL-FIRST mode; Gemini is used only on explicit Smart actions")
     try:
         await dp.start_polling(bot)
     finally:
