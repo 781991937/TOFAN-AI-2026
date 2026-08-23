@@ -5,7 +5,7 @@ from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 from app.bot.handlers import QuizState, send_question
 from app.bot.keyboards import lesson_menu
@@ -43,6 +43,64 @@ def _page_cache(lesson_text: str) -> list[dict]:
     return result
 
 
+def _page_keyboard(lesson_id: int, pages: list[dict], current: int) -> InlineKeyboardMarkup:
+    rows = []
+    numbers = [int(item.get("page", i + 1)) for i, item in enumerate(pages)]
+    row = []
+    for index, number in enumerate(numbers):
+        label = f"📄 {number}" if number != current else f"🔵 {number}"
+        row.append(InlineKeyboardButton(text=label, callback_data=f"page:{lesson_id}:{index}"))
+        if len(row) == 5:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    current_index = next((i for i, n in enumerate(numbers) if n == current), 0)
+    nav = []
+    if current_index > 0:
+        nav.append(InlineKeyboardButton(text="⬅️ السابقة", callback_data=f"page:{lesson_id}:{current_index - 1}"))
+    if current_index < len(pages) - 1:
+        nav.append(InlineKeyboardButton(text="➡️ التالية", callback_data=f"page:{lesson_id}:{current_index + 1}"))
+    if nav:
+        rows.append(nav)
+    rows.append([InlineKeyboardButton(text="⬅️ قائمة الدرس", callback_data=f"lesson:{lesson_id}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _page_message(lesson, pages: list[dict], index: int) -> str:
+    item = pages[index]
+    page_number = item.get("page", index + 1)
+    summary = html.escape(item.get("summary") or "لم أجد شرحًا كافيًا لهذه الصفحة.")
+    points = item.get("key_points") or []
+    points_text = "\n".join(f"• {html.escape(str(point))}" for point in points[:6]) or "• لا توجد نقاط إضافية واضحة."
+    terms = item.get("terms") or []
+    terms_text = "، ".join(html.escape(str(term)) for term in terms[:10]) or "لا توجد مصطلحات واضحة"
+    return (
+        f"📖 <b>شرح الدرس — صفحة {page_number}</b>\n"
+        f"📄 <b>صفحة {index + 1} من {len(pages)}</b>\n\n"
+        f"🧠 <b>افهم الصفحة ببساطة</b>\n{summary}\n\n"
+        f"📌 <b>أهم النقاط</b>\n{points_text}\n\n"
+        f"💡 <b>مصطلحات مهمة:</b> {terms_text}"
+    )[:3900]
+
+
+async def _show_page(callback: CallbackQuery, lesson, index: int) -> None:
+    try:
+        pages = json.loads(lesson["key_points"] or "[]")
+    except (TypeError, json.JSONDecodeError):
+        pages = []
+    if not isinstance(pages, list) or not pages:
+        pages = _page_cache(lesson["extracted_text"])
+    if not pages:
+        await callback.answer("❌ لا توجد صفحات محفوظة لهذا الدرس.", show_alert=True)
+        return
+    index = max(0, min(index, len(pages) - 1))
+    await callback.message.edit_text(
+        _page_message(lesson, pages, index),
+        reply_markup=_page_keyboard(int(lesson["id"]), pages, index),
+    )
+
+
 async def save_local_lesson(message: Message, db: Database, bot, extractor: FileExtractor, owner_id: int) -> None:
     document = message.document
     suffix = Path(document.file_name or "").suffix.lower()
@@ -76,7 +134,6 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
             lesson_text = clean_text(lesson_text)
             if len(lesson_text) < 20:
                 continue
-
             if len(lessons) == 1:
                 lesson_name = safe_name
             else:
@@ -84,7 +141,8 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
                 lesson_name = f"{Path(safe_name).stem} - {clean_title or f'الدرس {number}'}{suffix}"
 
             pages = _page_cache(lesson_text)
-            analysis = local_analysis("\n".join(text for _, text in page_parts(lesson_text)))
+            page_text = "\n".join(text for _, text in page_parts(lesson_text))
+            analysis = local_analysis(page_text)
             cache = json.dumps(pages, ensure_ascii=False)
             lesson_id = db.create_lesson(owner_id, lesson_name, suffix[1:], str(path), lesson_text)
             db.update_lesson_analysis(
@@ -120,7 +178,6 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
             lines.append(f"   ↳ 📄 {page_count} صفحة")
             if summary:
                 lines.append(f"   ↳ {summary}")
-
         lines.append("\n💡 كل درس محفوظ مستقلًا، والشرح الآن صفحة بصفحة مع أزرار انتقال مباشرة.")
         await message.answer("\n".join(lines))
 
@@ -139,6 +196,27 @@ async def channel_document_local_first(message: Message, db: Database, bot, extr
     await save_local_lesson(message, db, bot, extractor, 0)
 
 
+@router.callback_query(F.data.startswith("pages:"))
+async def pages_button(callback: CallbackQuery, db: Database) -> None:
+    lesson = db.get_lesson(int(callback.data.split(":")[1]))
+    if not lesson:
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
+        return
+    await callback.answer()
+    await _show_page(callback, lesson, 0)
+
+
+@router.callback_query(F.data.startswith("page:"))
+async def page_button(callback: CallbackQuery, db: Database) -> None:
+    _, lesson_id, index = callback.data.split(":")
+    lesson = db.get_lesson(int(lesson_id))
+    if not lesson:
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
+        return
+    await callback.answer()
+    await _show_page(callback, lesson, int(index))
+
+
 @router.callback_query(F.data.startswith("smart_explain:"))
 async def smart_explain(callback: CallbackQuery, db: Database, ai_service: AIService) -> None:
     lesson = db.get_lesson(int(callback.data.split(":")[1]))
@@ -149,13 +227,23 @@ async def smart_explain(callback: CallbackQuery, db: Database, ai_service: AISer
     try:
         analysis = await ai_service.analyze_lesson(lesson["extracted_text"])
         summary = analysis.get("summary", "لم يتم إنشاء شرح.")
-        db.update_lesson_analysis(lesson["id"], summary, json.dumps(analysis.get("concepts", []), ensure_ascii=False))
+        try:
+            cached_pages = json.loads(lesson["key_points"] or "[]")
+        except (TypeError, json.JSONDecodeError):
+            cached_pages = _page_cache(lesson["extracted_text"])
+        db.update_lesson_analysis(
+            lesson["id"],
+            summary,
+            json.dumps(analysis.get("concepts", []), ensure_ascii=False),
+            json.dumps(cached_pages, ensure_ascii=False),
+        )
         concepts = analysis.get("concepts", [])[:12]
         concepts_text = "\n".join(f"• {html.escape(str(item))}" for item in concepts) or "• لا توجد مفاهيم إضافية."
         await callback.message.edit_text(
             f"🧠 <b>شرح الدرس: {_lesson_title(lesson['file_name'])}</b>\n\n"
             f"{html.escape(summary[:5000])}\n\n"
-            f"📌 <b>أهم المفاهيم</b>\n{concepts_text}",
+            f"📌 <b>أهم المفاهيم</b>\n{concepts_text}\n\n"
+            "📄 ولشرح الدرس صفحة بصفحة اضغط زر «شرح صفحة بصفحة».",
             reply_markup=lesson_menu(lesson["id"]),
         )
     except Exception:
