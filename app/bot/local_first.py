@@ -11,7 +11,7 @@ from app.bot.handlers import QuizState, send_question
 from app.bot.keyboards import lesson_menu
 from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
-from app.services.file_extractor import clean_text, split_lessons
+from app.services.file_extractor import clean_text, page_parts, split_lessons
 from app.services.local_engine import local_analysis
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,20 @@ def _format_local_analysis(analysis: dict) -> str:
     return f"📖 <b>شرح سريع</b>\n\n{summary}\n\n🇬🇧 <b>المصطلحات المهمة</b>\n{term_text}"
 
 
+def _page_cache(lesson_text: str) -> list[dict]:
+    pages = page_parts(lesson_text)
+    result = []
+    for number, text in pages:
+        analysis = local_analysis(text)
+        result.append({
+            "page": number,
+            "summary": analysis.get("summary", "")[:2600],
+            "key_points": analysis.get("key_points", [])[:6],
+            "terms": analysis.get("english_terms", [])[:10],
+        })
+    return result
+
+
 async def save_local_lesson(message: Message, db: Database, bot, extractor: FileExtractor, owner_id: int) -> None:
     document = message.document
     suffix = Path(document.file_name or "").suffix.lower()
@@ -42,7 +56,7 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
     safe_name = Path(document.file_name or "lesson").name
     path = Path("data/uploads") / f"{owner_id}_{message.message_id}_{safe_name}"
     path.parent.mkdir(parents=True, exist_ok=True)
-    await message.answer("📥 استلمت الملف. استخراج النص وتقسيمه إلى دروس مستقلة ⚡ …")
+    await message.answer("📥 استلمت الملف. استخراج النص وتقسيمه إلى دروس مستقلة وصفحات ذكية ⚡ …")
 
     try:
         await bot.download(document, destination=path)
@@ -63,30 +77,32 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
             if len(lesson_text) < 20:
                 continue
 
-            # Each detected lesson gets its own database record and therefore
-            # its own summary, concepts, quiz and navigation menu.
             if len(lessons) == 1:
                 lesson_name = safe_name
             else:
                 clean_title = lesson_title.replace("/", "-").replace("\\", "-").strip()
                 lesson_name = f"{Path(safe_name).stem} - {clean_title or f'الدرس {number}'}{suffix}"
 
+            pages = _page_cache(lesson_text)
+            analysis = local_analysis("\n".join(text for _, text in page_parts(lesson_text)))
+            cache = json.dumps(pages, ensure_ascii=False)
             lesson_id = db.create_lesson(owner_id, lesson_name, suffix[1:], str(path), lesson_text)
-            analysis = local_analysis(lesson_text)
             db.update_lesson_analysis(
                 lesson_id,
                 analysis["summary"],
                 json.dumps(analysis["concepts"], ensure_ascii=False),
+                cache,
             )
-            saved.append((lesson_id, lesson_name, analysis))
+            saved.append((lesson_id, lesson_name, analysis, len(pages)))
 
         if not saved:
             raise ValueError("لم أجد دروسًا تحتوي على نص كافٍ.")
 
         if len(saved) == 1:
-            lesson_id, lesson_name, analysis = saved[0]
+            lesson_id, lesson_name, analysis, page_count = saved[0]
             await message.answer(
-                f"✅ <b>تم حفظ الدرس #{lesson_id}</b>\n📚 <b>{html.escape(lesson_name)}</b>\n\n"
+                f"✅ <b>تم حفظ الدرس #{lesson_id}</b>\n📚 <b>{html.escape(lesson_name)}</b>\n"
+                f"📄 <b>{page_count} صفحة</b> محفوظة للشرح صفحة بصفحة\n\n"
                 f"{_format_local_analysis(analysis)}\n\n"
                 "⚡ الشرح الأساسي يعمل محليًا بدون Gemini.",
                 reply_markup=lesson_menu(lesson_id),
@@ -98,13 +114,14 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
             f"📚 <b>الملف:</b> {html.escape(safe_name)}",
             "",
         ]
-        for number, (lesson_id, lesson_name, analysis) in enumerate(saved, start=1):
+        for number, (lesson_id, lesson_name, analysis, page_count) in enumerate(saved, start=1):
             summary = html.escape((analysis.get("summary") or "").replace("\n", " ")[:180])
             lines.append(f"{number}. 📖 <b>الدرس #{lesson_id}</b> — {html.escape(lesson_name)}")
+            lines.append(f"   ↳ 📄 {page_count} صفحة")
             if summary:
                 lines.append(f"   ↳ {summary}")
 
-        lines.append("\n💡 كل درس الآن محفوظ بشكل منفصل ويمكن فتح شرحه واختباره independently من قائمة الدروس.")
+        lines.append("\n💡 كل درس محفوظ مستقلًا، والشرح الآن صفحة بصفحة مع أزرار انتقال مباشرة.")
         await message.answer("\n".join(lines))
 
     except Exception as exc:
