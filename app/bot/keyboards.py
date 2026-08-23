@@ -12,7 +12,7 @@ def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📝 اختبار جديد", callback_data=f"quiz:{lesson_id}"), InlineKeyboardButton(text="🔁 إعادة الاختبار", callback_data=f"repeat:{lesson_id}")],
         [InlineKeyboardButton(text="👥 اختبار جماعي", callback_data=f"groupquiz:{lesson_id}")],
-        [InlineKeyboardButton(text="📖 شرح الدرس", callback_data=f"explain:{lesson_id}")],
+        [InlineKeyboardButton(text="📖 شرح صفحة بصفحة", callback_data=f"pages:{lesson_id}")],
         [InlineKeyboardButton(text="🧠 شرح ذكي", callback_data=f"smart_explain:{lesson_id}")],
         [InlineKeyboardButton(text="🧠 اختبار ذكي", callback_data=f"smart_quiz:{lesson_id}")],
         [InlineKeyboardButton(text="🗑️ حذف الدرس", callback_data=f"delete_lesson:{lesson_id}")],
@@ -47,7 +47,7 @@ def lesson_actions_menu(lesson_id: int) -> InlineKeyboardMarkup:
 def group_quiz_menu(quiz_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚀 انضم للاختبار الجماعي", callback_data=f"join:{quiz_id}")],
-        [InlineKeyboardButton(text="🏆 لوحة المتصدرين", callback_data=f"leaderboard:{quiz_id}")],
+        [InlineKeyboardButton(text="🏆 لوحة المتصدرين", callback_data=f"leaderboard:{quiz_id}"),],
     ])
 
 
@@ -56,7 +56,7 @@ def result_menu(lesson_id: int, group: bool = False) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔁 إعادة الاختبار", callback_data=f"repeat:{lesson_id}")],
         [InlineKeyboardButton(text="📝 اختبار جديد", callback_data=f"quiz:{lesson_id}")],
         [InlineKeyboardButton(text="🧠 اختبار ذكي", callback_data=f"smart_quiz:{lesson_id}")],
-        [InlineKeyboardButton(text="📖 شرح الدرس", callback_data=f"explain:{lesson_id}")],
+        [InlineKeyboardButton(text="📖 شرح صفحة بصفحة", callback_data=f"pages:{lesson_id}")],
         [InlineKeyboardButton(text="⬅️ رجوع للدرس", callback_data=f"lesson:{lesson_id}")],
     ]
     if group:
