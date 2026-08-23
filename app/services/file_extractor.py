@@ -84,7 +84,6 @@ def clean_text(text: str) -> str:
 
 
 def page_parts(text: str) -> list[tuple[int, str]]:
-    """Return real PDF pages when page markers exist; otherwise one logical page."""
     text = clean_text(text)
     matches = list(PAGE_MARKER_RE.finditer(text))
     if not matches:
@@ -126,12 +125,26 @@ def split_lessons(text: str) -> list[tuple[str, str]]:
             starts.append((index, title))
     if not starts:
         return [("الدرس الكامل", text)]
+
     lessons: list[tuple[str, str]] = []
     for pos, (start, title) in enumerate(starts):
         end = starts[pos + 1][0] if pos + 1 < len(starts) else len(lines)
-        body = "\n".join(lines[start:end]).strip()
+        body_lines = lines[start:end]
+        body = "\n".join(body_lines).strip()
+        # If a lesson starts in the middle of a PDF page, prefix the page marker
+        # so page_parts() can still identify the correct original page number.
+        marker = None
+        for back in range(start - 1, -1, -1):
+            if PAGE_MARKER_RE.fullmatch(lines[back]):
+                marker = lines[back]
+                break
+            if _LESSON_HEADING.match(lines[back]):
+                break
+        if marker and not body.startswith(marker):
+            body = marker + "\n" + body
         if body:
             lessons.append((title, body))
+
     if starts[0][0] > 0 and lessons:
         intro = "\n".join(lines[:starts[0][0]]).strip()
         if intro:
