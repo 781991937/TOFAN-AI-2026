@@ -4,6 +4,8 @@ import re
 from docx import Document
 from pypdf import PdfReader
 
+PAGE_MARKER_RE = re.compile(r"^\[\[PAGE:(\d+)\]\]$")
+
 
 class FileExtractor:
     SUPPORTED = {".pdf", ".docx", ".txt"}
@@ -21,7 +23,11 @@ class FileExtractor:
     @staticmethod
     def _pdf(path: Path) -> str:
         reader = PdfReader(str(path))
-        return "\n\n".join(page.extract_text() or "" for page in reader.pages)
+        parts = []
+        for number, page in enumerate(reader.pages, start=1):
+            parts.append(f"[[PAGE:{number}]]")
+            parts.append(page.extract_text() or "")
+        return "\n\n".join(parts)
 
     @staticmethod
     def _docx(path: Path) -> str:
@@ -58,13 +64,15 @@ def _repair_arabic_line(line: str) -> str:
 
 
 def clean_text(text: str) -> str:
-    # PostgreSQL TEXT cannot store NUL (0x00).
     text = text.replace("\x00", "")
     text = text.replace("\u00ad", "").replace("\ufeff", "")
     cleaned = []
     for raw_line in text.splitlines():
         line = " ".join(raw_line.split()).strip()
         if not line:
+            continue
+        if PAGE_MARKER_RE.fullmatch(line):
+            cleaned.append(line)
             continue
         line = _repair_arabic_line(line)
         if re.fullmatch(r"(?:Page|صفحة)\s*\d+", line, flags=re.I):
@@ -75,6 +83,22 @@ def clean_text(text: str) -> str:
     return "\n".join(cleaned).strip()
 
 
+def page_parts(text: str) -> list[tuple[int, str]]:
+    """Return real PDF pages when page markers exist; otherwise one logical page."""
+    text = clean_text(text)
+    matches = list(PAGE_MARKER_RE.finditer(text))
+    if not matches:
+        return [(1, text)] if text else []
+    pages = []
+    for i, match in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        body = text[match.end():end].strip()
+        number = int(match.group(1))
+        if body:
+            pages.append((number, body))
+    return pages
+
+
 def chunk_text(text: str, max_chars: int = 10000) -> list[str]:
     text = clean_text(text)
     if not text:
@@ -82,7 +106,6 @@ def chunk_text(text: str, max_chars: int = 10000) -> list[str]:
     return [text[i:i + max_chars] for i in range(0, len(text), max_chars)]
 
 
-# Headings commonly used to separate several lessons/lectures in one file.
 _LESSON_HEADING = re.compile(
     r"^\s*(?:(?:الدرس|درس|المحاضرة|محاضرة|الوحدة|وحدة|الفصل|فصل)\s*(?:رقم\s*)?[0-9٠-٩]+\b|"
     r"(?:lesson|lecture|unit|chapter)\s*(?:number\s*)?[0-9]+\b)\s*[:：\-–—.]?\s*(.*)$",
@@ -91,16 +114,9 @@ _LESSON_HEADING = re.compile(
 
 
 def split_lessons(text: str) -> list[tuple[str, str]]:
-    """Split a combined document into independent lessons.
-
-    A lesson starts at a clear Arabic/English lesson heading such as
-    'الدرس 1', 'المحاضرة 2', 'Lesson 3' or 'Lecture 4'.
-    If no such headings exist, the whole document remains one lesson.
-    """
     text = clean_text(text)
     if not text:
         return []
-
     lines = text.splitlines()
     starts: list[tuple[int, str]] = []
     for index, line in enumerate(lines):
@@ -108,21 +124,16 @@ def split_lessons(text: str) -> list[tuple[str, str]]:
         if match:
             title = match.group(1).strip() or line.strip()
             starts.append((index, title))
-
     if not starts:
         return [("الدرس الكامل", text)]
-
     lessons: list[tuple[str, str]] = []
-    # Keep any introductory material before the first heading attached to the first lesson.
     for pos, (start, title) in enumerate(starts):
         end = starts[pos + 1][0] if pos + 1 < len(starts) else len(lines)
         body = "\n".join(lines[start:end]).strip()
         if body:
             lessons.append((title, body))
-
     if starts[0][0] > 0 and lessons:
         intro = "\n".join(lines[:starts[0][0]]).strip()
         if intro:
             lessons[0] = (lessons[0][0], intro + "\n" + lessons[0][1])
-
     return lessons
