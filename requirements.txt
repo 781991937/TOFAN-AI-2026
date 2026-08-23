@@ -6,4 +6,5 @@ python-docx>=1.2,<2
 aiofiles>=24,<25
 aiohttp>=3.10,<4
 psycopg[binary]>=3.2,<4
+PyMuPDF>=1.26,<2
 pytest>=8,<9
