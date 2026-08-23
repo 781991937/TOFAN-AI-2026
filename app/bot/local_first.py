@@ -35,7 +35,7 @@ def _page_cache(lesson_text: str) -> list[dict]:
     for number, text in pages:
         analysis = local_analysis(text)
         result.append({
-            "page": number,
+            "page": int(number),
             "summary": analysis.get("summary", "")[:2600],
             "key_points": analysis.get("key_points", [])[:6],
             "terms": analysis.get("english_terms", [])[:10],
@@ -43,19 +43,17 @@ def _page_cache(lesson_text: str) -> list[dict]:
     return result
 
 
-def _page_keyboard(lesson_id: int, pages: list[dict], current: int) -> InlineKeyboardMarkup:
+def _page_keyboard(lesson_id: int, pages: list[dict], current_index: int) -> InlineKeyboardMarkup:
+    """Render real page-number buttons and keep navigation based on list index."""
     rows = []
-    numbers = [int(item.get("page", i + 1)) for i, item in enumerate(pages)]
-    row = []
-    for index, number in enumerate(numbers):
-        label = f"📄 {number}" if number != current else f"🔵 {number}"
-        row.append(InlineKeyboardButton(text=label, callback_data=f"page:{lesson_id}:{index}"))
-        if len(row) == 5:
-            rows.append(row)
-            row = []
-    if row:
+    for start in range(0, len(pages), 5):
+        row = []
+        for index in range(start, min(start + 5, len(pages))):
+            number = int(pages[index].get("page", index + 1))
+            label = f"🔵 {number}" if index == current_index else f"📄 {number}"
+            row.append(InlineKeyboardButton(text=label, callback_data=f"page:{lesson_id}:{index}"))
         rows.append(row)
-    current_index = next((i for i, n in enumerate(numbers) if n == current), 0)
+
     nav = []
     if current_index > 0:
         nav.append(InlineKeyboardButton(text="⬅️ السابقة", callback_data=f"page:{lesson_id}:{current_index - 1}"))
@@ -69,7 +67,7 @@ def _page_keyboard(lesson_id: int, pages: list[dict], current: int) -> InlineKey
 
 def _page_message(lesson, pages: list[dict], index: int) -> str:
     item = pages[index]
-    page_number = item.get("page", index + 1)
+    page_number = int(item.get("page", index + 1))
     summary = html.escape(item.get("summary") or "لم أجد شرحًا كافيًا لهذه الصفحة.")
     points = item.get("key_points") or []
     points_text = "\n".join(f"• {html.escape(str(point))}" for point in points[:6]) or "• لا توجد نقاط إضافية واضحة."
@@ -95,10 +93,18 @@ async def _show_page(callback: CallbackQuery, lesson, index: int) -> None:
         await callback.answer("❌ لا توجد صفحات محفوظة لهذا الدرس.", show_alert=True)
         return
     index = max(0, min(index, len(pages) - 1))
-    await callback.message.edit_text(
-        _page_message(lesson, pages, index),
-        reply_markup=_page_keyboard(int(lesson["id"]), pages, index),
-    )
+    try:
+        await callback.message.edit_text(
+            _page_message(lesson, pages, index),
+            reply_markup=_page_keyboard(int(lesson["id"]), pages, index),
+        )
+    except Exception as exc:
+        # Telegram can reject an edit when the content is identical; the page is
+        # still valid, so answer the callback instead of crashing the handler.
+        if "message is not modified" in str(exc).lower():
+            await callback.answer("هذه هي الصفحة الحالية.")
+        else:
+            raise
 
 
 async def save_local_lesson(message: Message, db: Database, bot, extractor: FileExtractor, owner_id: int) -> None:
@@ -273,7 +279,6 @@ async def smart_quiz(callback: CallbackQuery, state: FSMContext, db: Database, q
     except Exception:
         logger.exception("Smart quiz failed")
         await callback.message.edit_text(
-            "⚠️ <b>تعذر إنشاء الاختبار الذكي الآن.</b>\n\n"
-            "جرّب الاختبار العادي؛ فهو لا يحتاج Gemini.",
+            "⚠️ <b>تعذر إنشاء الاختبار الذكي الآن.</b>\n\nحاول مرة أخرى لاحقًا.",
             reply_markup=lesson_menu(lesson["id"]),
         )
