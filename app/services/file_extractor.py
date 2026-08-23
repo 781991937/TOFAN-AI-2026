@@ -4,7 +4,8 @@ import re
 from docx import Document
 from pypdf import PdfReader
 
-PAGE_MARKER_RE = re.compile(r"^\[\[PAGE:(\d+)\]\]$")
+PAGE_MARKER_RE = re.compile(r"^\s*\[\[PAGE:(\d+)\]\]\s*$")
+PAGE_MARKER_ANY_RE = re.compile(r"\[\[PAGE:(\d+)\]\]")
 
 
 class FileExtractor:
@@ -66,13 +67,15 @@ def _repair_arabic_line(line: str) -> str:
 def clean_text(text: str) -> str:
     text = text.replace("\x00", "")
     text = text.replace("\u00ad", "").replace("\ufeff", "")
+    text = re.sub(r"\f", "\n", text)
     cleaned = []
     for raw_line in text.splitlines():
         line = " ".join(raw_line.split()).strip()
         if not line:
             continue
-        if PAGE_MARKER_RE.fullmatch(line):
-            cleaned.append(line)
+        marker = PAGE_MARKER_ANY_RE.fullmatch(line)
+        if marker:
+            cleaned.append(f"[[PAGE:{int(marker.group(1))}]]")
             continue
         line = _repair_arabic_line(line)
         if re.fullmatch(r"(?:Page|صفحة)\s*\d+", line, flags=re.I):
@@ -85,9 +88,11 @@ def clean_text(text: str) -> str:
 
 def page_parts(text: str) -> list[tuple[int, str]]:
     text = clean_text(text)
+    if not text:
+        return []
     matches = list(PAGE_MARKER_RE.finditer(text))
     if not matches:
-        return [(1, text)] if text else []
+        return [(1, text)]
     pages = []
     for i, match in enumerate(matches):
         end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
@@ -131,8 +136,6 @@ def split_lessons(text: str) -> list[tuple[str, str]]:
         end = starts[pos + 1][0] if pos + 1 < len(starts) else len(lines)
         body_lines = lines[start:end]
         body = "\n".join(body_lines).strip()
-        # If a lesson starts in the middle of a PDF page, prefix the page marker
-        # so page_parts() can still identify the correct original page number.
         marker = None
         for back in range(start - 1, -1, -1):
             if PAGE_MARKER_RE.fullmatch(lines[back]):
