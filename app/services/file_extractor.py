@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 import re
 
 from docx import Document
@@ -9,147 +10,134 @@ PAGE_MARKER_ANY_RE = re.compile(r"\[\[PAGE:(\d+)\]\]")
 
 
 class FileExtractor:
-    SUPPORTED = {".pdf", ".docx", ".txt"}
+    """Extract common educational documents without involving the AI engine."""
+
+    SUPPORTED = {
+        ".pdf", ".docx", ".txt", ".md", ".csv", ".json", ".py", ".js", ".ts", ".html", ".css",
+        ".xml", ".yaml", ".yml", ".rst", ".tex", ".log", ".ini", ".cfg", ".rtf", ".xlsx", ".pptx"
+    }
 
     def extract(self, path: Path) -> str:
         suffix = path.suffix.lower()
         if suffix not in self.SUPPORTED:
             raise ValueError(f"Unsupported file type: {suffix}")
-        if suffix == ".pdf":
-            return self._pdf(path)
-        if suffix == ".docx":
-            return self._docx(path)
-        return path.read_text(encoding="utf-8", errors="replace")
+        if suffix == ".pdf": return self._pdf(path)
+        if suffix == ".docx": return self._docx(path)
+        if suffix == ".xlsx": return self._xlsx(path)
+        if suffix == ".pptx": return self._pptx(path)
+        if suffix == ".json":
+            try: return json.dumps(json.loads(path.read_text(encoding="utf-8", errors="replace")), ensure_ascii=False, indent=2)
+            except Exception: pass
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if suffix == ".rtf":
+            text = re.sub(r"\\[a-z]+\d* ?|[{}]", "", text)
+        return text
 
     @staticmethod
     def _pdf(path: Path) -> str:
-        reader = PdfReader(str(path))
-        parts = []
-        for number, page in enumerate(reader.pages, start=1):
-            parts.append(f"[[PAGE:{number}]]")
-            parts.append(page.extract_text() or "")
+        reader = PdfReader(str(path)); parts = []
+        for number, page in enumerate(reader.pages, 1):
+            parts += [f"[[PAGE:{number}]]", page.extract_text() or ""]
         return "\n\n".join(parts)
 
     @staticmethod
     def _docx(path: Path) -> str:
-        document = Document(str(path))
-        parts = [p.text for p in document.paragraphs if p.text.strip()]
+        document = Document(str(path)); parts = [p.text for p in document.paragraphs if p.text.strip()]
         for table in document.tables:
-            for row in table.rows:
-                parts.append(" | ".join(cell.text.strip() for cell in row.cells))
+            for row in table.rows: parts.append(" | ".join(cell.text.strip() for cell in row.cells))
+        return "\n".join(parts)
+
+    @staticmethod
+    def _xlsx(path: Path) -> str:
+        from openpyxl import load_workbook
+        wb = load_workbook(path, read_only=True, data_only=True); parts = []
+        for ws in wb.worksheets:
+            parts.append(f"[ورقة: {ws.title}]")
+            for row in ws.iter_rows(values_only=True):
+                values = [str(v) for v in row if v is not None]
+                if values: parts.append(" | ".join(values))
+        return "\n".join(parts)
+
+    @staticmethod
+    def _pptx(path: Path) -> str:
+        from pptx import Presentation
+        prs = Presentation(path); parts = []
+        for i, slide in enumerate(prs.slides, 1):
+            parts.append(f"[[PAGE:{i}]]")
+            for shape in slide.shapes:
+                if hasattr(shape, "text") and shape.text.strip(): parts.append(shape.text.strip())
         return "\n".join(parts)
 
 
-_REVERSED_HINTS = {
-    "ىلإ", "نم", "يف", "نع", "ىلع", "اذه", "هذه", "وه", "يه", "فصن", "مرتلا",
-    "رابتخا", "ىنعملا", "ةملكلا", "قطنلا", "يبرعلاب", "ةلماك", "تابيردتلا", "لاثملاب",
-    "ةليللا", "مهفا", "ظفحلل", "ةدعاقلا", "تاملعم", "تاملك", "ثحب",
-}
-
-
-def _fix_reversed_arabic_word(word: str) -> str:
-    if re.fullmatch(r"[\u0600-\u06FF]+", word) and len(word) >= 2:
-        return word[::-1]
-    return word
-
-
 def _repair_arabic_line(line: str) -> str:
-    arabic_words = re.findall(r"[\u0600-\u06FF]+", line)
-    if len(arabic_words) < 2:
-        return line
-    hints = sum(1 for word in arabic_words if word in _REVERSED_HINTS)
-    if hints == 0:
-        return line
+    # Fix the common reversed-Arabic extraction artifact without touching normal text.
+    hints = {"ىلإ", "نم", "يف", "نع", "ىلع", "اذه", "هذه", "وه", "يه", "رابتخا", "ىنعملا", "ةملكلا", "يبرعلاب", "لاثملاب"}
+    words = re.findall(r"[\u0600-\u06FF]+", line)
+    if len(words) < 2 or not any(w in hints for w in words): return line
     tokens = re.split(r"(\s+)", line)
-    return "".join(_fix_reversed_arabic_word(t) for t in tokens)
+    return "".join(t[::-1] if re.fullmatch(r"[\u0600-\u06FF]+", t or "") and len(t) >= 2 else t for t in tokens)
 
 
 def clean_text(text: str) -> str:
-    text = text.replace("\x00", "")
-    text = text.replace("\u00ad", "").replace("\ufeff", "")
-    text = re.sub(r"\f", "\n", text)
+    text = (text or "").replace("\x00", "").replace("\u00ad", "").replace("\ufeff", "")
     cleaned = []
-    for raw_line in text.splitlines():
-        line = " ".join(raw_line.split()).strip()
-        if not line:
-            continue
+    for raw in text.replace("\f", "\n").splitlines():
+        line = " ".join(raw.split()).strip()
+        if not line: continue
         marker = PAGE_MARKER_ANY_RE.fullmatch(line)
         if marker:
-            cleaned.append(f"[[PAGE:{int(marker.group(1))}]]")
-            continue
-        line = _repair_arabic_line(line)
-        if re.fullmatch(r"(?:Page|صفحة)\s*\d+", line, flags=re.I):
-            continue
-        if re.fullmatch(r"[-_=·•\s]{3,}", line):
-            continue
-        cleaned.append(line)
+            cleaned.append(f"[[PAGE:{int(marker.group(1))}]]"); continue
+        if re.fullmatch(r"(?:Page|صفحة)\s*\d+", line, re.I): continue
+        if re.fullmatch(r"[-_=·•\s]{3,}", line): continue
+        cleaned.append(_repair_arabic_line(line))
     return "\n".join(cleaned).strip()
 
 
-def page_parts(text: str) -> list[tuple[int, str]]:
+def page_parts(text: str, chars_per_page: int = 1800) -> list[tuple[int, str]]:
+    """Return real PDF pages when markers exist; otherwise create stable virtual pages for any text document."""
     text = clean_text(text)
-    if not text:
-        return []
+    if not text: return []
     matches = list(PAGE_MARKER_RE.finditer(text))
-    if not matches:
-        return [(1, text)]
-    pages = []
-    for i, match in enumerate(matches):
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-        body = text[match.end():end].strip()
-        number = int(match.group(1))
-        if body:
-            pages.append((number, body))
-    return pages
-
-
-def chunk_text(text: str, max_chars: int = 10000) -> list[str]:
-    text = clean_text(text)
-    if not text:
-        return []
-    return [text[i:i + max_chars] for i in range(0, len(text), max_chars)]
-
-
-_LESSON_HEADING = re.compile(
-    r"^\s*(?:(?:الدرس|درس|المحاضرة|محاضرة|الوحدة|وحدة|الفصل|فصل)\s*(?:رقم\s*)?[0-9٠-٩]+\b|"
-    r"(?:lesson|lecture|unit|chapter)\s*(?:number\s*)?[0-9]+\b)\s*[:：\-–—.]?\s*(.*)$",
-    re.IGNORECASE,
-)
+    if matches:
+        pages = []
+        for i, match in enumerate(matches):
+            end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+            body = text[match.end():end].strip()
+            if body: pages.append((int(match.group(1)), body))
+        return pages
+    chunks = []
+    current = []
+    size = 0
+    page_no = 1
+    for line in text.splitlines():
+        if current and size + len(line) + 1 > chars_per_page:
+            chunks.append((page_no, "\n".join(current).strip())); page_no += 1; current = []; size = 0
+        current.append(line); size += len(line) + 1
+    if current: chunks.append((page_no, "\n".join(current).strip()))
+    return chunks
 
 
 def split_lessons(text: str) -> list[tuple[str, str]]:
     text = clean_text(text)
-    if not text:
-        return []
+    if not text: return []
     lines = text.splitlines()
-    starts: list[tuple[int, str]] = []
-    for index, line in enumerate(lines):
-        match = _LESSON_HEADING.match(line)
-        if match:
-            title = match.group(1).strip() or line.strip()
-            starts.append((index, title))
-    if not starts:
-        return [("الدرس الكامل", text)]
-
-    lessons: list[tuple[str, str]] = []
-    for pos, (start, title) in enumerate(starts):
-        end = starts[pos + 1][0] if pos + 1 < len(starts) else len(lines)
-        body_lines = lines[start:end]
-        body = "\n".join(body_lines).strip()
-        marker = None
-        for back in range(start - 1, -1, -1):
-            if PAGE_MARKER_RE.fullmatch(lines[back]):
-                marker = lines[back]
-                break
-            if _LESSON_HEADING.match(lines[back]):
-                break
-        if marker and not body.startswith(marker):
-            body = marker + "\n" + body
-        if body:
-            lessons.append((title, body))
-
+    heading = re.compile(r"^\s*(?:(?:الدرس|درس|المحاضرة|محاضرة|الوحدة|وحدة|الفصل|فصل)\s*(?:رقم\s*)?[0-9٠-٩]+\b|(?:lesson|lecture|unit|chapter)\s*(?:number\s*)?[0-9]+\b)\s*[:：\-–—.]?\s*(.*)$", re.I)
+    starts = []
+    for i, line in enumerate(lines):
+        m = heading.match(line)
+        if m: starts.append((i, m.group(1).strip() or line.strip()))
+    if not starts: return [("الدرس الكامل", text)]
+    lessons = []
+    for n, (start, title) in enumerate(starts):
+        end = starts[n + 1][0] if n + 1 < len(starts) else len(lines)
+        body = "\n".join(lines[start:end]).strip()
+        if body: lessons.append((title, body))
     if starts[0][0] > 0 and lessons:
         intro = "\n".join(lines[:starts[0][0]]).strip()
-        if intro:
-            lessons[0] = (lessons[0][0], intro + "\n" + lessons[0][1])
+        if intro: lessons[0] = (lessons[0][0], intro + "\n" + lessons[0][1])
     return lessons
+
+
+def chunk_text(text: str, max_chars: int = 10000) -> list[str]:
+    text = clean_text(text)
+    return [text[i:i + max_chars] for i in range(0, len(text), max_chars)] if text else []
