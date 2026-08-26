@@ -76,10 +76,11 @@ async def ai_section(callback: CallbackQuery) -> None:
     await callback.answer()
     await callback.message.edit_text(
         "🧠 <b>قسم الذكاء</b>\n\n"
-        "هذا القسم يحتوي وظائف الذكاء الاصطناعي فقط.\n\n"
-        "• 🧠 الشرح الذكي: تحليل وفهم الدرس بطريقة تعليمية.\n"
-        "• 🧠 الاختبار الذكي: إنشاء أسئلة متنوعة من محتوى الدرس.\n\n"
-        "📌 اختيار الملف والدرس مجرد تنقّل؛ الذكاء يبدأ فقط عند تنفيذ الوظيفة.",
+        "هنا كل ما يحتاج الذكاء الاصطناعي فقط:\n\n"
+        "• 🧠 شرح ذكي: فهم وتحليل الدرس.\n"
+        "• 📝 اختبار ذكي: إنشاء اختبار من المحتوى.\n"
+        "• 💡 فكرة عملية: تحويل ما تعلمته إلى تطبيق واقعي.\n\n"
+        "📌 اختيار المادة والملف والدرس مجرد تنقّل؛ الذكاء يبدأ عند تنفيذ الوظيفة.",
         reply_markup=ai_actions_menu(),
     )
 
@@ -95,7 +96,12 @@ async def ai_pick(callback: CallbackQuery, db: Database) -> None:
             reply_markup=ai_actions_menu(),
         )
         return
-    label = "الشرح الذكي" if action == "explain" else "الاختبار الذكي"
+    labels = {
+        "explain": "الشرح الذكي",
+        "quiz": "الاختبار الذكي",
+        "practical": "الفكرة العملية الذكية",
+    }
+    label = labels.get(action, "وظيفة الذكاء")
     await callback.message.edit_text(
         f"🧠 <b>{label}</b>\n\nاختر المادة:",
         reply_markup=ai_categories_menu(categories, action),
@@ -116,9 +122,9 @@ async def ai_category(callback: CallbackQuery, db: Database) -> None:
     if not files:
         await callback.message.edit_text("❌ لا توجد ملفات في هذا القسم.", reply_markup=ai_actions_menu())
         return
-    label = "الشرح الذكي" if action == "explain" else "الاختبار الذكي"
+    labels = {"explain": "الشرح الذكي", "quiz": "الاختبار الذكي", "practical": "الفكرة العملية الذكية"}
     await callback.message.edit_text(
-        f"🧠 <b>{label}</b>\n📚 <b>{html.escape(category)}</b>\n\nاختر الملف:",
+        f"🧠 <b>{labels.get(action, 'وظيفة الذكاء')}</b>\n📚 <b>{html.escape(category)}</b>\n\nاختر الملف:",
         reply_markup=ai_files_menu(files, action),
     )
 
@@ -136,8 +142,9 @@ async def ai_file(callback: CallbackQuery, db: Database) -> None:
     name = str(selected[0]["file_name"] or "الملف")
     if " - " in name:
         name = name.split(" - ", 1)[0]
+    labels = {"explain": "الشرح الذكي", "quiz": "الاختبار الذكي", "practical": "الفكرة العملية الذكية"}
     await callback.message.edit_text(
-        f"🧠 <b>{'الشرح الذكي' if action == 'explain' else 'الاختبار الذكي'}</b>\n"
+        f"🧠 <b>{labels.get(action, 'وظيفة الذكاء')}</b>\n"
         f"📘 <b>{html.escape(name)}</b>\n\nاختر الدرس:",
         reply_markup=ai_lessons_menu(selected, action),
     )
@@ -160,6 +167,7 @@ async def ai_lesson(
 
     await callback.answer("🧠 جاري التنفيذ...")
     title = _lesson_title(lesson)
+
     if action == "explain":
         try:
             analysis = await ai_service.analyze_lesson(lesson["extracted_text"])
@@ -183,6 +191,30 @@ async def ai_lesson(
             await callback.message.edit_text(
                 "⚠️ <b>تعذر تشغيل الذكاء الاصطناعي الآن.</b>\n\n"
                 "الملف محفوظ ولم يتأثر. حاول مرة أخرى من قسم الذكاء."
+            )
+        return
+
+    if action == "practical":
+        try:
+            result = await ai_service.generate_practical_idea(lesson["extracted_text"])
+            idea = html.escape(str(result.get("idea", "فكرة عملية")))
+            why = html.escape(str(result.get("why", "مرتبطة مباشرة بمحتوى الدرس.")))
+            example = html.escape(str(result.get("example", "لا يوجد مثال إضافي.")))
+            steps = result.get("steps", [])
+            steps_text = "\n".join(f"{i}. {html.escape(str(step))}" for i, step in enumerate(steps[:6], 1)) or "1. راجع الدرس ثم طبّق الفكرة على مثال من واقعك."
+            await callback.message.edit_text(
+                f"💡 <b>{idea}</b>\n"
+                f"📖 <b>الدرس:</b> {html.escape(title)}\n"
+                f"📚 <b>القسم:</b> {html.escape(str(lesson['category'] or 'مواد أخرى'))}\n\n"
+                "🧠 <b>طريقة التنفيذ: الذكاء الاصطناعي</b>\n\n"
+                f"🎯 <b>لماذا؟</b>\n{why}\n\n"
+                f"🛠️ <b>خطوات التطبيق</b>\n{steps_text}\n\n"
+                f"🌍 <b>مثال واقعي</b>\n{example}",
+            )
+        except Exception:
+            await callback.message.edit_text(
+                "⚠️ <b>تعذر إنشاء الفكرة العملية الآن.</b>\n\n"
+                "الملف محفوظ. حاول مرة أخرى من قسم الذكاء."
             )
         return
 
@@ -224,10 +256,8 @@ async def ai_lesson(
 async def automation_section(callback: CallbackQuery) -> None:
     await callback.answer()
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📚 المكتبة", callback_data="library")],
-        [InlineKeyboardButton(text="📥 إدارة الملفات", callback_data="file_management")],
-        [InlineKeyboardButton(text="🧭 الصفحات والتنقل", callback_data="navigation_help")],
-        [InlineKeyboardButton(text="⬅️ الرئيسية", callback_data="home")],
+        [InlineKeyboardButton(text="📚 المكتبة", callback_data="library"), InlineKeyboardButton(text="📥 إدارة الملفات", callback_data="file_management")],
+        [InlineKeyboardButton(text="🧭 الصفحات والتنقل", callback_data="navigation_help"), InlineKeyboardButton(text="⬅️ الرئيسية", callback_data="home")],
     ])
     await callback.message.edit_text(
         "🤖 <b>قسم البوت</b>\n\n"
@@ -244,14 +274,13 @@ async def automation_section(callback: CallbackQuery) -> None:
 async def file_management(callback: CallbackQuery) -> None:
     await callback.answer()
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📚 فتح المكتبة", callback_data="library")],
-        [InlineKeyboardButton(text="⬅️ قسم البوت", callback_data="automation_section")],
+        [InlineKeyboardButton(text="📚 فتح المكتبة", callback_data="library"), InlineKeyboardButton(text="⬅️ قسم البوت", callback_data="automation_section")],
     ])
     await callback.message.edit_text(
         "📥 <b>إدارة الملفات — نظام البوت</b>\n\n"
         "• 📥 استقبال PDF / DOCX / TXT\n"
         "• 🗂️ حفظ الملف ونسخة Telegram\n"
-        "• 📚 تنظيمه داخل المادة المناسبة\n"
+        "• 🗂️ تنظيمه داخل المادة المناسبة\n"
         "• 📖 تقسيمه إلى دروس وصفحات\n"
         "• 📤 إعادة إرسال الملف للتنزيل لاحقًا\n\n"
         "🧠 لا يتم تشغيل الذكاء الاصطناعي في هذه الخطوة.",
@@ -263,8 +292,7 @@ async def file_management(callback: CallbackQuery) -> None:
 async def navigation_help(callback: CallbackQuery) -> None:
     await callback.answer()
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📚 فتح المكتبة", callback_data="library")],
-        [InlineKeyboardButton(text="⬅️ قسم البوت", callback_data="automation_section")],
+        [InlineKeyboardButton(text="📚 فتح المكتبة", callback_data="library"), InlineKeyboardButton(text="⬅️ قسم البوت", callback_data="automation_section")],
     ])
     await callback.message.edit_text(
         "🧭 <b>الصفحات والتنقل — نظام البوت</b>\n\n"
