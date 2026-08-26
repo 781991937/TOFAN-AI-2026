@@ -51,7 +51,9 @@ def _caption(lesson, pages, index: int) -> str:
     return (
         f"📖 <b>{html.escape(str(lesson['file_name']))}</b>\n"
         f"📄 <b>صفحة {number} من {len(pages)}</b>\n\n"
-        "🧠 <b>افهم الصفحة ببساطة</b>\n"
+        "🤖 <b>طريقة الشرح: البوت — شرح محلي</b>\n"
+        "<i>هذا الشرح من نظام البوت نفسه اعتمادًا على محتوى الملف، وليس من الذكاء الاصطناعي الخارجي.</i>\n\n"
+        "📖 <b>افهم الصفحة ببساطة</b>\n"
         f"{html.escape(preview or 'لا يوجد نص واضح في هذه الصفحة.')}\n\n"
         "💡 <i>الصورة المعروضة هي الصفحة الأصلية من ملف PDF، بدون إعادة تشكيل النص.</i>"
     )
@@ -144,7 +146,7 @@ async def page_quiz_button(callback: CallbackQuery, state: FSMContext, db: Datab
     difficulty = str(user["difficulty"] if user else "medium")
     count = max(3, min(count, 10))
 
-    await callback.answer("🧠 جاري إعداد اختبار الصفحة…")
+    await callback.answer("🤖 جاري إعداد اختبار الصفحة بالذكاء الاصطناعي…")
     try:
         questions = await quiz_generator.create_smart(page_text, count, difficulty)
         if not questions:
@@ -160,6 +162,8 @@ async def page_quiz_button(callback: CallbackQuery, state: FSMContext, db: Datab
             source_page=page_number,
         )
         await callback.message.edit_text(
+            f"🤖 <b>طريقة الاختبار: الذكاء الاصطناعي</b>\n"
+            f"<i>تم إنشاء الأسئلة بالذكاء الاصطناعي من محتوى الصفحة {page_number} فقط.</i>\n\n"
             f"📝 <b>اختبار الصفحة {page_number}</b>\n\n"
             f"تم إنشاء {len(questions)} أسئلة من محتوى هذه الصفحة فقط.\n\n"
             "🎯 ابدأ الاختبار الآن!"
@@ -183,14 +187,16 @@ async def smart_page_explain(callback: CallbackQuery, db: Database, ai_service) 
         await callback.answer("❌ الصفحة غير موجودة.", show_alert=True)
         return
     page_number, page_text = pages[index]
-    await callback.answer("🧠 جاري فهم الصفحة…")
+    await callback.answer("🤖 جاري شرح الصفحة بالذكاء الاصطناعي…")
     try:
         analysis = await ai_service.analyze_lesson(page_text)
         summary = html.escape(str(analysis.get("summary") or "لا يوجد شرح كافٍ."))
         concepts = analysis.get("concepts") or []
         concepts_text = "\n".join(f"• {html.escape(str(x))}" for x in concepts[:8]) or "• لا توجد نقاط إضافية."
         await callback.message.answer(
-            f"🧠 <b>شرح ذكي — صفحة {page_number}</b>\n\n{summary}\n\n"
+            f"🤖 <b>طريقة الشرح: الذكاء الاصطناعي</b>\n"
+            f"<i>هذا الشرح تم إنشاؤه بواسطة الذكاء الاصطناعي اعتمادًا على محتوى الصفحة فقط.</i>\n\n"
+            f"📖 <b>شرح ذكي — صفحة {page_number}</b>\n\n{summary}\n\n"
             f"📌 <b>أهم النقاط</b>\n{concepts_text}"
         )
     except Exception:
