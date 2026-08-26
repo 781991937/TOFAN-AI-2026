@@ -9,7 +9,7 @@ from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
-from app.bot.clock import ClockStopMiddleware
+from app.bot.clock import ClockStopMiddleware, router as clock_router
 from app.bot.handlers import router
 from app.bot.enhancements import router as enhancements_router
 from app.bot.local_first import router as local_first_router
@@ -78,6 +78,9 @@ async def main() -> None:
 
     # Stop the live home clock whenever a callback navigates away from the main menu.
     dp.callback_query.outer_middleware(ClockStopMiddleware())
+
+    # The clock router owns /start and the home button so the live clock is the actual main menu.
+    dp.include_router(clock_router)
 
     # Order matters: navigation handles the new lesson/file flow before legacy handlers.
     dp.include_router(page_images_router)
