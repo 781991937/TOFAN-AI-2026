@@ -11,7 +11,7 @@ print("Python runtime:", sys.version)
 PY
 
 # pdftotext is a native Poppler binding, so Render needs its Linux build
-a# dependencies before pip installs the Python package.
+dependencies before pip installs the Python package.
 apt-get update
 apt-get install -y --no-install-recommends \
   build-essential \
