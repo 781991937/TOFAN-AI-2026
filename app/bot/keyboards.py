@@ -8,7 +8,7 @@ def _enc(value: str) -> str:
 
 def main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📚 المكتبة", callback_data="lessons"), InlineKeyboardButton(text="👤 ملفي", callback_data="profile")],
+        [InlineKeyboardButton(text="📚 المكتبة", callback_data="library"), InlineKeyboardButton(text="👤 ملفي", callback_data="profile")],
         [InlineKeyboardButton(text="⚙️ الإعدادات", callback_data="settings"), InlineKeyboardButton(text="❓ المساعدة", callback_data="help")],
     ])
 
@@ -22,7 +22,7 @@ def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🧠 شرح ذكي", callback_data=f"smart_explain:{lesson_id}")],
         [InlineKeyboardButton(text="🧠 اختبار ذكي", callback_data=f"smart_quiz:{lesson_id}")],
         [InlineKeyboardButton(text="🗑️ حذف الملف", callback_data=f"delete_lesson:{lesson_id}")],
-        [InlineKeyboardButton(text="⬅️ رجوع للمكتبة", callback_data="lessons")],
+        [InlineKeyboardButton(text="⬅️ رجوع للمكتبة", callback_data="library")],
         [InlineKeyboardButton(text="🏠 الرئيسية", callback_data="home")],
     ])
 
@@ -30,13 +30,12 @@ def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
 def delete_lesson_confirm(lesson_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🗑️ نعم، احذف الملف", callback_data=f"confirm_delete:{lesson_id}")],
-        [InlineKeyboardButton(text="❌ إلغاء", callback_data="lessons")],
+        [InlineKeyboardButton(text="❌ إلغاء", callback_data="library")],
     ])
 
 
 def lessons_list_menu(lessons: list) -> InlineKeyboardMarkup:
     rows = []
-    # Backward-compatible entry point: render the smart category library.
     grouped = {}
     for lesson in lessons:
         category = str(lesson["category"] or "📂 مواد أخرى")
@@ -60,7 +59,7 @@ def library_menu(categories: list) -> InlineKeyboardMarkup:
 def category_menu(category: str, lessons: list) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text="🎓 اختبار شامل للقسم — 50 سؤال", callback_data=f"categoryquiz:{_enc(category)}")]]
     rows.append([InlineKeyboardButton(text="📂 عرض ملفات القسم", callback_data=f"categoryfiles:{_enc(category)}")])
-    rows.append([InlineKeyboardButton(text="⬅️ رجوع للمكتبة", callback_data="lessons")])
+    rows.append([InlineKeyboardButton(text="⬅️ رجوع للمكتبة", callback_data="library")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -92,7 +91,6 @@ def group_quiz_menu(quiz_id: int) -> InlineKeyboardMarkup:
 def result_menu(lesson_id: int, group: bool = False) -> InlineKeyboardMarkup:
     rows = [
         [InlineKeyboardButton(text="🔁 اختبار جديد — 20 سؤال", callback_data=f"filequiz:{lesson_id}")],
-        [InlineKeyboardButton(text="🎓 اختبار القسم — 50 سؤال", callback_data=f"groupquiz:{lesson_id}")],
         [InlineKeyboardButton(text="🧠 اختبار ذكي", callback_data=f"smart_quiz:{lesson_id}")],
         [InlineKeyboardButton(text="📖 شرح صفحة بصفحة", callback_data=f"pages:{lesson_id}")],
         [InlineKeyboardButton(text="⬅️ رجوع للدرس", callback_data=f"lesson:{lesson_id}")],
