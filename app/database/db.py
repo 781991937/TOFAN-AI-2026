@@ -34,8 +34,7 @@ class Database:
             with self._connect() as conn:
                 conn.execute("""
                 CREATE TABLE IF NOT EXISTS users (
-                    telegram_id BIGINT PRIMARY KEY,
-                    first_name TEXT,
+                    telegram_id BIGINT PRIMARY KEY, first_name TEXT,
                     question_count INTEGER NOT NULL DEFAULT 10,
                     difficulty TEXT NOT NULL DEFAULT 'medium',
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -43,20 +42,15 @@ class Database:
                 CREATE TABLE IF NOT EXISTS lessons (
                     id BIGSERIAL PRIMARY KEY,
                     telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
-                    file_name TEXT NOT NULL,
-                    file_type TEXT NOT NULL,
-                    file_path TEXT NOT NULL,
-                    extracted_text TEXT NOT NULL,
-                    summary TEXT,
-                    concepts TEXT,
-                    key_points TEXT,
+                    file_name TEXT NOT NULL, file_type TEXT NOT NULL, file_path TEXT NOT NULL,
+                    extracted_text TEXT NOT NULL, summary TEXT, concepts TEXT, key_points TEXT,
+                    category TEXT NOT NULL DEFAULT '📂 مواد أخرى',
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 CREATE TABLE IF NOT EXISTS quizzes (
                     id BIGSERIAL PRIMARY KEY,
                     lesson_id BIGINT NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
-                    questions_json TEXT NOT NULL,
-                    question_count INTEGER NOT NULL DEFAULT 0,
+                    questions_json TEXT NOT NULL, question_count INTEGER NOT NULL DEFAULT 0,
                     difficulty TEXT NOT NULL DEFAULT 'medium',
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
@@ -64,13 +58,14 @@ class Database:
                     id BIGSERIAL PRIMARY KEY,
                     telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
                     quiz_id BIGINT NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
-                    score INTEGER NOT NULL,
-                    total INTEGER NOT NULL,
-                    percentage DOUBLE PRECISION NOT NULL,
-                    answers_json TEXT NOT NULL,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    score INTEGER NOT NULL, total INTEGER NOT NULL, percentage DOUBLE PRECISION NOT NULL,
+                    answers_json TEXT NOT NULL, created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
                 """)
+                try:
+                    conn.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT '📂 مواد أخرى'")
+                except Exception:
+                    pass
             return
 
         with self._connect() as conn:
@@ -84,7 +79,7 @@ class Database:
                 id INTEGER PRIMARY KEY AUTOINCREMENT, telegram_id INTEGER NOT NULL,
                 file_name TEXT NOT NULL, file_type TEXT NOT NULL, file_path TEXT NOT NULL,
                 extracted_text TEXT NOT NULL, summary TEXT, concepts TEXT, key_points TEXT,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                category TEXT NOT NULL DEFAULT '📂 مواد أخرى', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE
             );
             CREATE TABLE IF NOT EXISTS quizzes (
@@ -96,12 +91,15 @@ class Database:
             CREATE TABLE IF NOT EXISTS quiz_results (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, telegram_id INTEGER NOT NULL,
                 quiz_id INTEGER NOT NULL, score INTEGER NOT NULL, total INTEGER NOT NULL,
-                percentage REAL NOT NULL, answers_json TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                percentage REAL NOT NULL, answers_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE,
                 FOREIGN KEY (quiz_id) REFERENCES quizzes(id) ON DELETE CASCADE
             );
             """)
+            try:
+                conn.execute("ALTER TABLE lessons ADD COLUMN category TEXT NOT NULL DEFAULT '📂 مواد أخرى'")
+            except sqlite3.OperationalError:
+                pass
 
     def _rows(self, cur):
         if self.database_url:
@@ -128,21 +126,34 @@ class Database:
         with self._connect() as conn:
             self._execute(conn, "UPDATE users SET question_count=?, difficulty=? WHERE telegram_id=?", (question_count, difficulty, telegram_id))
 
-    def create_lesson(self, telegram_id: int, file_name: str, file_type: str, file_path: str, text: str) -> int:
+    def create_lesson(self, telegram_id: int, file_name: str, file_type: str, file_path: str, text: str, category: str = "📂 مواد أخرى") -> int:
+        text = (text or "").replace("\x00", "")
         with self._connect() as conn:
             if self.database_url:
-                cur = self._execute(conn, "INSERT INTO lessons(telegram_id,file_name,file_type,file_path,extracted_text) VALUES(?,?,?,?,?) RETURNING id", (telegram_id,file_name,file_type,file_path,text))
+                cur = self._execute(conn, "INSERT INTO lessons(telegram_id,file_name,file_type,file_path,extracted_text,category) VALUES(?,?,?,?,?,?) RETURNING id", (telegram_id,file_name,file_type,file_path,text,category))
                 return int(cur.fetchone()[0])
-            cur = self._execute(conn, "INSERT INTO lessons(telegram_id,file_name,file_type,file_path,extracted_text) VALUES(?,?,?,?,?)", (telegram_id,file_name,file_type,file_path,text))
+            cur = self._execute(conn, "INSERT INTO lessons(telegram_id,file_name,file_type,file_path,extracted_text,category) VALUES(?,?,?,?,?,?)", (telegram_id,file_name,file_type,file_path,text,category))
             return int(cur.lastrowid)
 
     def update_lesson_analysis(self, lesson_id: int, summary: str, concepts: str, key_points: str = "") -> None:
         with self._connect() as conn:
             self._execute(conn, "UPDATE lessons SET summary=?, concepts=?, key_points=? WHERE id=?", (summary, concepts, key_points, lesson_id))
 
-    def get_lessons(self, telegram_id: int, limit: int = 20):
+    def update_lesson_category(self, lesson_id: int, category: str) -> None:
         with self._connect() as conn:
-            return self._rows(self._execute(conn, "SELECT * FROM lessons WHERE telegram_id=? ORDER BY id DESC LIMIT ?", (telegram_id, limit)))
+            self._execute(conn, "UPDATE lessons SET category=? WHERE id=?", (category, lesson_id))
+
+    def get_lessons(self, telegram_id: int, limit: int = 100):
+        with self._connect() as conn:
+            return self._rows(self._execute(conn, "SELECT * FROM lessons WHERE telegram_id=? ORDER BY id ASC LIMIT ?", (telegram_id, limit)))
+
+    def get_lessons_by_category(self, telegram_id: int, category: str):
+        with self._connect() as conn:
+            return self._rows(self._execute(conn, "SELECT * FROM lessons WHERE telegram_id=? AND category=? ORDER BY id ASC", (telegram_id, category)))
+
+    def get_categories(self, telegram_id: int):
+        with self._connect() as conn:
+            return self._rows(self._execute(conn, "SELECT category, COUNT(*) AS lesson_count FROM lessons WHERE telegram_id=? GROUP BY category ORDER BY MIN(id) ASC", (telegram_id,)))
 
     def get_lesson(self, lesson_id: int, telegram_id: int | None = None):
         with self._connect() as conn:
@@ -151,7 +162,6 @@ class Database:
             return self._row(self._execute(conn, "SELECT * FROM lessons WHERE id=? AND telegram_id=?", (lesson_id, telegram_id)))
 
     def delete_lesson(self, lesson_id: int, telegram_id: int) -> bool:
-        """Delete a lesson owned by the user. PostgreSQL/SQLite cascades quizzes and results."""
         with self._connect() as conn:
             cur = self._execute(conn, "DELETE FROM lessons WHERE id=? AND telegram_id=?", (lesson_id, telegram_id))
             return cur.rowcount > 0
