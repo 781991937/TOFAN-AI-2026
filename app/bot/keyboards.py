@@ -1,9 +1,10 @@
-import base64
+import hashlib
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 
 def _enc(value: str) -> str:
-    return base64.urlsafe_b64encode(value.encode("utf-8")).decode("ascii").rstrip("=")
+    """Create a short Telegram-safe category token (always far below 64 bytes)."""
+    return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
 
 
 def main_menu() -> InlineKeyboardMarkup:
@@ -15,8 +16,8 @@ def main_menu() -> InlineKeyboardMarkup:
 
 def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📝 اختبار الملف — 20 سؤال", callback_data=f"filequiz:{lesson_id}")],
-        [InlineKeyboardButton(text="🔁 اختبار جديد — 20 سؤال", callback_data=f"filequiz:{lesson_id}")],
+        [InlineKeyboardButton(text="📝 اختبار الملف", callback_data=f"filequiz:{lesson_id}")],
+        [InlineKeyboardButton(text="🔁 اختبار جديد", callback_data=f"filequiz:{lesson_id}")],
         [InlineKeyboardButton(text="👥 اختبار جماعي", callback_data=f"groupquiz:{lesson_id}")],
         [InlineKeyboardButton(text="📖 شرح صفحة بصفحة", callback_data=f"pages:{lesson_id}")],
         [InlineKeyboardButton(text="🧠 شرح ذكي", callback_data=f"smart_explain:{lesson_id}")],
@@ -90,7 +91,7 @@ def group_quiz_menu(quiz_id: int) -> InlineKeyboardMarkup:
 
 def result_menu(lesson_id: int, group: bool = False) -> InlineKeyboardMarkup:
     rows = [
-        [InlineKeyboardButton(text="🔁 اختبار جديد — 20 سؤال", callback_data=f"filequiz:{lesson_id}")],
+        [InlineKeyboardButton(text="🔁 اختبار جديد", callback_data=f"filequiz:{lesson_id}")],
         [InlineKeyboardButton(text="🧠 اختبار ذكي", callback_data=f"smart_quiz:{lesson_id}")],
         [InlineKeyboardButton(text="📖 شرح صفحة بصفحة", callback_data=f"pages:{lesson_id}")],
         [InlineKeyboardButton(text="⬅️ رجوع للدرس", callback_data=f"lesson:{lesson_id}")],
