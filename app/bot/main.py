@@ -12,6 +12,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from app.bot.handlers import router
 from app.bot.enhancements import router as enhancements_router
 from app.bot.local_first import router as local_first_router
+from app.bot.navigation import router as navigation_router
 from app.bot.page_images import router as page_images_router
 from app.bot.library import router as library_router
 from app.bot.sections import router as sections_router
@@ -36,8 +37,18 @@ async def run_web_server(dp: Dispatcher, bot: Bot) -> web.AppRunner:
         raise RuntimeError("TELEGRAM_WEBHOOK_URL or RENDER_EXTERNAL_URL is required in production.")
     webhook_path = "/telegram/webhook"
     webhook_url = f"{external_url}{webhook_path}"
-    SimpleRequestHandler(dispatcher=dp, bot=bot, handle_in_background=True, secret_token=webhook_secret).register(app, path=webhook_path)
-    await bot.set_webhook(url=webhook_url, secret_token=webhook_secret, drop_pending_updates=True, allowed_updates=dp.resolve_used_update_types())
+    SimpleRequestHandler(
+        dispatcher=dp,
+        bot=bot,
+        handle_in_background=True,
+        secret_token=webhook_secret,
+    ).register(app, path=webhook_path)
+    await bot.set_webhook(
+        url=webhook_url,
+        secret_token=webhook_secret,
+        drop_pending_updates=True,
+        allowed_updates=dp.resolve_used_update_types(),
+    )
     logging.info("Telegram webhook configured: %s", webhook_url)
     setup_application(app, dp, bot=bot)
     port = int(os.getenv("PORT", "10000"))
@@ -58,19 +69,25 @@ async def main() -> None:
     quiz_generator = QuizGenerator(ai_service, settings.database_path)
     bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
+
     dp["db"] = db
     dp["extractor"] = extractor
     dp["ai_service"] = ai_service
     dp["quiz_generator"] = quiz_generator
+
+    # Order matters: navigation handles the new lesson/file flow before legacy handlers.
     dp.include_router(page_images_router)
     dp.include_router(sections_router)
+    dp.include_router(navigation_router)
     dp.include_router(local_first_router)
     dp.include_router(enhancements_router)
     dp.include_router(router)
     dp.include_router(library_router)
+
     external_url = os.getenv("TELEGRAM_WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL")
     storage_mode = "PostgreSQL" if settings.database_url else "SQLite-local"
     logging.info("TOFAN AI 2026 started | storage=%s | Gemini=explicit-only", storage_mode)
+
     if bool(os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_EXTERNAL_URL") or external_url):
         web_runner = await run_web_server(dp, bot)
         try:
