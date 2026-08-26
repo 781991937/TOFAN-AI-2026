@@ -1,3 +1,4 @@
+import asyncio
 import html
 import json
 import logging
@@ -11,6 +12,9 @@ from app.database import Database
 
 logger = logging.getLogger(__name__)
 router = Router(name="quiz_engine")
+
+QUESTION_TIMEOUT = 15
+_timeout_tasks: dict[int, asyncio.Task] = {}
 
 
 class QuizState(StatesGroup):
@@ -36,6 +40,67 @@ def _safe(value: object) -> str:
     return html.escape(str(value or ""))
 
 
+def _timeout_key(message: Message) -> int:
+    return int(message.from_user.id if message.from_user else message.chat.id)
+
+
+def _cancel_timeout(user_id: int) -> None:
+    task = _timeout_tasks.pop(user_id, None)
+    if task and not task.done():
+        task.cancel()
+
+
+async def _question_timeout(
+    message: Message,
+    state: FSMContext,
+    quiz_id: int,
+    questions: list[dict],
+    index: int,
+    db: Database,
+) -> None:
+    try:
+        await asyncio.sleep(QUESTION_TIMEOUT)
+        data = await state.get_data()
+        if data.get("quiz_id") != quiz_id or data.get("questions", [])[0:len(questions)] != questions:
+            return
+        answers = data.get("answers", [])
+        if len(answers) != index:
+            return
+        answers.append("")
+        await state.update_data(answers=answers)
+
+        # Remove the old answer buttons before moving on.
+        try:
+            await message.edit_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+        await send_question(message, state, quiz_id, questions, index + 1, answers, db)
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        logger.exception("Quiz question timeout failed")
+    finally:
+        user_id = _timeout_key(message)
+        current = _timeout_tasks.get(user_id)
+        if current is asyncio.current_task():
+            _timeout_tasks.pop(user_id, None)
+
+
+async def _start_question_timeout(
+    message: Message,
+    state: FSMContext,
+    quiz_id: int,
+    questions: list[dict],
+    index: int,
+    db: Database,
+) -> None:
+    user_id = _timeout_key(message)
+    _cancel_timeout(user_id)
+    task = asyncio.create_task(_question_timeout(message, state, quiz_id, questions, index, db))
+    _timeout_tasks[user_id] = task
+
+
 async def finish_quiz(
     message: Message,
     state: FSMContext,
@@ -46,6 +111,7 @@ async def finish_quiz(
     db: Database,
     group_mode: bool = False,
 ) -> None:
+    _cancel_timeout(_timeout_key(message))
     score = sum(answer_matches(q, a) for q, a in zip(questions, answers))
     total = len(questions)
     percentage = round(score / total * 100, 1) if total else 0
@@ -92,14 +158,15 @@ async def send_question(
     q = questions[index]
     q_type = str(q.get("type", "mcq"))
     text = (
-        f"❓ <b>السؤال {index + 1} من {len(questions)}</b>\n\n"
+        f"❓ <b>السؤال {index + 1} من {len(questions)}</b>\n"
+        f"⏱️ <b>الوقت: {QUESTION_TIMEOUT} ثانية</b>\n\n"
         f"{_safe(q.get('question'))}"
     )
     if q_type == "short":
         await message.answer(text + "\n\n✍️ اكتب إجابتك وأرسلها.")
     else:
-        options = [str(x) for x in (q.get("options") or [])]
-        await message.answer(text, reply_markup=question_keyboard(options, index))
+        await message.answer(text, reply_markup=question_keyboard([str(x) for x in (q.get("options") or [])], index))
+    await _start_question_timeout(message, state, quiz_id, questions, index, db)
 
 
 @router.callback_query(F.data.startswith("ans:"))
@@ -124,6 +191,8 @@ async def quiz_answer(callback: CallbackQuery, state: FSMContext, db: Database) 
     if option_index >= len(options):
         await callback.answer("الخيار غير موجود.")
         return
+
+    _cancel_timeout(_timeout_key(callback.message))
     answer = str(options[option_index])
     answers.append(answer)
     await state.update_data(answers=answers)
@@ -145,6 +214,7 @@ async def short_answer(message: Message, state: FSMContext, db: Database) -> Non
     index = len(answers)
     if not quiz_id or index >= len(questions) or questions[index].get("type") != "short":
         return
+    _cancel_timeout(_timeout_key(message))
     answers.append(message.text.strip())
     await state.update_data(answers=answers)
     await send_question(message, state, quiz_id, questions, index + 1, answers, db)
