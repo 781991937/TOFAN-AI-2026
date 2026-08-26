@@ -117,7 +117,8 @@ def _page_keyboard(lesson_id: int, pages: list[dict], index: int):
         nav.append(InlineKeyboardButton(text="الصفحة التالية ➡️", callback_data=f"page:{lesson_id}:{index + 1}"))
     if nav:
         rows.append(nav)
-    rows.append([InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"bot_quiz:{lesson_id}")])
+    if index == len(pages) - 1:
+        rows.append([InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"bot_quiz:{lesson_id}")])
     rows.append([
         InlineKeyboardButton(text="⬅️ الملف السابق", callback_data=f"prevfile:{lesson_id}"),
         InlineKeyboardButton(text="الملف التالي ➡️", callback_data=f"nextfile:{lesson_id}"),
@@ -369,6 +370,6 @@ async def navigation_help(callback: CallbackQuery) -> None:
     await callback.answer()
     await callback.message.edit_text(
         "🧭 <b>التنقل — الأتمتة</b>\n\n"
-        "بعد اختيار القسم ← الملف ← الدرس ستجد أزرار الصفحات، الصفحة السابقة/التالية، الملف السابق/التالي، والتنزيل، واختبار الدرس.\n\n"
+        "بعد اختيار القسم ← الملف ← الدرس ستجد أزرار الصفحات، الصفحة السابقة/التالية، الملف السابق/التالي، والتنزيل، وفي نهاية صفحات الدرس زر اختبار الدرس.\n\n"
         "⚙️ كل هذا يعمل بواسطة Python والبوت، واختبار الدرس يستخدم محرك الأسئلة المحلي بدون ذكاء اصطناعي.",
     )
