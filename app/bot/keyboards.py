@@ -137,3 +137,28 @@ def count_menu():
 
 def difficulty_menu():
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🟢 سهل", callback_data="difficulty:easy"), InlineKeyboardButton(text="🟡 متوسط", callback_data="difficulty:medium")], [InlineKeyboardButton(text="🔴 صعب", callback_data="difficulty:hard")]])
+
+
+# توافق رجعي: sections.py القديمة تستدعي page_keyboard.
+# الاسم الموحد الجديد هو page_kb، وهذا يمنع انهيار Render عند فتح صفحات قسم الذكاء.
+def page_keyboard(lid, pages, i):
+    rows = []
+    for s in range(0, len(pages), 6):
+        rows.append([
+            InlineKeyboardButton(
+                text=("🔵" if j == i else "📄") + f" {pages[j][0]}",
+                callback_data=f"ai_page:{lid}:{j}",
+            )
+            for j in range(s, min(s + 6, len(pages)))
+        ])
+    nav = []
+    if i > 0:
+        nav.append(InlineKeyboardButton(text="⬅️ السابقة", callback_data=f"ai_page:{lid}:{i - 1}"))
+    if i < len(pages) - 1:
+        nav.append(InlineKeyboardButton(text="التالية ➡️", callback_data=f"ai_page:{lid}:{i + 1}"))
+    if nav:
+        rows.append(nav)
+    if i == len(pages) - 1:
+        rows.append([InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"ai_quiz:{lid}")])
+    rows.append([InlineKeyboardButton(text="⬅️ قائمة الدرس", callback_data=f"ai_lessonback:{lid}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
