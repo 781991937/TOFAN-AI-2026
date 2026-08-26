@@ -117,6 +117,7 @@ def _page_keyboard(lesson_id: int, pages: list[dict], index: int):
         nav.append(InlineKeyboardButton(text="الصفحة التالية ➡️", callback_data=f"page:{lesson_id}:{index + 1}"))
     if nav:
         rows.append(nav)
+    rows.append([InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"bot_quiz:{lesson_id}")])
     rows.append([
         InlineKeyboardButton(text="⬅️ الملف السابق", callback_data=f"prevfile:{lesson_id}"),
         InlineKeyboardButton(text="الملف التالي ➡️", callback_data=f"nextfile:{lesson_id}"),
