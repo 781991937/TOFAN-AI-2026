@@ -18,16 +18,21 @@ def main_menu() -> InlineKeyboardMarkup:
     ])
 
 
-def ai_actions_menu() -> InlineKeyboardMarkup:
+def section_menu(section: str) -> InlineKeyboardMarkup:
+    prefix = "ai" if section == "ai" else "bot"
+    library_callback = "ai_library" if section == "ai" else "library"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🧠 شرح ذكي", callback_data="ai_pick:explain"), InlineKeyboardButton(text="📝 اختبار ذكي", callback_data="ai_pick:quiz")],
-        [InlineKeyboardButton(text="💡 فكرة عملية", callback_data="ai_pick:practical"), InlineKeyboardButton(text="⬅️ الرئيسية", callback_data="home")],
+        [InlineKeyboardButton(text="📚 المكتبة", callback_data=library_callback), InlineKeyboardButton(text="📥 إدارة الملفات", callback_data="file_management")],
+        [InlineKeyboardButton(text="🧭 الصفحات والتنقل", callback_data="navigation_help"), InlineKeyboardButton(text="⬅️ الرئيسية", callback_data="home")],
     ])
 
 
-def ai_categories_menu(categories: list, action: str) -> InlineKeyboardMarkup:
+def ai_categories_menu(categories: list) -> InlineKeyboardMarkup:
     buttons = [
-        InlineKeyboardButton(text=f"{str(row['category'])} ({int(row['lesson_count'])})", callback_data=f"ai_category:{action}:{_enc(str(row['category']))}")
+        InlineKeyboardButton(
+            text=f"{str(row['category'])} ({int(row['lesson_count'])})",
+            callback_data=f"ai_category:{_enc(str(row['category']))}",
+        )
         for row in categories
     ]
     rows = _pair_rows(buttons)
@@ -35,17 +40,25 @@ def ai_categories_menu(categories: list, action: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def ai_files_menu(files: list, action: str) -> InlineKeyboardMarkup:
+def ai_category_menu(category: str) -> InlineKeyboardMarkup:
+    token = _enc(category)
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📂 ملفات القسم", callback_data=f"ai_categoryfiles:{token}"), InlineKeyboardButton(text="🎓 اختبار القسم كامل", callback_data=f"ai_categoryquiz:{token}")],
+        [InlineKeyboardButton(text="⬅️ المكتبة", callback_data="ai_library")],
+    ])
+
+
+def ai_files_menu(files: list, category: str) -> InlineKeyboardMarkup:
     buttons = [
-        InlineKeyboardButton(text=f"📘 {name} ({count})", callback_data=f"ai_file:{action}:{_enc(key)}")
+        InlineKeyboardButton(text=f"📘 {name} ({count})", callback_data=f"ai_file:{_enc(key)}")
         for key, name, count in files
     ]
     rows = _pair_rows(buttons)
-    rows.append([InlineKeyboardButton(text="⬅️ المواد", callback_data=f"ai_pick:{action}"), InlineKeyboardButton(text="🏠 الرئيسية", callback_data="home")])
+    rows.append([InlineKeyboardButton(text="⬅️ القسم", callback_data=f"ai_category:{_enc(category)}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def ai_lessons_menu(lessons: list, action: str) -> InlineKeyboardMarkup:
+def ai_lessons_menu(lessons: list, file_key: str) -> InlineKeyboardMarkup:
     buttons = []
     for number, lesson in enumerate(lessons, start=1):
         title = str(lesson["file_name"] or f"الدرس {number}")
@@ -53,17 +66,14 @@ def ai_lessons_menu(lessons: list, action: str) -> InlineKeyboardMarkup:
             title = title.split(" - ", 1)[1]
         if len(title) > 28:
             title = title[:25] + "..."
-        buttons.append(InlineKeyboardButton(text=f"📖 {number}: {title}", callback_data=f"ai_lesson:{action}:{int(lesson['id'])}"))
+        buttons.append(InlineKeyboardButton(text=f"📖 {number}: {title}", callback_data=f"ai_lesson:{int(lesson['id'])}:{_enc(file_key)}"))
     rows = _pair_rows(buttons)
-    rows.append([InlineKeyboardButton(text="⬅️ المواد", callback_data=f"ai_pick:{action}")])
+    rows.append([InlineKeyboardButton(text="⬅️ الملفات", callback_data=f"ai_fileback:{_enc(file_key)}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
+def automation_lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
     buttons = [
-        InlineKeyboardButton(text="🧠 شرح ذكي", callback_data=f"smart_explain:{lesson_id}"),
-        InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"filequiz:{lesson_id}"),
-        InlineKeyboardButton(text="💡 فكرة عملية", callback_data=f"practical:{lesson_id}"),
         InlineKeyboardButton(text="📖 صفحات الدرس", callback_data=f"pages:{lesson_id}"),
         InlineKeyboardButton(text="📥 تنزيل الملف", callback_data=f"download:{lesson_id}"),
         InlineKeyboardButton(text="🗑️ حذف الملف", callback_data=f"delete_lesson:{lesson_id}"),
@@ -75,6 +85,28 @@ def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
     ])
     rows.append([InlineKeyboardButton(text="⬅️ دروس الملف", callback_data=f"fileback:{lesson_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def ai_lesson_menu(lesson_id: int, file_key: str) -> InlineKeyboardMarkup:
+    buttons = [
+        InlineKeyboardButton(text="🧠 شرح ذكي", callback_data=f"ai_explain:{lesson_id}"),
+        InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"ai_quiz:{lesson_id}"),
+        InlineKeyboardButton(text="📖 صفحات الدرس", callback_data=f"pages:{lesson_id}"),
+        InlineKeyboardButton(text="📥 تنزيل الملف", callback_data=f"download:{lesson_id}"),
+        InlineKeyboardButton(text="🗑️ حذف الملف", callback_data=f"delete_lesson:{lesson_id}"),
+    ]
+    rows = _pair_rows(buttons)
+    rows.append([
+        InlineKeyboardButton(text="⬅️ الدرس السابق", callback_data=f"prevlesson:{lesson_id}"),
+        InlineKeyboardButton(text="الدرس التالي ➡️", callback_data=f"nextlesson:{lesson_id}"),
+    ])
+    rows.append([InlineKeyboardButton(text="⬅️ دروس الملف", callback_data=f"ai_fileback:{_enc(file_key)}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
+    """Compatibility alias: automation menu only, never exposes AI actions."""
+    return automation_lesson_menu(lesson_id)
 
 
 def delete_lesson_confirm(lesson_id: int) -> InlineKeyboardMarkup:
@@ -106,7 +138,7 @@ def library_menu(categories: list) -> InlineKeyboardMarkup:
 
 def category_menu(category: str, lessons: list) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📂 ملفات القسم", callback_data=f"categoryfiles:{_enc(category)}"), InlineKeyboardButton(text="🎓 اختبار ملفات القسم", callback_data=f"categoryquiz:{_enc(category)}")],
+        [InlineKeyboardButton(text="📂 ملفات القسم", callback_data=f"categoryfiles:{_enc(category)}")],
         [InlineKeyboardButton(text="⬅️ المكتبة", callback_data="library")],
     ])
 
@@ -146,7 +178,7 @@ def lesson_list_menu(lessons: list, file_key: str) -> InlineKeyboardMarkup:
 
 
 def lesson_actions_menu(lesson_id: int) -> InlineKeyboardMarkup:
-    return lesson_menu(lesson_id)
+    return automation_lesson_menu(lesson_id)
 
 
 def group_quiz_menu(quiz_id: int) -> InlineKeyboardMarkup:
