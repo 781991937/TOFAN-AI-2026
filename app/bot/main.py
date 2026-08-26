@@ -14,14 +14,17 @@ from app.bot.enhancements import router as enhancements_router
 from app.bot.local_first import router as local_first_router
 from app.bot.page_images import router as page_images_router
 from app.bot.library import router as library_router
+from app.bot.sections import router as sections_router
 from app.config_gemini import Settings
 from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 
+
 async def health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "service": "TOFAN AI 2026"})
+
 
 async def run_web_server(dp: Dispatcher, bot: Bot) -> web.AppRunner:
     app = web.Application()
@@ -44,6 +47,7 @@ async def run_web_server(dp: Dispatcher, bot: Bot) -> web.AppRunner:
     logging.info("Health/webhook server listening on port %s", port)
     return runner
 
+
 async def main() -> None:
     settings = Settings.from_env()
     settings.ensure_directories()
@@ -59,6 +63,7 @@ async def main() -> None:
     dp["ai_service"] = ai_service
     dp["quiz_generator"] = quiz_generator
     dp.include_router(page_images_router)
+    dp.include_router(sections_router)
     dp.include_router(local_first_router)
     dp.include_router(enhancements_router)
     dp.include_router(router)
@@ -79,6 +84,7 @@ async def main() -> None:
             await dp.start_polling(bot)
         finally:
             await bot.session.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
