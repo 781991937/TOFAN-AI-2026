@@ -1,7 +1,5 @@
 import hashlib
 import html
-import json
-from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
@@ -26,8 +24,9 @@ def _file_lessons(all_lessons: list, key: str) -> list:
 
 def _find_file(all_lessons: list, token: str):
     for lesson in all_lessons:
-        if _token(_file_key(lesson)) == token:
-            return _file_key(lesson)
+        key = _file_key(lesson)
+        if _token(key) == token:
+            return key
     return None
 
 
@@ -55,7 +54,7 @@ def _lesson_text(lesson, all_lessons: list) -> str:
         "⚙️ <b>طريقة الشرح: نظام البوت</b>\n\n"
         "📘 <b>شرح مختصر لاستيعاب الدرس</b>\n"
         f"{html.escape(summary[:2800])}\n\n"
-        "🧠 إذا اخترت «شرح ذكي» سيستخدم الذكاء الاصطناعي لتحليل الدرس بعمق."
+        "🧠 عند اختيار «شرح ذكي» سيستخدم الذكاء الاصطناعي لتحليل الدرس بعمق."
     )[:3900]
 
 
@@ -91,10 +90,11 @@ async def open_file(callback: CallbackQuery, db: Database) -> None:
 async def file_back(callback: CallbackQuery, db: Database) -> None:
     value = callback.data.split(":", 1)[1]
     lessons = db.get_lessons(callback.from_user.id, 1000)
-    key = value if any(_token(_file_key(x)) == value for x in lessons) else None
-    if key is None:
-        lesson = db.get_lesson(int(value), callback.from_user.id) if value.isdigit() else None
+    if value.isdigit():
+        lesson = db.get_lesson(int(value), callback.from_user.id)
         key = _file_key(lesson) if lesson else None
+    else:
+        key = _find_file(lessons, value)
     await callback.answer()
     if not key:
         await callback.message.edit_text("❌ لم أجد الملف.")
@@ -115,11 +115,3 @@ async def open_lesson(callback: CallbackQuery, db: Database) -> None:
         _lesson_text(lesson, lessons),
         reply_markup=lesson_menu(lesson_id),
     )
-
-
-@router.callback_query(F.data.startswith("lessoninfo:"))
-async def lesson_info(callback: CallbackQuery, db: Database) -> None:
-    # Compatibility route for old buttons.
-    lesson_id = int(callback.data.split(":", 1)[1])
-    callback.data = f"lesson:{lesson_id}"
-    await open_lesson(callback, db)
