@@ -2,6 +2,7 @@ import asyncio
 import html
 import json
 import logging
+import time
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -29,13 +30,6 @@ def answer_matches(question: dict, answer: str) -> bool:
     return bool(expected) and actual == expected
 
 
-def question_keyboard(options: list[str], index: int) -> InlineKeyboardMarkup:
-    rows = []
-    for i, option in enumerate(options):
-        rows.append([InlineKeyboardButton(text=str(option)[:60], callback_data=f"ans:{index}:{i}")])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
 def _safe(value: object) -> str:
     return html.escape(str(value or ""))
 
@@ -46,17 +40,40 @@ def _cancel_timeout(user_id: int) -> None:
         task.cancel()
 
 
+def _controls(paused: bool = False) -> list[InlineKeyboardButton]:
+    if paused:
+        return [
+            InlineKeyboardButton(text="▶️ متابعة الاختبار", callback_data="quiz_resume"),
+            InlineKeyboardButton(text="⏹️ إنهاء الاختبار", callback_data="quiz_end"),
+        ]
+    return [
+        InlineKeyboardButton(text="⏸️ إيقاف مؤقت", callback_data="quiz_pause"),
+        InlineKeyboardButton(text="⏹️ إنهاء الاختبار", callback_data="quiz_end"),
+    ]
+
+
+def question_keyboard(options: list[str], index: int, paused: bool = False) -> InlineKeyboardMarkup:
+    rows = []
+    if not paused:
+        for i, option in enumerate(options):
+            rows.append([InlineKeyboardButton(text=str(option)[:60], callback_data=f"ans:{index}:{i}")])
+    rows.append(_controls(paused))
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 async def _question_timeout(message: Message, state: FSMContext, quiz_id: int, questions: list[dict], index: int, db: Database) -> None:
     try:
-        await asyncio.sleep(QUESTION_TIMEOUT)
         data = await state.get_data()
-        if data.get("quiz_id") != quiz_id:
+        deadline = float(data.get("deadline", time.monotonic() + QUESTION_TIMEOUT))
+        await asyncio.sleep(max(0.0, deadline - time.monotonic()))
+        data = await state.get_data()
+        if data.get("quiz_id") != quiz_id or data.get("paused"):
             return
         answers = data.get("answers", [])
         if len(answers) != index or index >= len(questions):
             return
         answers.append("")
-        await state.update_data(answers=answers)
+        await state.update_data(answers=answers, deadline=0.0)
         try:
             await message.edit_reply_markup(reply_markup=None)
         except Exception:
@@ -67,22 +84,31 @@ async def _question_timeout(message: Message, state: FSMContext, quiz_id: int, q
     except Exception:
         logger.exception("Quiz question timeout failed")
     finally:
-        user_id = int((await state.get_data()).get("user_id", 0) or 0)
+        try:
+            user_id = int((await state.get_data()).get("user_id", 0) or 0)
+        except Exception:
+            user_id = 0
         current = _timeout_tasks.get(user_id)
         if current is asyncio.current_task():
             _timeout_tasks.pop(user_id, None)
 
 
-async def _start_question_timeout(message: Message, state: FSMContext, quiz_id: int, questions: list[dict], index: int, db: Database) -> None:
+async def _start_question_timeout(message: Message, state: FSMContext, quiz_id: int, questions: list[dict], index: int, db: Database, remaining: float | None = None) -> None:
     data = await state.get_data()
     user_id = int(data.get("user_id", 0) or (message.from_user.id if message.from_user else message.chat.id))
     _cancel_timeout(user_id)
+    seconds = max(0.1, float(remaining if remaining is not None else QUESTION_TIMEOUT))
+    await state.update_data(deadline=time.monotonic() + seconds, paused=False)
     _timeout_tasks[user_id] = asyncio.create_task(_question_timeout(message, state, quiz_id, questions, index, db))
 
 
 async def finish_quiz(message: Message, state: FSMContext, quiz_id: int, lesson_id: int, questions: list[dict], answers: list[str], db: Database, group_mode: bool = False) -> None:
     data = await state.get_data()
-    _cancel_timeout(int(data.get("user_id", 0) or (message.from_user.id if message.from_user else message.chat.id)))
+    user_id = int(data.get("user_id", 0) or (message.from_user.id if message.from_user else message.chat.id))
+    _cancel_timeout(user_id)
+    answers = list(answers)
+    while len(answers) < len(questions):
+        answers.append("")
     score = sum(answer_matches(q, a) for q, a in zip(questions, answers))
     total = len(questions)
     percentage = round(score / total * 100, 1) if total else 0
@@ -109,7 +135,7 @@ async def finish_quiz(message: Message, state: FSMContext, quiz_id: int, lesson_
     await state.clear()
 
 
-async def send_question(message: Message, state: FSMContext, quiz_id: int, questions: list[dict], index: int, answers: list[str], db: Database) -> None:
+async def send_question(message: Message, state: FSMContext, quiz_id: int, questions: list[dict], index: int, answers: list[str], db: Database, remaining: float | None = None) -> None:
     data = await state.get_data()
     lesson_id = int(data.get("lesson_id", 0))
     group_mode = bool(data.get("group_mode", False))
@@ -125,11 +151,71 @@ async def send_question(message: Message, state: FSMContext, quiz_id: int, quest
         f"{_safe(q.get('question'))}"
     )
     if q_type == "short":
-        await message.answer(text + "\n\n✍️ اكتب إجابتك وأرسلها.")
+        await message.answer(text + "\n\n✍️ اكتب إجابتك وأرسلها.", reply_markup=question_keyboard([], index))
     else:
         options = [str(x) for x in (q.get("options") or [])]
         await message.answer(text, reply_markup=question_keyboard(options, index))
-    await _start_question_timeout(message, state, quiz_id, questions, index, db)
+    await _start_question_timeout(message, state, quiz_id, questions, index, db, remaining=remaining)
+
+
+@router.callback_query(F.data == "quiz_pause")
+async def quiz_pause(callback: CallbackQuery, state: FSMContext) -> None:
+    data = await state.get_data()
+    quiz_id = data.get("quiz_id")
+    if not quiz_id or data.get("paused"):
+        await callback.answer("الاختبار متوقف مؤقتًا بالفعل.")
+        return
+    deadline = float(data.get("deadline", time.monotonic()))
+    remaining = max(0.0, deadline - time.monotonic())
+    _cancel_timeout(callback.from_user.id)
+    await state.update_data(paused=True, remaining=remaining)
+    if callback.message:
+        try:
+            await callback.message.edit_reply_markup(reply_markup=question_keyboard([], len(data.get("answers", [])), paused=True))
+        except Exception:
+            pass
+    await callback.answer(f"⏸️ تم إيقاف الاختبار. المتبقي: {max(1, int(remaining + 0.999))} ثانية")
+
+
+@router.callback_query(F.data == "quiz_resume")
+async def quiz_resume(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    data = await state.get_data()
+    quiz_id = data.get("quiz_id")
+    questions = data.get("questions", [])
+    answers = data.get("answers", [])
+    if not quiz_id or not data.get("paused"):
+        await callback.answer("الاختبار يعمل بالفعل.")
+        return
+    index = len(answers)
+    if index >= len(questions):
+        await callback.answer("انتهى الاختبار.")
+        return
+    remaining = max(0.1, float(data.get("remaining", QUESTION_TIMEOUT)))
+    await state.update_data(paused=False, remaining=0.0)
+    _cancel_timeout(callback.from_user.id)
+    q = questions[index]
+    if callback.message:
+        markup = question_keyboard([str(x) for x in (q.get("options") or [])], index) if q.get("type") != "short" else question_keyboard([], index)
+        try:
+            await callback.message.edit_reply_markup(reply_markup=markup)
+        except Exception:
+            pass
+    await _start_question_timeout(callback.message, state, quiz_id, questions, index, db, remaining=remaining)
+    await callback.answer("▶️ استؤنف الاختبار.")
+
+
+@router.callback_query(F.data == "quiz_end")
+async def quiz_end(callback: CallbackQuery, state: FSMContext, db: Database) -> None:
+    data = await state.get_data()
+    quiz_id = data.get("quiz_id")
+    questions = data.get("questions", [])
+    answers = data.get("answers", [])
+    if not quiz_id:
+        await callback.answer("لا يوجد اختبار نشط.", show_alert=True)
+        return
+    await callback.answer("⏹️ تم إنهاء الاختبار.")
+    if callback.message:
+        await finish_quiz(callback.message, state, int(quiz_id), int(data.get("lesson_id", 0)), questions, answers, db, bool(data.get("group_mode", False)))
 
 
 @router.callback_query(F.data.startswith("ans:"))
@@ -140,6 +226,9 @@ async def quiz_answer(callback: CallbackQuery, state: FSMContext, db: Database) 
     answers = data.get("answers", [])
     if not quiz_id:
         await callback.answer("لا يوجد اختبار نشط.", show_alert=True)
+        return
+    if data.get("paused"):
+        await callback.answer("⏸️ الاختبار متوقف مؤقتًا. اضغط متابعة أولًا.")
         return
     try:
         _, index_text, option_text = callback.data.split(":", 2)
@@ -174,8 +263,10 @@ async def short_answer(message: Message, state: FSMContext, db: Database) -> Non
     quiz_id = data.get("quiz_id")
     questions = data.get("questions", [])
     answers = data.get("answers", [])
+    if not quiz_id or data.get("paused"):
+        return
     index = len(answers)
-    if not quiz_id or index >= len(questions) or questions[index].get("type") != "short":
+    if index >= len(questions) or questions[index].get("type") != "short":
         return
     _cancel_timeout(message.from_user.id)
     answers.append(message.text.strip())
