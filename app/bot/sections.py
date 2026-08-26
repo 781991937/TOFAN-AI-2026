@@ -1,19 +1,19 @@
 import hashlib
 import html
 import json
-from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CallbackQuery
 
 from app.bot.handlers import QuizState, send_question
 from app.bot.keyboards import (
-    ai_actions_menu,
     ai_categories_menu,
+    ai_category_menu,
     ai_files_menu,
+    ai_lesson_menu,
     ai_lessons_menu,
-    main_menu,
+    section_menu,
 )
 from app.bot.library import prepare_categories
 from app.database import Database
@@ -71,236 +71,301 @@ def _lesson_title(lesson) -> str:
     return title
 
 
+def _lesson_position(lesson, all_lessons: list) -> tuple[int, int]:
+    same_file = [x for x in all_lessons if _file_key(x) == _file_key(lesson)]
+    ids = [int(x["id"]) for x in same_file]
+    try:
+        return ids.index(int(lesson["id"])) + 1, len(ids)
+    except ValueError:
+        return 1, max(1, len(same_file))
+
+
+def _adaptive_question_count(text: str) -> int:
+    """Choose a useful quiz size without inventing repeated questions."""
+    size = len(str(text or "").strip())
+    if size < 700:
+        return max(3, min(5, size // 130 or 3))
+    if size < 1400:
+        return max(5, min(8, size // 180))
+    if size < 3000:
+        return max(8, min(12, size // 250))
+    if size < 6000:
+        return max(12, min(16, size // 350))
+    return 20
+
+
 @router.callback_query(F.data == "ai_section")
 async def ai_section(callback: CallbackQuery) -> None:
     await callback.answer()
     await callback.message.edit_text(
-        "🧠 <b>قسم الذكاء</b>\n\n"
-        "هنا كل ما يحتاج الذكاء الاصطناعي فقط:\n\n"
-        "• 🧠 شرح ذكي: فهم وتحليل الدرس.\n"
-        "• 📝 اختبار ذكي: إنشاء اختبار من المحتوى.\n"
-        "• 💡 فكرة عملية: تحويل ما تعلمته إلى تطبيق واقعي.\n\n"
-        "📌 اختيار المادة والملف والدرس مجرد تنقّل؛ الذكاء يبدأ عند تنفيذ الوظيفة.",
-        reply_markup=ai_actions_menu(),
+        "🧠 <b>قسم الذكاء الاصطناعي</b>\n\n"
+        "نفس نظام مكتبة البوت ونفس التنقل، لكن عند الوصول إلى الدرس تصبح الشروحات والاختبارات من اختصاص الذكاء الاصطناعي.\n\n"
+        "📚 المكتبة → المادة → الملف → الدرس\n"
+        "🧠 الشرح الذكي والاختبار الذكي → الذكاء الاصطناعي\n"
+        "⚙️ الملفات والصفحات والتنقل والتنزيل → نظام البوت",
+        reply_markup=section_menu("ai"),
     )
 
 
-@router.callback_query(F.data.startswith("ai_pick:"))
-async def ai_pick(callback: CallbackQuery, db: Database) -> None:
-    action = callback.data.split(":", 1)[1]
-    categories = prepare_categories(db, callback.from_user.id)
+@router.callback_query(F.data == "ai_library")
+async def ai_library(callback: CallbackQuery, db: Database) -> None:
     await callback.answer()
+    categories = prepare_categories(db, callback.from_user.id)
     if not categories:
         await callback.message.edit_text(
-            "🧠 <b>لا توجد دروس بعد.</b>\n\nأرسل ملفًا أولًا من قسم البوت.",
-            reply_markup=ai_actions_menu(),
+            "📚 <b>المكتبة فارغة</b>\n\nأرسل ملفًا من قسم البوت أولًا.",
+            reply_markup=section_menu("ai"),
         )
         return
-    labels = {
-        "explain": "الشرح الذكي",
-        "quiz": "الاختبار الذكي",
-        "practical": "الفكرة العملية الذكية",
-    }
-    label = labels.get(action, "وظيفة الذكاء")
     await callback.message.edit_text(
-        f"🧠 <b>{label}</b>\n\nاختر المادة:",
-        reply_markup=ai_categories_menu(categories, action),
+        "🧠 <b>مكتبة الذكاء الاصطناعي</b>\n\nاختر القسم:",
+        reply_markup=ai_categories_menu(categories),
     )
 
 
 @router.callback_query(F.data.startswith("ai_category:"))
 async def ai_category(callback: CallbackQuery, db: Database) -> None:
-    _, action, token = callback.data.split(":", 2)
+    token = callback.data.split(":", 1)[1]
     categories = prepare_categories(db, callback.from_user.id)
     category = _decode_category(token, categories)
     await callback.answer()
     if not category:
-        await callback.message.edit_text("❌ القسم غير موجود.", reply_markup=ai_actions_menu())
+        await callback.message.edit_text("❌ القسم غير موجود.", reply_markup=section_menu("ai"))
+        return
+    lessons = db.get_lessons_by_category(callback.from_user.id, category)
+    if not lessons:
+        await callback.message.edit_text("❌ لا توجد ملفات في هذا القسم.", reply_markup=section_menu("ai"))
+        return
+    await callback.message.edit_text(
+        f"🧠 <b>{html.escape(category)}</b>\n\nاختر ما تريد:",
+        reply_markup=ai_category_menu(category),
+    )
+
+
+@router.callback_query(F.data.startswith("ai_categoryfiles:"))
+async def ai_category_files(callback: CallbackQuery, db: Database) -> None:
+    token = callback.data.split(":", 1)[1]
+    categories = prepare_categories(db, callback.from_user.id)
+    category = _decode_category(token, categories)
+    await callback.answer()
+    if not category:
+        await callback.message.edit_text("❌ القسم غير موجود.", reply_markup=section_menu("ai"))
         return
     lessons = db.get_lessons_by_category(callback.from_user.id, category)
     files = _files_in_category(lessons)
-    if not files:
-        await callback.message.edit_text("❌ لا توجد ملفات في هذا القسم.", reply_markup=ai_actions_menu())
-        return
-    labels = {"explain": "الشرح الذكي", "quiz": "الاختبار الذكي", "practical": "الفكرة العملية الذكية"}
     await callback.message.edit_text(
-        f"🧠 <b>{labels.get(action, 'وظيفة الذكاء')}</b>\n📚 <b>{html.escape(category)}</b>\n\nاختر الملف:",
-        reply_markup=ai_files_menu(files, action),
+        f"📚 <b>{html.escape(category)}</b>\n\nاختر الملف:",
+        reply_markup=ai_files_menu(files, category),
     )
+
+
+@router.callback_query(F.data.startswith("ai_categoryquiz:"))
+async def ai_category_quiz(
+    callback: CallbackQuery,
+    state: FSMContext,
+    db: Database,
+    quiz_generator: QuizGenerator,
+) -> None:
+    token = callback.data.split(":", 1)[1]
+    categories = prepare_categories(db, callback.from_user.id)
+    category = _decode_category(token, categories)
+    await callback.answer("🧠 جاري إعداد اختبار القسم...")
+    if not category:
+        await callback.message.edit_text("❌ القسم غير موجود.", reply_markup=section_menu("ai"))
+        return
+    lessons = db.get_lessons_by_category(callback.from_user.id, category)
+    combined = "\n\n===== ملف جديد =====\n\n".join(str(x["extracted_text"] or "") for x in lessons)
+    if len(combined.strip()) < 1000:
+        await callback.message.edit_text("⚠️ محتوى القسم غير كافٍ لصناعة اختبار متنوع من 50 سؤالًا.")
+        return
+    try:
+        questions = (await quiz_generator.create_smart(combined, 50, "medium"))[:50]
+        if len(questions) < 50:
+            await callback.message.edit_text(
+                f"⚠️ الذكاء الاصطناعي استطاع إنشاء {len(questions)} سؤالًا مختلفًا فقط من محتوى القسم.\n\nلن أكرر الأسئلة فقط للوصول إلى 50."
+            )
+            return
+        lesson_id = int(lessons[0]["id"])
+        quiz_id = db.create_quiz(lesson_id, quiz_generator.serialize(questions), 50, "medium")
+        await state.set_state(QuizState.active)
+        await state.update_data(quiz_id=quiz_id, lesson_id=lesson_id, questions=questions, answers=[], group_mode=False)
+        await callback.message.edit_text(
+            f"🎓 <b>اختبار القسم كامل</b>\n📚 <b>{html.escape(category)}</b>\n\n"
+            "🧠 <b>طريقة إنشاء الأسئلة: الذكاء الاصطناعي</b>\n"
+            "📝 <b>50 سؤالًا متنوعًا من جميع ملفات القسم</b>\n\nنبدأ الآن!"
+        )
+        await send_question(callback.message, state, quiz_id, questions, 0, [], db)
+    except Exception:
+        await callback.message.edit_text("⚠️ تعذر إنشاء اختبار القسم حاليًا. حاول مرة أخرى.")
 
 
 @router.callback_query(F.data.startswith("ai_file:"))
 async def ai_file(callback: CallbackQuery, db: Database) -> None:
-    _, action, token = callback.data.split(":", 2)
+    token = callback.data.split(":", 1)[1]
     lessons = db.get_lessons(callback.from_user.id, 1000)
     key = _find_file(lessons, token)
     await callback.answer()
     if not key:
-        await callback.message.edit_text("❌ الملف غير موجود.", reply_markup=ai_actions_menu())
+        await callback.message.edit_text("❌ الملف غير موجود.", reply_markup=section_menu("ai"))
         return
     selected = [lesson for lesson in lessons if _file_key(lesson) == key]
-    name = str(selected[0]["file_name"] or "الملف")
-    if " - " in name:
-        name = name.split(" - ", 1)[0]
-    labels = {"explain": "الشرح الذكي", "quiz": "الاختبار الذكي", "practical": "الفكرة العملية الذكية"}
+    category = str(selected[0]["category"] or "📂 مواد أخرى")
     await callback.message.edit_text(
-        f"🧠 <b>{labels.get(action, 'وظيفة الذكاء')}</b>\n"
-        f"📘 <b>{html.escape(name)}</b>\n\nاختر الدرس:",
-        reply_markup=ai_lessons_menu(selected, action),
+        f"🧠 <b>قسم الذكاء الاصطناعي</b>\n"
+        f"📚 <b>{html.escape(category)}</b>\n"
+        f"📘 <b>{html.escape(_lesson_title(selected[0]))}</b>\n\n"
+        "اختر الدرس:",
+        reply_markup=ai_lessons_menu(selected, key),
+    )
+
+
+@router.callback_query(F.data.startswith("ai_fileback:"))
+async def ai_file_back(callback: CallbackQuery, db: Database) -> None:
+    token = callback.data.split(":", 1)[1]
+    lessons = db.get_lessons(callback.from_user.id, 1000)
+    key = _find_file(lessons, token)
+    await callback.answer()
+    if not key:
+        await callback.message.edit_text("❌ الملف غير موجود.", reply_markup=section_menu("ai"))
+        return
+    selected = [lesson for lesson in lessons if _file_key(lesson) == key]
+    category = str(selected[0]["category"] or "📂 مواد أخرى")
+    await callback.message.edit_text(
+        f"📚 <b>{html.escape(category)}</b>\n\nاختر الملف:",
+        reply_markup=ai_files_menu(_files_in_category(db.get_lessons_by_category(callback.from_user.id, category)), category),
     )
 
 
 @router.callback_query(F.data.startswith("ai_lesson:"))
-async def ai_lesson(
-    callback: CallbackQuery,
-    state: FSMContext,
-    db: Database,
-    ai_service: AIService,
-    quiz_generator: QuizGenerator,
-) -> None:
-    _, action, lesson_id_text = callback.data.split(":", 2)
+async def ai_lesson(callback: CallbackQuery, db: Database) -> None:
+    _, lesson_id_text, file_token = callback.data.split(":", 2)
     lesson_id = int(lesson_id_text)
     lesson = db.get_lesson(lesson_id, callback.from_user.id)
     if not lesson:
         await callback.answer("❌ الدرس غير موجود.", show_alert=True)
         return
-
-    await callback.answer("🧠 جاري التنفيذ...")
+    await callback.answer()
+    all_lessons = db.get_lessons(callback.from_user.id, 1000)
+    number, total = _lesson_position(lesson, all_lessons)
     title = _lesson_title(lesson)
+    category = str(lesson["category"] or "📂 مواد أخرى")
+    await callback.message.edit_text(
+        f"📖 <b>{html.escape(title)}</b>\n"
+        f"🔢 <b>الدرس {number} من {total}</b>\n"
+        f"📚 <b>القسم:</b> {html.escape(category)}\n\n"
+        "🧠 <b>طريقة الشرح والاختبار: الذكاء الاصطناعي</b>\n\n"
+        "اختر ما تريد من أزرار الدرس:",
+        reply_markup=ai_lesson_menu(lesson_id, _file_key(lesson)),
+    )
 
-    if action == "explain":
-        try:
-            analysis = await ai_service.analyze_lesson(lesson["extracted_text"])
-            summary = analysis.get("summary", "لم يتم إنشاء شرح.")
-            concepts = analysis.get("concepts", [])[:12]
-            db.update_lesson_analysis(
-                lesson_id,
-                summary,
-                json.dumps(concepts, ensure_ascii=False),
-                lesson["key_points"] or "",
-            )
-            concepts_text = "\n".join(f"• {html.escape(str(item))}" for item in concepts) or "• لا توجد مفاهيم إضافية."
-            await callback.message.edit_text(
-                f"🧠 <b>{html.escape(title)}</b>\n"
-                f"📚 <b>القسم:</b> {html.escape(str(lesson['category'] or 'مواد أخرى'))}\n\n"
-                "🧠 <b>طريقة الشرح: الذكاء الاصطناعي</b>\n\n"
-                f"{html.escape(str(summary)[:3000])}\n\n"
-                f"📌 <b>أهم المفاهيم</b>\n{concepts_text}",
-            )
-        except Exception:
-            await callback.message.edit_text(
-                "⚠️ <b>تعذر تشغيل الذكاء الاصطناعي الآن.</b>\n\n"
-                "الملف محفوظ ولم يتأثر. حاول مرة أخرى من قسم الذكاء."
-            )
+
+@router.callback_query(F.data.startswith("ai_explain:"))
+async def ai_explain(callback: CallbackQuery, db: Database, ai_service: AIService) -> None:
+    lesson_id = int(callback.data.split(":", 1)[1])
+    lesson = db.get_lesson(lesson_id, callback.from_user.id)
+    if not lesson:
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
         return
-
-    if action == "practical":
-        try:
-            result = await ai_service.generate_practical_idea(lesson["extracted_text"])
-            idea = html.escape(str(result.get("idea", "فكرة عملية")))
-            why = html.escape(str(result.get("why", "مرتبطة مباشرة بمحتوى الدرس.")))
-            example = html.escape(str(result.get("example", "لا يوجد مثال إضافي.")))
-            steps = result.get("steps", [])
-            steps_text = "\n".join(f"{i}. {html.escape(str(step))}" for i, step in enumerate(steps[:6], 1)) or "1. راجع الدرس ثم طبّق الفكرة على مثال من واقعك."
-            await callback.message.edit_text(
-                f"💡 <b>{idea}</b>\n"
-                f"📖 <b>الدرس:</b> {html.escape(title)}\n"
-                f"📚 <b>القسم:</b> {html.escape(str(lesson['category'] or 'مواد أخرى'))}\n\n"
-                "🧠 <b>طريقة التنفيذ: الذكاء الاصطناعي</b>\n\n"
-                f"🎯 <b>لماذا؟</b>\n{why}\n\n"
-                f"🛠️ <b>خطوات التطبيق</b>\n{steps_text}\n\n"
-                f"🌍 <b>مثال واقعي</b>\n{example}",
-            )
-        except Exception:
-            await callback.message.edit_text(
-                "⚠️ <b>تعذر إنشاء الفكرة العملية الآن.</b>\n\n"
-                "الملف محفوظ. حاول مرة أخرى من قسم الذكاء."
-            )
-        return
-
+    await callback.answer("🧠 جاري الشرح...")
     try:
-        user = db.get_user(callback.from_user.id)
-        questions = await quiz_generator.create_smart(
-            lesson["extracted_text"],
-            user["question_count"],
-            user["difficulty"],
-        )
-        if not questions:
-            await callback.message.edit_text("⚠️ لم أجد محتوى كافيًا لصناعة اختبار ذكي.")
-            return
-        quiz_id = db.create_quiz(
+        analysis = await ai_service.analyze_lesson(str(lesson["extracted_text"] or ""))
+        summary = str(analysis.get("summary", "لم يتم إنشاء شرح.")).strip()
+        concepts = analysis.get("concepts", [])[:12]
+        db.update_lesson_analysis(
             lesson_id,
-            quiz_generator.serialize(questions),
-            len(questions),
-            user["difficulty"],
+            summary,
+            json.dumps(concepts, ensure_ascii=False),
+            lesson["key_points"] or "",
         )
-        await state.set_state(QuizState.active)
-        await state.update_data(
-            quiz_id=quiz_id,
-            lesson_id=lesson_id,
-            questions=questions,
-            answers=[],
-            group_mode=False,
-        )
+        title = _lesson_title(lesson)
+        category = str(lesson["category"] or "📂 مواد أخرى")
+        concepts_text = "\n".join(f"• {html.escape(str(item))}" for item in concepts) or "• لا توجد مفاهيم إضافية."
         await callback.message.edit_text(
-            f"🧠 <b>اختبار ذكي</b>\n📖 <b>{html.escape(title)}</b>\n\n"
-            f"📝 <b>{len(questions)} سؤالًا</b>\n"
-            "🧠 <b>طريقة الاختبار: الذكاء الاصطناعي</b>\n\nنبدأ الآن!"
+            f"📖 <b>{html.escape(title)}</b>\n"
+            f"📚 <b>القسم:</b> {html.escape(category)}\n\n"
+            "🧠 <b>طريقة الشرح: الذكاء الاصطناعي</b>\n\n"
+            f"{html.escape(summary[:3000])}\n\n"
+            f"📌 <b>أهم المفاهيم</b>\n{concepts_text}",
+            reply_markup=ai_lesson_menu(lesson_id, _file_key(lesson)),
+        )
+    except Exception:
+        await callback.message.edit_text(
+            "⚠️ <b>تعذر تشغيل الذكاء الاصطناعي الآن.</b>\n\nالملف محفوظ ولم يتأثر. حاول مرة أخرى."
+        )
+
+
+@router.callback_query(F.data.startswith("ai_quiz:"))
+async def ai_quiz(
+    callback: CallbackQuery,
+    state: FSMContext,
+    db: Database,
+    quiz_generator: QuizGenerator,
+) -> None:
+    lesson_id = int(callback.data.split(":", 1)[1])
+    lesson = db.get_lesson(lesson_id, callback.from_user.id)
+    if not lesson:
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
+        return
+    await callback.answer("🧠 جاري إعداد الاختبار...")
+    try:
+        text = str(lesson["extracted_text"] or "").strip()
+        target = _adaptive_question_count(text)
+        questions = (await quiz_generator.create_smart(text, target, "medium"))[:target]
+        if not questions:
+            await callback.message.edit_text("⚠️ المحتوى غير كافٍ لصناعة اختبار مفيد.")
+            return
+        quiz_id = db.create_quiz(lesson_id, quiz_generator.serialize(questions), len(questions), "medium")
+        await state.set_state(QuizState.active)
+        await state.update_data(quiz_id=quiz_id, lesson_id=lesson_id, questions=questions, answers=[], group_mode=False)
+        await callback.message.edit_text(
+            f"📝 <b>اختبار الدرس</b>\n📖 <b>{html.escape(_lesson_title(lesson))}</b>\n\n"
+            f"🧠 <b>طريقة إنشاء الأسئلة: الذكاء الاصطناعي</b>\n"
+            f"🎯 <b>{len(questions)} سؤالًا</b> — العدد متكيف مع حجم المحتوى\n\nنبدأ الآن!"
         )
         await send_question(callback.message, state, quiz_id, questions, 0, [], db)
     except Exception:
-        await callback.message.edit_text("⚠️ تعذر إنشاء الاختبار الذكي الآن. حاول مرة أخرى.")
+        await callback.message.edit_text("⚠️ تعذر إنشاء اختبار الدرس حاليًا. حاول مرة أخرى.")
 
 
 @router.callback_query(F.data == "automation_section")
 async def automation_section(callback: CallbackQuery) -> None:
     await callback.answer()
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📚 المكتبة", callback_data="library"), InlineKeyboardButton(text="📥 إدارة الملفات", callback_data="file_management")],
-        [InlineKeyboardButton(text="🧭 الصفحات والتنقل", callback_data="navigation_help"), InlineKeyboardButton(text="⬅️ الرئيسية", callback_data="home")],
-    ])
     await callback.message.edit_text(
-        "🤖 <b>قسم البوت</b>\n\n"
-        "هنا وظائف البوت والأتمتة فقط، بدون تشغيل الذكاء الاصطناعي تلقائيًا.\n\n"
-        "📚 المكتبة: المواد ← الملفات ← الدروس.\n"
-        "📄 الصفحات: استخراج وتنقل وحفظ محلي بواسطة نظام البوت.\n"
-        "💾 الملفات: نسخة Telegram تبقى قابلة للتنزيل حتى بعد حذف الملف من الهاتف.\n\n"
-        "📎 لإضافة ملف: أرسل PDF أو DOCX أو TXT إلى البوت.",
-        reply_markup=keyboard,
+        "🤖 <b>قسم البوت والأتمتة</b>\n\n"
+        "نفس نظام المكتبة والتنقل، لكن وظائف هذا القسم تنفذها الأتمتة والبايثون فقط.\n\n"
+        "📚 المكتبة → المادة → الملف → الدرس\n"
+        "⚙️ استقبال الملفات وتنظيمها وتقسيمها وحفظها\n"
+        "📖 الصفحات والتنقل والتنزيل → نظام البوت\n\n"
+        "🧠 الشرح والاختبارات الذكية موجودة في قسم الذكاء الاصطناعي فقط.",
+        reply_markup=section_menu("bot"),
     )
 
 
 @router.callback_query(F.data == "file_management")
 async def file_management(callback: CallbackQuery) -> None:
     await callback.answer()
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📚 فتح المكتبة", callback_data="library"), InlineKeyboardButton(text="⬅️ قسم البوت", callback_data="automation_section")],
-    ])
     await callback.message.edit_text(
-        "📥 <b>إدارة الملفات — نظام البوت</b>\n\n"
+        "📥 <b>إدارة الملفات — الأتمتة</b>\n\n"
         "• 📥 استقبال PDF / DOCX / TXT\n"
         "• 🗂️ حفظ الملف ونسخة Telegram\n"
-        "• 🗂️ تنظيمه داخل المادة المناسبة\n"
-        "• 📖 تقسيمه إلى دروس وصفحات\n"
-        "• 📤 إعادة إرسال الملف للتنزيل لاحقًا\n\n"
-        "🧠 لا يتم تشغيل الذكاء الاصطناعي في هذه الخطوة.",
-        reply_markup=keyboard,
+        "• 🗂️ اكتشاف المادة وتنظيم الملف داخل القسم\n"
+        "• 📖 تقسيم الملف إلى دروس وصفحات\n"
+        "• 📤 إمكانية تنزيل الملف لاحقًا حتى بعد حذفه من الهاتف\n\n"
+        "⚙️ التنفيذ هنا بواسطة البوت وPython فقط، بدون استدعاء الذكاء الاصطناعي.",
+        reply_markup=section_menu("bot"),
     )
 
 
 @router.callback_query(F.data == "navigation_help")
 async def navigation_help(callback: CallbackQuery) -> None:
     await callback.answer()
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📚 فتح المكتبة", callback_data="library"), InlineKeyboardButton(text="⬅️ قسم البوت", callback_data="automation_section")],
-    ])
     await callback.message.edit_text(
-        "🧭 <b>الصفحات والتنقل — نظام البوت</b>\n\n"
+        "🧭 <b>الصفحات والتنقل — الأتمتة</b>\n\n"
         "بعد اختيار المادة ثم الملف ثم الدرس ستجد:\n"
         "• 📖 صفحات الدرس\n"
         "• ⬅️ الصفحة السابقة / التالية ➡️\n"
         "• ⬅️ الدرس السابق / التالي ➡️\n"
         "• 📥 تنزيل الملف من Telegram\n\n"
-        "⚙️ هذه الوظائف تعمل بواسطة البوت ولا تعتمد على الذكاء الاصطناعي.",
-        reply_markup=keyboard,
+        "⚙️ هذه الوظائف تعمل بواسطة البوت وPython ولا تعتمد على الذكاء الاصطناعي.",
+        reply_markup=section_menu("bot"),
     )
