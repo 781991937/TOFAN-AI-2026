@@ -6,7 +6,7 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from app.bot.keyboards import bot_categories_menu, file_list_menu, bot_lesson_list, lesson_menu
-from app.bot.library import files_in_category, find_file, file_lessons, token
+from app.bot.library import find_file, file_lessons, token
 from app.database import Database
 
 router = Router(name="bot_library_isolation")
@@ -21,15 +21,12 @@ def _bot_lessons(db: Database, user_id: int) -> list:
     return [lesson for lesson in db.get_lessons(user_id, 1000) if not _is_ai_category(str(lesson["category"] or ""))]
 
 
-def _categories(lessons: list) -> list:
-    seen = set()
-    result = []
+def _categories(lessons: list) -> list[dict]:
+    counts: dict[str, int] = {}
     for lesson in lessons:
         category = str(lesson["category"] or "📂 مواد أخرى")
-        if category not in seen:
-            seen.add(category)
-            result.append({"category": category})
-    return result
+        counts[category] = counts.get(category, 0) + 1
+    return [{"category": category, "lesson_count": count} for category, count in counts.items()]
 
 
 @router.callback_query(F.data == "bot_library")
@@ -44,7 +41,7 @@ async def bot_library(callback: CallbackQuery, db: Database):
         return
     await callback.message.edit_text(
         "🤖 <b>مكتبة البوت والأتمتة</b>\n\nاختر القسم:\n\n🐍 هذا القسم مستقل عن الذكاء الاصطناعي.",
-        reply_markup=bot_categories_menu([row["category"] for row in categories]),
+        reply_markup=bot_categories_menu(categories),
     )
 
 
@@ -98,7 +95,7 @@ async def bot_fileback(callback: CallbackQuery, db: Database):
 
 @router.callback_query(F.data.startswith("bot_lesson:"))
 async def bot_lesson(callback: CallbackQuery, db: Database):
-    _, lesson_id_text, file_token = callback.data.split(":", 2)
+    _, lesson_id_text, _file_token = callback.data.split(":", 2)
     lesson_id = int(lesson_id_text)
     lesson = db.get_lesson(lesson_id, callback.from_user.id)
     await callback.answer()
