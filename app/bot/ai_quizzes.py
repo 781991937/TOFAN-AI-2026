@@ -24,7 +24,7 @@ async def category_quiz(callback: CallbackQuery, state: FSMContext, db: Database
         if len(questions)<50:
             await callback.message.edit_text(f"⚠️ محتوى القسم أنتج {len(questions)} سؤالًا مختلفًا فقط. لن أكرر الأسئلة للوصول إلى 50."); return
         quiz_id=db.create_quiz(int(lessons[0]["id"]),quiz_generator.serialize(questions),50,"medium")
-        await state.set_state(QuizState.active); await state.update_data(quiz_id=quiz_id,lesson_id=int(lessons[0]["id"]),questions=questions,answers=[],group_mode=False)
+        await state.set_state(QuizState.active); await state.update_data(quiz_id=quiz_id,lesson_id=int(lessons[0]["id"]),questions=questions,answers=[],group_mode=False,user_id=callback.from_user.id)
         await callback.message.edit_text(f"🎓 <b>اختبار القسم كامل</b>\n📚 <b>{html.escape(category)}</b>\n\n🧠 <b>الأسئلة: الذكاء الاصطناعي</b>\n🔥 <b>50 سؤالًا متنوعًا</b>\n\nنبدأ الآن!")
         await send_question(callback.message,state,quiz_id,questions,0,[],db)
     except Exception:
@@ -40,7 +40,7 @@ async def repeat_ai(callback: CallbackQuery, state: FSMContext, db: Database, qu
         count=quiz_generator.smart_count(str(lesson["extracted_text"] or ""),20)
         questions=await quiz_generator.create_smart(str(lesson["extracted_text"] or ""),count,"medium")
         quiz_id=db.create_quiz(int(lesson["id"]),quiz_generator.serialize(questions),len(questions),"medium")
-        await state.set_state(QuizState.active); await state.update_data(quiz_id=quiz_id,lesson_id=int(lesson["id"]),questions=questions,answers=[],group_mode=False)
+        await state.set_state(QuizState.active); await state.update_data(quiz_id=quiz_id,lesson_id=int(lesson["id"]),questions=questions,answers=[],group_mode=False,user_id=callback.from_user.id)
         await callback.message.edit_text(f"🔁 <b>نموذج اختبار جديد</b>\n🧠 <b>الذكاء الاصطناعي</b>\n🎯 {len(questions)} أسئلة مختلفة")
         await send_question(callback.message,state,quiz_id,questions,0,[],db)
     except Exception:
