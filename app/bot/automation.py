@@ -6,12 +6,15 @@ from pathlib import Path
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.bot.keyboards import delete_lesson_confirm, lesson_menu, lessons_list_menu
+from app.bot.quiz_engine import QuizState, send_question
 from app.database import Database
 from app.services.file_extractor import FileExtractor, clean_text, page_parts, split_lessons
 from app.services.local_engine import local_analysis
+from app.services.quiz_generator import QuizGenerator
 
 logger = logging.getLogger(__name__)
 router = Router(name="automation")
@@ -174,7 +177,6 @@ async def save_file(message: Message, db: Database, bot, extractor: FileExtracto
             pages = _page_cache(lesson_text)
             analysis = local_analysis("\n\n".join(x.get("text", "") for x in pages))
             category = "📂 مواد أخرى"
-            # Classification stays deterministic/local; AI is never called here.
             from app.bot.library import classify_lesson
             category = classify_lesson({"file_name": lesson_name, "extracted_text": lesson_text, "category": category})
             lesson_id = db.create_lesson(owner_id, lesson_name, suffix[1:], str(path), lesson_text, category=category, file_id=document.file_id)
@@ -205,6 +207,46 @@ async def document_handler(message: Message, db: Database, bot, extractor: FileE
 @router.channel_post(F.document)
 async def channel_document_handler(message: Message, db: Database, bot, extractor: FileExtractor) -> None:
     await save_file(message, db, bot, extractor, 0)
+
+
+@router.callback_query(F.data.startswith("bot_quiz:"))
+async def bot_lesson_quiz(callback: CallbackQuery, state: FSMContext, db: Database, quiz_generator: QuizGenerator) -> None:
+    lesson_id = int(callback.data.split(":", 1)[1])
+    lesson = db.get_lesson(lesson_id, callback.from_user.id)
+    if not lesson:
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
+        return
+    text = str(lesson["extracted_text"] or "").strip()
+    if not text:
+        await callback.answer("⚠️ لا يوجد محتوى كافٍ لهذا الدرس.", show_alert=True)
+        return
+    try:
+        await callback.answer("📝 جاري إعداد اختبار الدرس…")
+        questions = await quiz_generator.create_local(text, 20, "medium")
+        if not questions:
+            await callback.message.edit_text("⚠️ لم أجد معلومات كافية لإنشاء اختبار لهذا الدرس.")
+            return
+        quiz_id = db.create_quiz(lesson_id, quiz_generator.serialize(questions), len(questions), "medium")
+        await state.set_state(QuizState.active)
+        await state.update_data(
+            quiz_id=quiz_id,
+            lesson_id=lesson_id,
+            questions=questions,
+            answers=[],
+            group_mode=False,
+            engine="local",
+        )
+        await callback.message.edit_text(
+            f"📝 <b>اختبار الدرس</b>\n\n"
+            f"📖 <b>{html.escape(str(lesson['file_name']))}</b>\n"
+            f"⚙️ <b>طريقة العمل: البوت والأتمتة — Python</b>\n"
+            f"🎯 <b>{len(questions)} سؤالًا</b>\n\n"
+            "العدد يتحدد حسب كمية المعلومات في الدرس، ولن يتم تكرار الأسئلة.",
+        )
+        await send_question(callback.message, state, quiz_id, questions, 0, [], db)
+    except Exception as exc:
+        logger.exception("Local bot lesson quiz failed")
+        await callback.message.edit_text(f"⚠️ <b>تعذر إنشاء اختبار الدرس</b>\n{html.escape(str(exc))}")
 
 
 @router.callback_query(F.data.startswith("pages:"))
@@ -326,6 +368,6 @@ async def navigation_help(callback: CallbackQuery) -> None:
     await callback.answer()
     await callback.message.edit_text(
         "🧭 <b>التنقل — الأتمتة</b>\n\n"
-        "بعد اختيار القسم ← الملف ← الدرس ستجد أزرار الصفحات، الصفحة السابقة/التالية، الملف السابق/التالي، والتنزيل.\n\n"
-        "⚙️ كل هذا يعمل محليًا بواسطة Python والبوت."
+        "بعد اختيار القسم ← الملف ← الدرس ستجد أزرار الصفحات، الصفحة السابقة/التالية، الملف السابق/التالي، والتنزيل، واختبار الدرس.\n\n"
+        "⚙️ كل هذا يعمل بواسطة Python والبوت، واختبار الدرس يستخدم محرك الأسئلة المحلي بدون ذكاء اصطناعي.",
     )
