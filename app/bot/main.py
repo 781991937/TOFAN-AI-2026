@@ -18,6 +18,7 @@ from app.bot.sections import router as sections_router
 from app.bot.ai_quizzes import router as ai_quizzes_router
 from app.bot.ai_navigation import router as ai_navigation_router
 from app.bot.ai_pages import router as ai_pages_router
+from app.bot import ui_fixes
 from app.config_gemini import Settings
 from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
@@ -46,7 +47,6 @@ async def main() -> None:
     dp["db"]=db; dp["extractor"]=extractor; dp["ai_service"]=ai_service; dp["quiz_generator"]=quiz_generator
     dp.callback_query.outer_middleware(ClockStopMiddleware())
 
-    # One router per responsibility. Legacy duplicated routers are intentionally not loaded.
     dp.include_router(clock_router)
     dp.include_router(quiz_router)
     dp.include_router(sections_router)
