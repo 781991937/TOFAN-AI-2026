@@ -13,8 +13,24 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.13.5'
+      - name: Install Poppler build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libpoppler-cpp-dev pkg-config python3-dev
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: python -m pip install -r requirements.txt
+      - name: Verify PDF stack
+        run: |
+          python - <<'PY'
+          import fitz
+          import pdftotext
+          import pypdf
+          print('PyMuPDF:', fitz.__doc__.splitlines()[0] if fitz.__doc__ else 'OK')
+          print('pdftotext:', pdftotext.__file__)
+          print('pypdf:', pypdf.__version__)
+          PY
+      - name: Compile application
+        run: python -m compileall -q app
       - name: Run tests
-        run: pytest -q
+        run: python -m pytest -q
