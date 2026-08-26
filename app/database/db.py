@@ -43,7 +43,7 @@ class Database:
                     id BIGSERIAL PRIMARY KEY,
                     telegram_id BIGINT NOT NULL REFERENCES users(telegram_id) ON DELETE CASCADE,
                     file_name TEXT NOT NULL, file_type TEXT NOT NULL, file_path TEXT NOT NULL,
-                    extracted_text TEXT NOT NULL, summary TEXT, concepts TEXT, key_points TEXT,
+                    file_id TEXT, extracted_text TEXT NOT NULL, summary TEXT, concepts TEXT, key_points TEXT,
                     category TEXT NOT NULL DEFAULT '📂 مواد أخرى',
                     created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
                 );
@@ -66,6 +66,10 @@ class Database:
                     conn.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT '📂 مواد أخرى'")
                 except Exception:
                     pass
+                try:
+                    conn.execute("ALTER TABLE lessons ADD COLUMN IF NOT EXISTS file_id TEXT")
+                except Exception:
+                    pass
             return
 
         with self._connect() as conn:
@@ -78,7 +82,7 @@ class Database:
             CREATE TABLE IF NOT EXISTS lessons (
                 id INTEGER PRIMARY KEY AUTOINCREMENT, telegram_id INTEGER NOT NULL,
                 file_name TEXT NOT NULL, file_type TEXT NOT NULL, file_path TEXT NOT NULL,
-                extracted_text TEXT NOT NULL, summary TEXT, concepts TEXT, key_points TEXT,
+                file_id TEXT, extracted_text TEXT NOT NULL, summary TEXT, concepts TEXT, key_points TEXT,
                 category TEXT NOT NULL DEFAULT '📂 مواد أخرى', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (telegram_id) REFERENCES users(telegram_id) ON DELETE CASCADE
             );
@@ -98,6 +102,10 @@ class Database:
             """)
             try:
                 conn.execute("ALTER TABLE lessons ADD COLUMN category TEXT NOT NULL DEFAULT '📂 مواد أخرى'")
+            except sqlite3.OperationalError:
+                pass
+            try:
+                conn.execute("ALTER TABLE lessons ADD COLUMN file_id TEXT")
             except sqlite3.OperationalError:
                 pass
 
@@ -126,13 +134,13 @@ class Database:
         with self._connect() as conn:
             self._execute(conn, "UPDATE users SET question_count=?, difficulty=? WHERE telegram_id=?", (question_count, difficulty, telegram_id))
 
-    def create_lesson(self, telegram_id: int, file_name: str, file_type: str, file_path: str, text: str, category: str = "📂 مواد أخرى") -> int:
+    def create_lesson(self, telegram_id: int, file_name: str, file_type: str, file_path: str, text: str, category: str = "📂 مواد أخرى", file_id: str = "") -> int:
         text = (text or "").replace("\x00", "")
         with self._connect() as conn:
             if self.database_url:
-                cur = self._execute(conn, "INSERT INTO lessons(telegram_id,file_name,file_type,file_path,extracted_text,category) VALUES(?,?,?,?,?,?) RETURNING id", (telegram_id,file_name,file_type,file_path,text,category))
+                cur = self._execute(conn, "INSERT INTO lessons(telegram_id,file_name,file_type,file_path,file_id,extracted_text,category) VALUES(?,?,?,?,?,?,?) RETURNING id", (telegram_id,file_name,file_type,file_path,file_id,text,category))
                 return int(cur.fetchone()[0])
-            cur = self._execute(conn, "INSERT INTO lessons(telegram_id,file_name,file_type,file_path,extracted_text,category) VALUES(?,?,?,?,?,?)", (telegram_id,file_name,file_type,file_path,text,category))
+            cur = self._execute(conn, "INSERT INTO lessons(telegram_id,file_name,file_type,file_path,file_id,extracted_text,category) VALUES(?,?,?,?,?,?,?)", (telegram_id,file_name,file_type,file_path,file_id,text,category))
             return int(cur.lastrowid)
 
     def update_lesson_analysis(self, lesson_id: int, summary: str, concepts: str, key_points: str = "") -> None:
