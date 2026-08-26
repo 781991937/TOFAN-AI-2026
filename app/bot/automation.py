@@ -36,7 +36,7 @@ def _format_local(analysis: dict) -> str:
             en, ar = raw.split(" - ", 1)
         else:
             en, ar = raw, "المصطلح كما ورد في الملف"
-        term_lines.append(f"<b>{html.escape(en.strip())}</b>\n{html.escape(ar.strip())}")
+        term_lines.append(f"<b>{html.escape(en.strip())}</b>\n↳ {html.escape(ar.strip())}")
     terms_text = "\n\n".join(term_lines) or "لا توجد مصطلحات واضحة."
     return f"⚙️ <b>طريقة العمل: البوت والأتمتة — Python</b>\n\n📖 <b>تنظيم سريع</b>\n{summary}\n\n🇬🇧 <b>المصطلحات</b>\n{terms_text}"
 
@@ -77,10 +77,7 @@ def _page_text(lesson, index: int) -> str:
     number = int(item.get("page", index + 1))
     summary = html.escape(str(item.get("summary") or "").strip())
     raw_text = str(item.get("text") or "").strip()
-    if raw_text:
-        content = html.escape(raw_text[:1800])
-    else:
-        content = summary or "لا يوجد نص واضح في هذه الصفحة."
+    content = html.escape(raw_text[:1800]) if raw_text else (summary or "لا يوجد نص واضح في هذه الصفحة.")
     points = item.get("key_points") or []
     points_text = "\n".join(f"• {html.escape(str(x))}" for x in points[:6]) or "• لا توجد نقاط إضافية."
     terms = item.get("terms") or []
@@ -92,18 +89,18 @@ def _page_text(lesson, index: int) -> str:
         elif " - " in value:
             en, ar = value.split(" - ", 1)
         else:
-            en, ar = value, "المعنى العربي موجود في محتوى الصفحة"
-        term_blocks.append(f"<b>{html.escape(en.strip())}</b>\n{html.escape(ar.strip())}")
+            en, ar = value, "المعنى غير محدد بعد"
+        term_blocks.append(f"<b>🇬🇧 {html.escape(en.strip())}</b>\n↳ {html.escape(ar.strip())}")
     terms_text = "\n\n".join(term_blocks) or "لا توجد مصطلحات واضحة."
-    return (
-        f"📖 <b>الدرس: {_title(str(lesson['file_name']))}</b>\n"
-        f"📄 <b>صفحة {number} من {len(pages)}</b>\n\n"
-        "⚙️ <b>طريقة الشرح: البوت والأتمتة — بدون ذكاء اصطناعي</b>\n\n"
-        "📚 <b>محتوى الصفحة</b>\n"
-        f"{content}\n\n"
-        f"📌 <b>أهم النقاط</b>\n{points_text}\n\n"
-        f"🇬🇧 <b>English Terms</b>\n{terms_text}"
-    )[:3900]
+    return (f"📖 <b>الدرس: {_title(str(lesson['file_name']))}</b>\n"
+            f"📄 <b>صفحة {number} من {len(pages)}</b>\n\n"
+            "⚙️ <b>البوت والأتمتة — Python</b>\n\n"
+            "━━━━━━━━━━━━━━\n📚 <b>محتوى الصفحة</b>\n\n"
+            f"{content}\n\n"
+            "━━━━━━━━━━━━━━\n🧠 <b>أهم النقاط</b>\n"
+            f"{points_text}\n\n"
+            "━━━━━━━━━━━━━━\n📘 <b>المصطلحات ومعانيها</b>\n"
+            f"{terms_text}")[:3900]
 
 
 def _page_keyboard(lesson_id: int, pages: list[dict], index: int):
@@ -111,10 +108,7 @@ def _page_keyboard(lesson_id: int, pages: list[dict], index: int):
     rows = []
     numbers = [int(x.get("page", i + 1)) for i, x in enumerate(pages)]
     for start in range(0, len(numbers), 6):
-        rows.append([
-            InlineKeyboardButton(text=(f"🔵 {numbers[i]}" if i == index else f"📄 {numbers[i]}"), callback_data=f"page:{lesson_id}:{i}")
-            for i in range(start, min(start + 6, len(numbers)))
-        ])
+        rows.append([InlineKeyboardButton(text=(f"🔵 {numbers[i]}" if i == index else f"📄 {numbers[i]}"), callback_data=f"page:{lesson_id}:{i}") for i in range(start, min(start + 6, len(numbers)))])
     nav = []
     if index > 0:
         nav.append(InlineKeyboardButton(text="⬅️ الصفحة السابقة", callback_data=f"page:{lesson_id}:{index - 1}"))
@@ -124,14 +118,8 @@ def _page_keyboard(lesson_id: int, pages: list[dict], index: int):
         rows.append(nav)
     if index == len(pages) - 1:
         rows.append([InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"bot_quiz:{lesson_id}")])
-    rows.append([
-        InlineKeyboardButton(text="⬅️ الملف السابق", callback_data=f"prevfile:{lesson_id}"),
-        InlineKeyboardButton(text="الملف التالي ➡️", callback_data=f"nextfile:{lesson_id}"),
-    ])
-    rows.append([
-        InlineKeyboardButton(text="📥 تنزيل الملف", callback_data=f"download:{lesson_id}"),
-        InlineKeyboardButton(text="⬅️ قائمة الدرس", callback_data=f"lesson:{lesson_id}"),
-    ])
+    rows.append([InlineKeyboardButton(text="⬅️ الملف السابق", callback_data=f"prevfile:{lesson_id}"), InlineKeyboardButton(text="الملف التالي ➡️", callback_data=f"nextfile:{lesson_id}")])
+    rows.append([InlineKeyboardButton(text="📥 تنزيل الملف", callback_data=f"download:{lesson_id}"), InlineKeyboardButton(text="⬅️ قائمة الدرس", callback_data=f"lesson:{lesson_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -160,7 +148,6 @@ async def save_file(message: Message, db: Database, bot, extractor: FileExtracto
     if document.file_size and document.file_size > 20 * 1024 * 1024:
         await message.answer("❌ حجم الملف أكبر من 20 MB.")
         return
-
     safe_name = Path(document.file_name or "lesson").name
     path = Path("data/uploads") / f"{owner_id}_{message.message_id}_{safe_name}"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -170,11 +157,8 @@ async def save_file(message: Message, db: Database, bot, extractor: FileExtracto
         text = clean_text(extractor.extract(path))
         if len(text.strip()) < 20:
             raise ValueError("لم أجد نصًا كافيًا في الملف.")
-        lessons = split_lessons(text)
-        if not lessons:
-            lessons = [("الدرس الكامل", text)]
+        lessons = split_lessons(text) or [("الدرس الكامل", text)]
         db.ensure_user(owner_id, getattr(message.from_user, "first_name", "") or "")
-
         saved = []
         for number, (lesson_title, lesson_text) in enumerate(lessons, 1):
             lesson_text = clean_text(lesson_text)
@@ -189,7 +173,6 @@ async def save_file(message: Message, db: Database, bot, extractor: FileExtracto
             lesson_id = db.create_lesson(owner_id, lesson_name, suffix[1:], str(path), lesson_text, category=category, file_id=document.file_id)
             db.update_lesson_analysis(lesson_id, analysis.get("summary", ""), json.dumps(analysis.get("concepts", []), ensure_ascii=False), json.dumps(pages, ensure_ascii=False))
             saved.append((lesson_id, lesson_name, category, len(pages)))
-
         if not saved:
             raise ValueError("لم أجد محتوى صالحًا لإنشاء الدروس.")
         lines = [f"✅ <b>تم حفظ {len(saved)} درسًا</b>", f"📁 <b>الملف:</b> {html.escape(safe_name)}", ""]
@@ -221,22 +204,19 @@ async def bot_lesson_quiz(callback: CallbackQuery, state: FSMContext, db: Databa
     lesson_id = int(callback.data.split(":", 1)[1])
     lesson = db.get_lesson(lesson_id, callback.from_user.id)
     if not lesson:
-        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
-        return
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True); return
     text = str(lesson["extracted_text"] or "").strip()
     if not text:
-        await callback.answer("⚠️ لا يوجد محتوى كافٍ لهذا الدرس.", show_alert=True)
-        return
+        await callback.answer("⚠️ لا يوجد محتوى كافٍ لهذا الدرس.", show_alert=True); return
     try:
         await callback.answer("📝 جاري إعداد اختبار الدرس…")
         questions = await quiz_generator.create_local(text, 20, "medium")
         if not questions:
-            await callback.message.edit_text("⚠️ لم أجد معلومات كافية لإنشاء اختبار لهذا الدرس.")
-            return
+            await callback.message.edit_text("⚠️ لم أجد معلومات كافية لإنشاء اختبار لهذا الدرس."); return
         quiz_id = db.create_quiz(lesson_id, quiz_generator.serialize(questions), len(questions), "medium")
         await state.set_state(QuizState.active)
-        await state.update_data(quiz_id=quiz_id, lesson_id=lesson_id, questions=questions, answers=[], group_mode=False, engine="local")
-        await callback.message.edit_text(f"📝 <b>اختبار الدرس</b>\n\n📖 <b>{html.escape(str(lesson['file_name']))}</b>\n⚙️ <b>طريقة العمل: البوت والأتمتة — Python</b>\n🎯 <b>{len(questions)} سؤالًا</b>\n\nالعدد يتحدد حسب كمية المعلومات في الدرس، ولن يتم تكرار الأسئلة.")
+        await state.update_data(quiz_id=quiz_id, lesson_id=lesson_id, questions=questions, answers=[], group_mode=False, engine="local", user_id=callback.from_user.id)
+        await callback.message.edit_text(f"📝 <b>اختبار الدرس</b>\n\n📖 <b>{html.escape(str(lesson['file_name']))}</b>\n⚙️ <b>طريقة العمل: البوت والأتمتة — Python</b>\n🎯 <b>{len(questions)} سؤالًا</b>\n⏱️ <b>15 ثانية لكل سؤال</b>\n\nالعدد يتحدد حسب كمية المعلومات في الدرس، ولن يتم تكرار الأسئلة.")
         await send_question(callback.message, state, quiz_id, questions, 0, [], db)
     except Exception as exc:
         logger.exception("Local bot lesson quiz failed")
@@ -247,8 +227,7 @@ async def bot_lesson_quiz(callback: CallbackQuery, state: FSMContext, db: Databa
 async def pages(callback: CallbackQuery, db: Database) -> None:
     lesson = db.get_lesson(int(callback.data.split(":")[1]), callback.from_user.id)
     if not lesson:
-        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
-        return
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True); return
     await _show_page(callback, lesson, 0)
 
 
@@ -257,8 +236,7 @@ async def page(callback: CallbackQuery, db: Database) -> None:
     _, lesson_id, index = callback.data.split(":")
     lesson = db.get_lesson(int(lesson_id), callback.from_user.id)
     if not lesson:
-        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
-        return
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True); return
     await _show_page(callback, lesson, int(index))
 
 
@@ -267,16 +245,14 @@ async def download(callback: CallbackQuery, db: Database, bot) -> None:
     lesson_id = int(callback.data.split(":", 1)[1])
     lesson = db.get_lesson(lesson_id, callback.from_user.id)
     if not lesson:
-        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
-        return
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True); return
     file_id = str(lesson["file_id"] or "").strip()
     if not file_id:
-        await callback.answer("⚠️ هذا الدرس قديم ولا يملك Telegram file_id. أعد رفع الملف مرة واحدة.", show_alert=True)
-        return
+        await callback.answer("⚠️ هذا الدرس قديم ولا يملك Telegram file_id. أعد رفع الملف مرة واحدة.", show_alert=True); return
     try:
         await callback.answer("📥 جاري إرسال الملف…")
         await bot.send_document(callback.from_user.id, file_id, caption=f"📘 {html.escape(str(lesson['file_name']))}")
-    except Exception as exc:
+    except Exception:
         logger.exception("Telegram file download failed")
         await callback.answer("❌ تعذر تنزيل الملف من Telegram. قد تكون نسخة الملف لم تعد متاحة.", show_alert=True)
 
@@ -286,7 +262,6 @@ async def lesson(callback: CallbackQuery, db: Database) -> None:
     lesson_id = int(callback.data.split(":", 1)[1])
     row = db.get_lesson(lesson_id, callback.from_user.id)
     if not row:
-        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
-        return
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True); return
     await callback.answer()
     await callback.message.edit_text(f"📖 <b>{html.escape(str(row['file_name']))}</b>\n\n⚙️ <b>طريقة العمل: البوت والأتمتة — Python</b>\n\nاختر الوظيفة:", reply_markup=lesson_menu(lesson_id))
