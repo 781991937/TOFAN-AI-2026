@@ -2,8 +2,11 @@ import asyncio
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from aiogram import BaseMiddleware
-from aiogram.types import CallbackQuery
+from aiogram import BaseMiddleware, F, Router
+from aiogram.filters import CommandStart
+from aiogram.types import CallbackQuery, Message
+
+from app.bot.keyboards import main_menu
 
 _YEMEN = ZoneInfo("Asia/Aden")
 _DAYS = {
@@ -67,3 +70,23 @@ class ClockStopMiddleware(BaseMiddleware):
             chat = getattr(message, "chat", None)
             stop_clock(getattr(chat, "id", None))
         return await handler(event, data)
+
+
+router = Router(name="clock")
+
+
+@router.message(CommandStart())
+async def clock_start(message: Message, db) -> None:
+    db.ensure_user(message.from_user.id, message.from_user.first_name or "")
+    sent = await message.answer(
+        clock_text(),
+        reply_markup=main_menu(),
+    )
+    start_clock(sent)
+
+
+@router.callback_query(F.data == "home")
+async def clock_home(callback: CallbackQuery) -> None:
+    await callback.answer()
+    await callback.message.edit_text(clock_text(), reply_markup=main_menu())
+    start_clock(callback.message)
