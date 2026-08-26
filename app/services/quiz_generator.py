@@ -1,6 +1,5 @@
 import hashlib
 import json
-import logging
 import random
 import re
 import sqlite3
@@ -9,11 +8,9 @@ from pathlib import Path
 from .ai_service import AIService
 from .local_engine import generate_local_questions
 
-logger = logging.getLogger(__name__)
-
 
 class QuizGenerator:
-    """Local-first quiz generator. Gemini is used only when explicitly requested."""
+    """Two explicit engines: local Python for automation, Gemini for AI features."""
 
     def __init__(self, ai_service: AIService, cache_path: Path | None = None):
         self.ai_service = ai_service
@@ -21,52 +18,32 @@ class QuizGenerator:
         if self.cache_path:
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             with sqlite3.connect(self.cache_path) as conn:
-                conn.execute(
-                    "CREATE TABLE IF NOT EXISTS quiz_cache (cache_key TEXT PRIMARY KEY, mode TEXT NOT NULL, questions_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
-                )
+                conn.execute("CREATE TABLE IF NOT EXISTS quiz_cache (cache_key TEXT PRIMARY KEY, mode TEXT NOT NULL, questions_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
     @staticmethod
-    def _key(text: str, count: int, difficulty: str, mode: str) -> str:
-        raw = f"{mode}|{count}|{difficulty}|{text.strip()}".encode("utf-8")
+    def _key(text: str, count: int, difficulty: str, mode: str, variant: str = "") -> str:
+        raw = f"{mode}|{count}|{difficulty}|{variant}|{text.strip()}".encode("utf-8")
         return hashlib.sha256(raw).hexdigest()
 
     @staticmethod
-    def _smart_file_count(text: str, requested: int) -> int:
-        """Choose a sensible question count from the amount of usable lesson content.
-
-        File quizzes are capped at 20. Very short files get fewer questions instead
-        of padding the quiz with repeated or invented questions. A section quiz
-        normally requests 50 and is deliberately left untouched here.
-        """
+    def smart_count(text: str, requested: int = 20) -> int:
         requested = max(1, min(int(requested or 1), 50))
         if requested > 20:
             return requested
-
         clean = re.sub(r"\s+", " ", text or "").strip()
-        chars = len(clean)
-        words = len(clean.split())
-
-        # These are intentionally conservative. They estimate how much distinct
-        # material is available; the generator may still return fewer questions.
-        if words < 120 or chars < 700:
-            content_limit = 5
-        elif words < 250 or chars < 1500:
-            content_limit = 8
-        elif words < 450 or chars < 2800:
-            content_limit = 12
-        elif words < 750 or chars < 5000:
-            content_limit = 15
-        else:
-            content_limit = 20
-
-        return min(requested, content_limit)
+        words, chars = len(clean.split()), len(clean)
+        if words < 120 or chars < 700: limit = 3
+        elif words < 250 or chars < 1500: limit = 5
+        elif words < 450 or chars < 2800: limit = 8
+        elif words < 750 or chars < 5000: limit = 12
+        else: limit = 20
+        return min(requested, limit)
 
     @staticmethod
     def _fresh_variant(questions: list[dict]) -> list[dict]:
-        """Create a genuinely different presentation without changing correctness."""
         result = []
-        for q in questions:
-            item = dict(q)
+        for question in questions:
+            item = dict(question)
             options = list(item.get("options") or [])
             if len(options) > 1:
                 random.shuffle(options)
@@ -75,59 +52,23 @@ class QuizGenerator:
         random.shuffle(result)
         return result
 
-    async def create(
-        self,
-        text: str,
-        count: int = 10,
-        difficulty: str = "medium",
-        use_ai: bool = False,
-        fresh: bool = False,
-    ) -> list[dict]:
+    async def create_local(self, text: str, count: int = 10, difficulty: str = "medium") -> list[dict]:
+        count = self.smart_count(text, count)
+        questions = generate_local_questions(text, count, difficulty)
+        if not questions:
+            raise RuntimeError("لم أستطع إنشاء أسئلة من محتوى الملف")
+        return self._fresh_variant(questions)
+
+    async def create_smart(self, text: str, count: int = 20, difficulty: str = "medium") -> list[dict]:
+        """AI-only quiz. Never falls back to the local engine."""
         if not text.strip():
             raise ValueError("Lesson text is empty")
-
-        count = self._smart_file_count(text, count)
-        mode = "ai" if use_ai else "local"
-        key = self._key(text, count, difficulty, mode)
-
-        if self.cache_path and not fresh:
-            with sqlite3.connect(self.cache_path) as conn:
-                row = conn.execute(
-                    "SELECT questions_json FROM quiz_cache WHERE cache_key=?", (key,)
-                ).fetchone()
-            if row:
-                return json.loads(row[0])
-
-        if use_ai:
-            questions = await self.ai_service.generate_questions(text, count, difficulty)
-        else:
-            questions = generate_local_questions(text, count, difficulty)
-
+        count = self.smart_count(text, count)
+        variant = hashlib.sha1(f"{random.random()}".encode()).hexdigest()[:10]
+        questions = await self.ai_service.generate_questions(text, count, difficulty, variant=variant)
         if not questions:
-            raise RuntimeError("لم أستطع إنشاء أسئلة من محتوى الدرس")
-
-        questions = self._fresh_variant(questions) if fresh else questions
-
-        if self.cache_path and not fresh:
-            with sqlite3.connect(self.cache_path) as conn:
-                conn.execute(
-                    "INSERT OR REPLACE INTO quiz_cache(cache_key,mode,questions_json) VALUES(?,?,?)",
-                    (key, mode, json.dumps(questions, ensure_ascii=False)),
-                )
-        return questions
-
-    async def create_smart(self, text: str, count: int = 10, difficulty: str = "medium") -> list[dict]:
-        """Explicit AI mode with a local fallback so Gemini downtime never breaks quizzes."""
-        try:
-            return await self.create(text, count, difficulty, use_ai=True, fresh=True)
-        except Exception as exc:
-            logger.warning("Smart quiz Gemini failed; using local fallback: %s", exc)
-            questions = generate_local_questions(
-                text, self._smart_file_count(text, count), difficulty
-            )
-            if not questions:
-                raise
-            return self._fresh_variant(questions)
+            raise RuntimeError("الذكاء الاصطناعي لم ينتج أسئلة كافية من المحتوى")
+        return self._fresh_variant(questions)
 
     @staticmethod
     def serialize(questions: list[dict]) -> str:
