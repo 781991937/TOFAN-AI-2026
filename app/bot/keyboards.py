@@ -8,7 +8,6 @@ def _enc(value: str) -> str:
 
 
 def main_menu() -> InlineKeyboardMarkup:
-    # القائمة الرئيسية الجديدة: وظيفة واحدة = زر واحد.
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🧠 قسم الذكاء", callback_data="ai_section")],
         [InlineKeyboardButton(text="🤖 قسم البوت", callback_data="automation_section")],
@@ -38,7 +37,7 @@ def ai_categories_menu(categories: list, action: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def ai_files_menu(files: list, action: str, category: str) -> InlineKeyboardMarkup:
+def ai_files_menu(files: list, action: str) -> InlineKeyboardMarkup:
     rows = []
     for key, name, count in files:
         rows.append([InlineKeyboardButton(
@@ -50,17 +49,19 @@ def ai_files_menu(files: list, action: str, category: str) -> InlineKeyboardMark
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def ai_lessons_menu(lessons: list, action: str, file_key: str) -> InlineKeyboardMarkup:
+def ai_lessons_menu(lessons: list, action: str) -> InlineKeyboardMarkup:
     rows = []
     for number, lesson in enumerate(lessons, start=1):
         title = str(lesson["file_name"] or f"الدرس {number}")
+        if " - " in title:
+            title = title.split(" - ", 1)[1]
         if len(title) > 38:
             title = title[:35] + "..."
         rows.append([InlineKeyboardButton(
             text=f"📖 الدرس {number}: {title}",
             callback_data=f"ai_lesson:{action}:{int(lesson['id'])}",
         )])
-    rows.append([InlineKeyboardButton(text="⬅️ الملفات", callback_data=f"ai_file_back:{file_key}")])
+    rows.append([InlineKeyboardButton(text="⬅️ المواد", callback_data=f"ai_pick:{action}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -98,7 +99,6 @@ def library_menu(categories: list) -> InlineKeyboardMarkup:
     for row in categories:
         category = str(row["category"])
         count = int(row["lesson_count"])
-        # Hash-only callback keeps Telegram callback_data safely below its 64-byte limit.
         rows.append([InlineKeyboardButton(text=f"{category}  ({count} درس)", callback_data=f"category:{_enc(category)}")])
     rows.append([InlineKeyboardButton(text="🏠 الرئيسية", callback_data="home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -124,7 +124,6 @@ def file_list_menu(lessons: list, category: str) -> InlineKeyboardMarkup:
     rows = []
     for key, item in grouped.items():
         name = item["name"]
-        # Split lesson names look like "file - lesson"; keep the original-looking label.
         if " - " in name:
             name = name.split(" - ", 1)[0]
         if len(name) > 40:
@@ -147,7 +146,7 @@ def lesson_list_menu(lessons: list, file_key: str) -> InlineKeyboardMarkup:
         if len(title) > 40:
             title = title[:37] + "..."
         rows.append([InlineKeyboardButton(text=f"📖 الدرس {number}: {title}", callback_data=f"lesson:{int(lesson['id'])}")])
-    rows.append([InlineKeyboardButton(text="⬅️ الملفات", callback_data=f"fileback:{_enc(file_key)}")])
+    rows.append([InlineKeyboardButton(text="⬅️ الملفات", callback_data="categoryfiles:back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -163,10 +162,7 @@ def group_quiz_menu(quiz_id: int) -> InlineKeyboardMarkup:
 
 
 def result_menu(lesson_id: int, group: bool = False) -> InlineKeyboardMarkup:
-    rows = [
-        [InlineKeyboardButton(text="🔁 اختبار جديد", callback_data=f"filequiz:{lesson_id}")],
-        [InlineKeyboardButton(text="⬅️ رجوع للدرس", callback_data=f"lesson:{lesson_id}")],
-    ]
+    rows = [[InlineKeyboardButton(text="🔁 اختبار جديد", callback_data=f"filequiz:{lesson_id}")], [InlineKeyboardButton(text="⬅️ رجوع للدرس", callback_data=f"lesson:{lesson_id}")]]
     if group:
         rows.insert(1, [InlineKeyboardButton(text="👥 اختبار جماعي جديد", callback_data=f"groupquiz:{lesson_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
