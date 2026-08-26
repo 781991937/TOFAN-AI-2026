@@ -1,7 +1,6 @@
 import asyncio
 import hashlib
 import json
-import logging
 import sqlite3
 from pathlib import Path
 
@@ -10,11 +9,9 @@ from google.genai import types
 
 from .file_extractor import chunk_text
 
-logger = logging.getLogger(__name__)
-
 
 class AIService:
-    """Explicit Gemini service with bounded latency and lightweight cache."""
+    """Explicit Gemini service used only by the AI section."""
 
     def __init__(self, api_key: str, model: str = "gemini-2.5-flash", cache_path: Path | None = None):
         self.client = genai.Client(api_key=api_key)
@@ -23,119 +20,60 @@ class AIService:
         if self.cache_path:
             self.cache_path.parent.mkdir(parents=True, exist_ok=True)
             with sqlite3.connect(self.cache_path) as conn:
-                conn.execute(
-                    "CREATE TABLE IF NOT EXISTS ai_analysis_cache (content_hash TEXT PRIMARY KEY, model TEXT NOT NULL, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"
-                )
+                conn.execute("CREATE TABLE IF NOT EXISTS ai_analysis_cache (content_hash TEXT PRIMARY KEY, model TEXT NOT NULL, result_json TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)")
 
     @staticmethod
     def _hash(text: str) -> str:
         return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
 
-    async def _json(self, prompt: str, temperature: float = 0.2, timeout: float = 20.0) -> dict:
-        try:
-            response = await asyncio.wait_for(
-                self.client.aio.models.generate_content(
-                    model=self.model,
-                    contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=temperature,
-                        response_mime_type="application/json",
-                    ),
-                ),
-                timeout=timeout,
-            )
-            data = json.loads(response.text or "{}")
-            if not isinstance(data, dict):
-                raise ValueError("Gemini returned invalid JSON object")
-            return data
-        except asyncio.TimeoutError as exc:
-            logger.warning("Gemini request timed out after %.1fs", timeout)
-            raise RuntimeError("Gemini request timed out") from exc
-        except Exception as exc:
-            logger.warning("Gemini request failed: %s", exc)
-            raise
+    async def _json(self, prompt: str, temperature: float = 0.2, timeout: float = 25.0) -> dict:
+        response = await asyncio.wait_for(
+            self.client.aio.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=types.GenerateContentConfig(temperature=temperature, response_mime_type="application/json"),
+            ), timeout=timeout,
+        )
+        data = json.loads(response.text or "{}")
+        if not isinstance(data, dict):
+            raise ValueError("Gemini returned invalid JSON")
+        return data
 
     async def analyze_lesson(self, text: str) -> dict:
         chunks = chunk_text(text, max_chars=9000)
-        if not chunks:
-            raise ValueError("Lesson text is empty")
-
-        cache_key = self._hash(text)
+        if not chunks: raise ValueError("Lesson text is empty")
+        key = self._hash(text)
         if self.cache_path:
             with sqlite3.connect(self.cache_path) as conn:
-                row = conn.execute(
-                    "SELECT result_json FROM ai_analysis_cache WHERE content_hash=? AND model=?",
-                    (cache_key, self.model),
-                ).fetchone()
-            if row:
-                logger.info("Gemini analysis cache hit: %s", cache_key[:12])
-                return json.loads(row[0])
-
+                row = conn.execute("SELECT result_json FROM ai_analysis_cache WHERE content_hash=? AND model=?", (key, self.model)).fetchone()
+            if row: return json.loads(row[0])
         source = "\n\n--- جزء ---\n\n".join(chunks[:10])
-        prompt = f"""أنت مساعد تعليمي دقيق. حلل الدرس التالي وأعد JSON صالحًا فقط بهذا الشكل:
-{{
-  "summary": "شرح عربي منظم ومختصر للدرس",
-  "concepts": ["المفهوم بالعربية — English Term: تعريف عربي مختصر"],
-  "key_points": ["نقطة أساسية بالعربية مع المصطلح English عند الحاجة"],
-  "definitions": ["المصطلح بالعربية (English Term): تعريفه"],
-  "english_terms": ["English Term — المقابل العربي وشرح مختصر"]
-}}
-
-قواعد مهمة:
-- التزم بمحتوى النص فقط ولا تخترع معلومات.
-- لا تعتبر Page أو English أو Study أو Pack أو TOFAN مفاهيم دراسية إلا إذا كان السياق يشرحها فعلًا.
-- لا تكرر عنوان الملف أو رقم الصفحة.
-- إذا كان النص يحتوي تمارين، لخّص موضوعها بدل نسخ خطوط الفراغ الطويلة.
-- حافظ على ترتيب العربية الصحيح، واكتب العربية من اليمين إلى اليسار بشكل طبيعي.
-- استخرج المصطلحات الإنجليزية المهمة فقط، مع ترجمتها وشرحها بالعربية.
-
-نص الدرس:
-{source}"""
-        result = await self._json(prompt, temperature=0.15, timeout=20.0)
-        if self.cache_path:
-            with sqlite3.connect(self.cache_path) as conn:
-                conn.execute(
-                    "INSERT OR REPLACE INTO ai_analysis_cache(content_hash,model,result_json) VALUES(?,?,?)",
-                    (cache_key, self.model, json.dumps(result, ensure_ascii=False)),
-                )
-        return result
-
-    async def generate_practical_idea(self, text: str) -> dict:
-        """Turn lesson content into one realistic learning/application idea."""
-        chunks = chunk_text(text, max_chars=9000)
-        if not chunks:
-            raise ValueError("Lesson text is empty")
-        source = "\n\n--- جزء ---\n\n".join(chunks[:8])
-        prompt = f"""استخرج من الدرس التالي فكرة عملية واحدة ذكية تساعد الطالب على تحويل ما تعلمه إلى تطبيق حقيقي.
-أعد JSON فقط بهذا الشكل:
-{{
-  "idea": "اسم الفكرة العملية",
-  "why": "لماذا ترتبط الفكرة مباشرة بالدرس",
-  "steps": ["خطوة 1", "خطوة 2", "خطوة 3"],
-  "example": "مثال واقعي مختصر"
-}}
-
+        prompt = f"""أنت مدرس جامعي. اشرح المحتوى التالي بطريقة مختصرة وذكية تساعد على الاستيعاب.
+أعد JSON فقط:
+{{"summary":"شرح عربي منظم","concepts":["مفهوم"],"key_points":["نقطة"],"definitions":["تعريف"],"english_terms":["English Term — المعنى والشرح بالعربية"]}}
 القواعد:
-- اعتمد على محتوى الدرس فقط.
-- لا تخترع موضوعًا لا علاقة له بالدرس.
-- اجعل الفكرة قابلة للتنفيذ لطالب جامعي وبأدوات بسيطة قدر الإمكان.
-- لا تكرر شرح الدرس؛ حوّله إلى تطبيق أو تجربة أو تمرين عملي.
-
-نص الدرس:
-{source}"""
-        return await self._json(prompt, temperature=0.35, timeout=20.0)
-
-    async def generate_questions(self, text: str, count: int, difficulty: str) -> list[dict]:
-        chunks = chunk_text(text, max_chars=9000)
-        source = "\n\n--- جزء ---\n\n".join(chunks[:10])
-        prompt = f"""أنشئ {count} أسئلة اختبار من النص التالي، بمستوى صعوبة {difficulty}.
-أعد JSON فقط بهذا الشكل:
-{{"questions":[{{"type":"mcq|true_false|short","question":"...","options":["..."],"answer":"...","explanation":"..."}}]}}
-للـ true_false اجعل options ["صح","خطأ"]. ولـ mcq اجعل 3 أو 4 خيارات. ولـ short اجعل options [].
-اجعل الإجابة قابلة للتصحيح، واشرح الإجابة باختصار. إذا كان في السؤال مصطلح إنجليزي مهم، اكتبه مع ترجمته العربية بين قوسين. اعتمد على النص فقط ووزع الأسئلة على محتوى الدرس قدر الإمكان.
-لا تستخدم عنوان الملف أو أرقام الصفحات كأسئلة، ولا تنشئ سؤالًا من سطر فارغ أو شرطات فقط.
-
+- التزم بالمحتوى فقط ولا تخترع.
+- ضع كل مصطلح إنجليزي في السطر الأول ثم معناه وشرحه بالعربية في السطر الثاني عند عرضه لاحقًا.
+- لا تخلط العربية داخل المصطلح الإنجليزي.
+- لا تنسخ الأسطر المشوشة أو أرقام الصفحات.
 النص:
 {source}"""
-        data = await self._json(prompt, temperature=0.35, timeout=20.0)
-        return data.get("questions", [])[:count]
+        result = await self._json(prompt, temperature=0.15)
+        if self.cache_path:
+            with sqlite3.connect(self.cache_path) as conn:
+                conn.execute("INSERT OR REPLACE INTO ai_analysis_cache(content_hash,model,result_json) VALUES(?,?,?)", (key, self.model, json.dumps(result, ensure_ascii=False)))
+        return result
+
+    async def generate_questions(self, text: str, count: int, difficulty: str, variant: str = "") -> list[dict]:
+        chunks = chunk_text(text, max_chars=9000)
+        if not chunks: raise ValueError("Lesson text is empty")
+        source = "\n\n--- جزء ---\n\n".join(chunks[:10])
+        prompt = f"""أنشئ {count} سؤالًا متنوعًا من المحتوى التالي بمستوى {difficulty}.
+هذا نموذج اختبار جديد رقم {variant}؛ لا تنسخ أسئلة نماذج سابقة إن كان بإمكانك صياغة نقاط مختلفة.
+أعد JSON فقط: {{"questions":[{{"type":"mcq|true_false|short","question":"...","options":["..."],"answer":"...","explanation":"..."}}]}}
+قواعد: mcq = 3 أو 4 خيارات، true_false = ["صح","خطأ"], short = []؛ اعتمد على النص فقط؛ وزع الأسئلة على أكبر قدر من المفاهيم؛ لا تستخدم أرقام الصفحات أو عنوان الملف كسؤال؛ لا تكرر السؤال نفسه؛ إذا كان المصطلح إنجليزيًا فضعه في سطر مستقل ثم العربي في السطر التالي.
+المحتوى:
+{source}"""
+        data = await self._json(prompt, temperature=0.55, timeout=30.0)
+        questions = data.get("questions", [])
+        return questions[:count] if isinstance(questions, list) else []
