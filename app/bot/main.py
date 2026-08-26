@@ -13,6 +13,8 @@ from app.bot.clock import ClockStopMiddleware, router as clock_router
 from app.bot.quiz_engine import router as quiz_router
 from app.bot.automation import router as automation_router
 from app.bot.bot_page_images import router as bot_page_images_router
+from app.bot.bot_library_isolation import router as bot_library_isolation_router
+from app.bot.ai_isolation import router as ai_isolation_router
 from app.bot.automation_lesson import router as automation_lesson_router
 from app.bot.library import router as library_router
 from app.bot.sections import router as sections_router
@@ -71,10 +73,14 @@ async def main() -> None:
     dp["automation_engine"] = runtime.automation
     dp.callback_query.outer_middleware(ClockStopMiddleware())
 
-    # Telegram is the interface. Keep the bot page-image router before the
-    # legacy automation router so pages: is handled by the durable PDF renderer.
+    # Isolation routers must be registered before their legacy presentation
+    # routers. They use dedicated callback prefixes/guards to keep AI and bot
+    # sections independent while the old modules remain available for the
+    # functions that are not being replaced yet.
     dp.include_router(clock_router)
     dp.include_router(quiz_router)
+    dp.include_router(ai_isolation_router)
+    dp.include_router(bot_library_isolation_router)
     dp.include_router(sections_router)
     dp.include_router(ai_quizzes_router)
     dp.include_router(ai_navigation_router)
