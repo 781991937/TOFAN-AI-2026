@@ -5,7 +5,6 @@ import logging
 
 from aiogram import F, Bot, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 
 from app.database import Database
@@ -46,26 +45,22 @@ def _keyboard(lesson_id: int, pages: list[dict], index: int) -> InlineKeyboardMa
     if nav:
         rows.append(nav)
 
+    # The lesson quiz exists only at the end of the lesson.
     if index == len(pages) - 1:
         rows.append([InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"bot_quiz:{lesson_id}")])
     rows.append([InlineKeyboardButton(text="⬅️ قائمة الدرس", callback_data=f"lesson:{lesson_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def _caption(lesson, item: dict, index: int, total: int) -> str:
-    summary = str(item.get("summary") or "").strip()
-    points = item.get("key_points") or []
-    lines = [
-        f"📖 <b>{html.escape(str(lesson['file_name']))}</b>",
-        f"📄 <b>الصفحة {index + 1} من {total}</b>",
-        "⚙️ <b>البوت والأتمتة — Python</b>",
-    ]
-    if summary:
-        lines += ["", "🧠 <b>ملخص الصفحة</b>", html.escape(summary[:500])]
-    if points:
-        lines += ["", "📌 <b>أهم النقاط</b>"]
-        lines += [f"• {html.escape(str(point))}" for point in points[:3]]
-    return "\n".join(lines)[:1000]
+def _caption(lesson, index: int, total: int) -> str:
+    # Deliberately no AI summary/analysis here. The bot section shows the
+    # original PDF page exactly as rendered; AI explanation belongs to AI section.
+    return (
+        f"🤖 <b>البوت والأتمتة — Python</b>\n"
+        f"📖 <b>{html.escape(str(lesson['file_name']))}</b>\n"
+        f"📄 <b>الصفحة {index + 1} من {total}</b>\n\n"
+        "🖼️ الصفحة معروضة من الملف الأصلي بدون إعادة تنسيق أو تلخيص."
+    )
 
 
 async def _show(callback: CallbackQuery, lesson, index: int, bot: Bot) -> None:
@@ -79,7 +74,6 @@ async def _show(callback: CallbackQuery, lesson, index: int, bot: Bot) -> None:
     try:
         image = await render_telegram_pdf_page(bot, str(lesson["file_id"] or ""), pdf_page)
         photo = BufferedInputFile(image, filename=f"lesson_{lesson['id']}_page_{index + 1}.jpg")
-        caption = _caption(lesson, item, index, len(pages))
         if callback.message:
             try:
                 await callback.message.delete()
@@ -88,14 +82,12 @@ async def _show(callback: CallbackQuery, lesson, index: int, bot: Bot) -> None:
             await bot.send_photo(
                 chat_id=callback.from_user.id,
                 photo=photo,
-                caption=caption,
+                caption=_caption(lesson, index, len(pages)),
                 reply_markup=_keyboard(int(lesson["id"]), pages, index),
             )
         await callback.answer()
-    except Exception as exc:
+    except Exception:
         logger.exception("Could not render bot lesson page")
-        # Do not bring back the old 'PDF missing on server' dependency.
-        # Explain the actual failure and keep navigation available.
         try:
             await callback.answer("⚠️ تعذر عرض صورة الصفحة الآن.", show_alert=True)
         except Exception:
