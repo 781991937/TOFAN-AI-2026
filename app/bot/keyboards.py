@@ -20,7 +20,7 @@ def ai_lessons_menu(lessons,key):
         t=str(l["file_name"] or f"الدرس {n}"); t=t.split(" - ",1)[1] if " - " in t else t; t=t[:22]+"..." if len(t)>25 else t; b.append(InlineKeyboardButton(text=f"📖 {n}: {t}",callback_data=f"ai_lesson:{int(l['id'])}:{_enc(key)}"))
     rows=_rows(b); rows.append([InlineKeyboardButton(text="⬅️ الملفات",callback_data=f"ai_fileback:{_enc(key)}")]); return InlineKeyboardMarkup(inline_keyboard=rows)
 def ai_lesson_menu(lid,key): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🧠 شرح ذكي",callback_data=f"ai_explain:{lid}"),InlineKeyboardButton(text="📝 اختبار الدرس",callback_data=f"ai_quiz:{lid}")],[InlineKeyboardButton(text="📖 صفحات الدرس",callback_data=f"ai_pages:{lid}"),InlineKeyboardButton(text="📥 تنزيل الملف",callback_data=f"download:{lid}")],[InlineKeyboardButton(text="⬅️ الملف السابق",callback_data=f"ai_prevfile:{lid}"),InlineKeyboardButton(text="الملف التالي ➡️",callback_data=f"ai_nextfile:{lid}")],[InlineKeyboardButton(text="⬅️ دروس الملف",callback_data=f"ai_fileback:{_enc(key)}")]])
-def automation_lesson_menu(lid): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📖 صفحات الدرس",callback_data=f"pages:{lid}"),InlineKeyboardButton(text="📥 تنزيل الملف",callback_data=f"download:{lid}")],[InlineKeyboardButton(text="⬅️ الملف السابق",callback_data=f"prevfile:{lid}"),InlineKeyboardButton(text="الملف التالي ➡️",callback_data=f"nextfile:{lid}")],[InlineKeyboardButton(text="🗑️ حذف الملف",callback_data=f"delete_lesson:{lid}"),InlineKeyboardButton(text="⬅️ المكتبة",callback_data="bot_library")]])
+def automation_lesson_menu(lid): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📖 صفحات الدرس",callback_data=f"pages:{lid}"),InlineKeyboardButton(text="📝 اختبار الدرس",callback_data=f"bot_quiz:{lid}")],[InlineKeyboardButton(text="📥 تنزيل الملف",callback_data=f"download:{lid}")],[InlineKeyboardButton(text="⬅️ الملف السابق",callback_data=f"prevfile:{lid}"),InlineKeyboardButton(text="الملف التالي ➡️",callback_data=f"nextfile:{lid}")],[InlineKeyboardButton(text="🗑️ حذف الملف",callback_data=f"delete_lesson:{lid}"),InlineKeyboardButton(text="⬅️ المكتبة",callback_data="bot_library")]])
 def lesson_menu(lid): return automation_lesson_menu(lid)
 def delete_lesson_confirm(lid): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🗑️ نعم، احذف الملف",callback_data=f"confirm_delete:{lid}"),InlineKeyboardButton(text="❌ إلغاء",callback_data=f"lesson:{lid}")]])
 def file_list_menu(lessons,cat):
@@ -37,7 +37,10 @@ def lessons_list_menu(lessons):
     cats={}
     for l in lessons: cats[str(l["category"] or "📂 مواد أخرى")]=cats.get(str(l["category"] or "📂 مواد أخرى"),0)+1
     return bot_categories_menu([{"category":k,"lesson_count":v} for k,v in cats.items()])
-def result_menu(lid,group=False): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔁 اختبار جديد",callback_data=f"ai_quiz:{lid}"),InlineKeyboardButton(text="⬅️ رجوع للدرس",callback_data=f"ai_lessonback:{lid}")]])
+def result_menu(lid,group=False,bot=False):
+    retry = f"bot_quiz:{lid}" if bot else f"ai_quiz:{lid}"
+    back = f"lesson:{lid}" if bot else f"ai_lessonback:{lid}"
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔁 اختبار جديد",callback_data=retry),InlineKeyboardButton(text="⬅️ رجوع للدرس",callback_data=back)]])
 def settings_menu(count,difficulty): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=f"عدد الأسئلة: {count}",callback_data="set_count"),InlineKeyboardButton(text=f"الصعوبة: {difficulty}",callback_data="set_difficulty")],[InlineKeyboardButton(text="⬅️ الرئيسية",callback_data="home")]])
 def count_menu(): return InlineKeyboardMarkup(inline_keyboard=_rows([InlineKeyboardButton(text=str(n),callback_data=f"count:{n}") for n in (5,10,15,20,30)]))
 def difficulty_menu(): return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🟢 سهل",callback_data="difficulty:easy"),InlineKeyboardButton(text="🟡 متوسط",callback_data="difficulty:medium")],[InlineKeyboardButton(text="🔴 صعب",callback_data="difficulty:hard")]])
