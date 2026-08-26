@@ -12,13 +12,15 @@ def test_core_runtime_imports():
 
 def test_bot_router_imports():
     modules = [
-        "app.bot.main",
         "app.bot.sections",
         "app.bot.ai_navigation",
         "app.bot.ai_pages",
         "app.bot.ai_quizzes",
+        "app.bot.ai_isolation",
         "app.bot.library",
+        "app.bot.bot_library_isolation",
         "app.bot.automation",
+        "app.bot.bot_page_images",
         "app.bot.automation_lesson",
         "app.bot.quiz_engine",
     ]
@@ -42,3 +44,10 @@ def test_quiz_timeout_is_15_seconds():
     from app.bot.quiz_engine import QUESTION_TIMEOUT
 
     assert QUESTION_TIMEOUT == 15
+
+
+def test_sections_are_isolated():
+    from app.bot.bot_library_isolation import _is_ai_category
+
+    assert _is_ai_category("🤖 مقدمة الذكاء الاصطناعي")
+    assert not _is_ai_category("💻 البرمجة")
