@@ -12,6 +12,7 @@ from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_applicati
 from app.bot.clock import ClockStopMiddleware, router as clock_router
 from app.bot.quiz_engine import router as quiz_router
 from app.bot.automation import router as automation_router
+from app.bot.bot_page_images import router as bot_page_images_router
 from app.bot.automation_lesson import router as automation_lesson_router
 from app.bot.library import router as library_router
 from app.bot.sections import router as sections_router
@@ -52,7 +53,7 @@ async def main() -> None:
     settings = Settings.from_env()
     settings.ensure_directories()
 
-    # Python is the application runtime.  Engines are composed here once;
+    # Python is the application runtime. Engines are composed here once;
     # Telegram routers are only the presentation/transport layer.
     runtime = PythonRuntime.build(settings)
 
@@ -62,8 +63,6 @@ async def main() -> None:
     )
     dp = Dispatcher(storage=MemoryStorage())
 
-    # Shared Python services are injected into the dispatcher.  AI and
-    # Automation remain separate engines even though they share the database.
     dp["db"] = runtime.db
     dp["extractor"] = runtime.extractor
     dp["ai_service"] = runtime.ai.ai_service
@@ -72,7 +71,8 @@ async def main() -> None:
     dp["automation_engine"] = runtime.automation
     dp.callback_query.outer_middleware(ClockStopMiddleware())
 
-    # Telegram interface layer only.
+    # Telegram is the interface. Keep the bot page-image router before the
+    # legacy automation router so pages: is handled by the durable PDF renderer.
     dp.include_router(clock_router)
     dp.include_router(quiz_router)
     dp.include_router(sections_router)
@@ -81,6 +81,7 @@ async def main() -> None:
     dp.include_router(ai_pages_router)
     dp.include_router(library_router)
     dp.include_router(automation_lesson_router)
+    dp.include_router(bot_page_images_router)
     dp.include_router(automation_router)
 
     external_url = os.getenv("TELEGRAM_WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL")
