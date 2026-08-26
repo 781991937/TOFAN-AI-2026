@@ -2,10 +2,31 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from app.database import Database
-from app.bot.sections import page_view, page_kb
 from app.services.file_extractor import page_parts
+from app.bot import sections as sections_module
+from app.bot import automation as automation_module
+from app.bot.keyboards import page_keyboard
+from app.bot.page_helpers import ai_page_text, bot_page_text
 
 router = Router(name="ai_pages")
+
+# The legacy sections/automation modules are already imported by main.py before
+# this router. Normalize their page helpers here so every page callback uses one
+# stable implementation.
+sections_module.page_keyboard = page_keyboard
+sections_module.page_kb = page_keyboard
+sections_module.page_view = ai_page_text
+
+
+def _patched_bot_page_text(lesson, index: int) -> str:
+    pages = automation_module._load_pages(lesson)
+    if not pages:
+        return "❌ لا توجد صفحات محفوظة لهذا الملف."
+    index = max(0, min(index, len(pages) - 1))
+    return bot_page_text(lesson, pages, index)
+
+
+automation_module._page_text = _patched_bot_page_text
 
 
 def _lesson_pages(lesson) -> list[tuple[int, str]]:
@@ -29,6 +50,6 @@ async def open_ai_pages(callback: CallbackQuery, db: Database):
         return
 
     await callback.message.edit_text(
-        page_view(lesson, pages, 0),
-        reply_markup=page_kb(lesson_id, pages, 0),
+        ai_page_text(lesson, pages, 0),
+        reply_markup=page_keyboard(lesson_id, pages, 0),
     )
