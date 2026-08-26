@@ -9,6 +9,8 @@ def _enc(value: str) -> str:
 
 def main_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧠 قسم الذكاء الاصطناعي", callback_data="ai_section")],
+        [InlineKeyboardButton(text="⚙️ قسم الأتمتة والبوت", callback_data="automation_section")],
         [InlineKeyboardButton(text="📚 المكتبة", callback_data="library"), InlineKeyboardButton(text="👤 ملفي", callback_data="profile")],
         [InlineKeyboardButton(text="⚙️ الإعدادات", callback_data="settings"), InlineKeyboardButton(text="❓ المساعدة", callback_data="help")],
     ])
