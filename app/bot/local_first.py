@@ -26,7 +26,11 @@ def _format_local_analysis(analysis: dict) -> str:
     summary = html.escape(analysis.get("summary") or "لا يوجد ملخص كافٍ.")
     terms = analysis.get("english_terms", [])[:12]
     term_text = "\n".join(f"• 🇬🇧 <b>{html.escape(str(term))}</b>" for term in terms) or "• لا توجد مصطلحات واضحة"
-    return f"📖 <b>شرح سريع</b>\n\n{summary}\n\n🇬🇧 <b>المصطلحات المهمة</b>\n{term_text}"
+    return (
+        "⚙️ <b>طريقة الشرح: نظام البوت المحلي</b>\n\n"
+        f"📖 <b>شرح سريع</b>\n{summary}\n\n"
+        f"🇬🇧 <b>المصطلحات المهمة</b>\n{term_text}"
+    )
 
 
 def _page_cache(lesson_text: str) -> list[dict]:
@@ -44,7 +48,6 @@ def _page_cache(lesson_text: str) -> list[dict]:
 
 
 def _page_keyboard(lesson_id: int, pages: list[dict], current_index: int) -> InlineKeyboardMarkup:
-    """Render real page-number buttons and keep navigation based on list index."""
     rows = []
     for start in range(0, len(pages), 5):
         row = []
@@ -56,11 +59,16 @@ def _page_keyboard(lesson_id: int, pages: list[dict], current_index: int) -> Inl
 
     nav = []
     if current_index > 0:
-        nav.append(InlineKeyboardButton(text="⬅️ السابقة", callback_data=f"page:{lesson_id}:{current_index - 1}"))
+        nav.append(InlineKeyboardButton(text="⬅️ الصفحة السابقة", callback_data=f"page:{lesson_id}:{current_index - 1}"))
     if current_index < len(pages) - 1:
-        nav.append(InlineKeyboardButton(text="➡️ التالية", callback_data=f"page:{lesson_id}:{current_index + 1}"))
+        nav.append(InlineKeyboardButton(text="الصفحة التالية ➡️", callback_data=f"page:{lesson_id}:{current_index + 1}"))
     if nav:
         rows.append(nav)
+    rows.append([
+        InlineKeyboardButton(text="⬅️ الملف السابق", callback_data=f"prevlesson:{lesson_id}"),
+        InlineKeyboardButton(text="الملف التالي ➡️", callback_data=f"nextlesson:{lesson_id}"),
+    ])
+    rows.append([InlineKeyboardButton(text="📥 تنزيل الملف", callback_data=f"download:{lesson_id}")])
     rows.append([InlineKeyboardButton(text="⬅️ قائمة الدرس", callback_data=f"lesson:{lesson_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -76,6 +84,8 @@ def _page_message(lesson, pages: list[dict], index: int) -> str:
     return (
         f"📖 <b>شرح الدرس — صفحة {page_number}</b>\n"
         f"📄 <b>صفحة {index + 1} من {len(pages)}</b>\n\n"
+        "⚙️ <b>طريقة الشرح: نظام البوت المحلي</b>\n"
+        "\n"
         f"🧠 <b>افهم الصفحة ببساطة</b>\n{summary}\n\n"
         f"📌 <b>أهم النقاط</b>\n{points_text}\n\n"
         f"💡 <b>مصطلحات مهمة:</b> {terms_text}"
@@ -99,8 +109,6 @@ async def _show_page(callback: CallbackQuery, lesson, index: int) -> None:
             reply_markup=_page_keyboard(int(lesson["id"]), pages, index),
         )
     except Exception as exc:
-        # Telegram can reject an edit when the content is identical; the page is
-        # still valid, so answer the callback instead of crashing the handler.
         if "message is not modified" in str(exc).lower():
             await callback.answer("هذه هي الصفحة الحالية.")
         else:
@@ -120,7 +128,7 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
     safe_name = Path(document.file_name or "lesson").name
     path = Path("data/uploads") / f"{owner_id}_{message.message_id}_{safe_name}"
     path.parent.mkdir(parents=True, exist_ok=True)
-    await message.answer("📥 استلمت الملف. استخراج النص وتقسيمه إلى دروس مستقلة وصفحات ذكية ⚡ …")
+    await message.answer("📥 استلمت الملف. ⚙️ البوت يستخرج النص ويرتبه، ثم يحفظ نسخة Telegram قابلة للتنزيل لاحقًا…")
 
     try:
         await bot.download(document, destination=path)
@@ -150,7 +158,14 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
             page_text = "\n".join(text for _, text in page_parts(lesson_text))
             analysis = local_analysis(page_text)
             cache = json.dumps(pages, ensure_ascii=False)
-            lesson_id = db.create_lesson(owner_id, lesson_name, suffix[1:], str(path), lesson_text)
+            lesson_id = db.create_lesson(
+                owner_id,
+                lesson_name,
+                suffix[1:],
+                str(path),
+                lesson_text,
+                file_id=document.file_id,
+            )
             db.update_lesson_analysis(
                 lesson_id,
                 analysis["summary"],
@@ -165,10 +180,11 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
         if len(saved) == 1:
             lesson_id, lesson_name, analysis, page_count = saved[0]
             await message.answer(
-                f"✅ <b>تم حفظ الدرس #{lesson_id}</b>\n📚 <b>{html.escape(lesson_name)}</b>\n"
+                f"✅ <b>تم حفظ الدرس #{lesson_id}</b>\n"
+                f"📚 <b>{html.escape(lesson_name)}</b>\n"
                 f"📄 <b>{page_count} صفحة</b> محفوظة للشرح صفحة بصفحة\n\n"
                 f"{_format_local_analysis(analysis)}\n\n"
-                "⚡ الشرح الأساسي يعمل محليًا بدون Gemini.",
+                "💾 <b>الملف محفوظ داخل Telegram ويمكن تنزيله من البوت حتى لو حذفته من هاتفك.</b>",
                 reply_markup=lesson_menu(lesson_id),
             )
             return
@@ -184,7 +200,7 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
             lines.append(f"   ↳ 📄 {page_count} صفحة")
             if summary:
                 lines.append(f"   ↳ {summary}")
-        lines.append("\n💡 كل درس محفوظ مستقلًا، والشرح الآن صفحة بصفحة مع أزرار انتقال مباشرة.")
+        lines.append("\n💾 <b>كل الدروس مرتبطة بنسخة Telegram الأصلية ويمكن تنزيل الملف من أي درس.</b>")
         await message.answer("\n".join(lines))
 
     except Exception as exc:
@@ -204,7 +220,7 @@ async def channel_document_local_first(message: Message, db: Database, bot, extr
 
 @router.callback_query(F.data.startswith("pages:"))
 async def pages_button(callback: CallbackQuery, db: Database) -> None:
-    lesson = db.get_lesson(int(callback.data.split(":")[1]))
+    lesson = db.get_lesson(int(callback.data.split(":")[1]), callback.from_user.id)
     if not lesson:
         await callback.answer("❌ الدرس غير موجود.", show_alert=True)
         return
@@ -215,7 +231,7 @@ async def pages_button(callback: CallbackQuery, db: Database) -> None:
 @router.callback_query(F.data.startswith("page:"))
 async def page_button(callback: CallbackQuery, db: Database) -> None:
     _, lesson_id, index = callback.data.split(":")
-    lesson = db.get_lesson(int(lesson_id))
+    lesson = db.get_lesson(int(lesson_id), callback.from_user.id)
     if not lesson:
         await callback.answer("❌ الدرس غير موجود.", show_alert=True)
         return
@@ -223,13 +239,61 @@ async def page_button(callback: CallbackQuery, db: Database) -> None:
     await _show_page(callback, lesson, int(index))
 
 
+async def _move_lesson(callback: CallbackQuery, db: Database, lesson_id: int, direction: int) -> None:
+    lessons = db.get_lessons(callback.from_user.id, 1000)
+    ids = [int(x["id"]) for x in lessons]
+    if lesson_id not in ids:
+        await callback.answer("❌ الملف غير موجود.", show_alert=True)
+        return
+    pos = ids.index(lesson_id) + direction
+    if pos < 0 or pos >= len(lessons):
+        await callback.answer("📚 لا يوجد ملف آخر في هذا الاتجاه.", show_alert=True)
+        return
+    target = lessons[pos]
+    await callback.answer()
+    await callback.message.edit_text(
+        f"📘 <b>{html.escape(str(target['file_name']))}</b>\n\n"
+        "⚙️ <b>قسم الأتمتة والبوت</b>\n"
+        "اختر ما تريد من الملف:",
+        reply_markup=lesson_menu(int(target["id"])),
+    )
+
+
+@router.callback_query(F.data.startswith("prevlesson:"))
+async def previous_lesson(callback: CallbackQuery, db: Database) -> None:
+    await _move_lesson(callback, db, int(callback.data.split(":")[1]), -1)
+
+
+@router.callback_query(F.data.startswith("nextlesson:"))
+async def next_lesson(callback: CallbackQuery, db: Database) -> None:
+    await _move_lesson(callback, db, int(callback.data.split(":")[1]), 1)
+
+
+@router.callback_query(F.data.startswith("download:"))
+async def download_lesson(callback: CallbackQuery, db: Database, bot) -> None:
+    lesson = db.get_lesson(int(callback.data.split(":")[1]), callback.from_user.id)
+    if not lesson:
+        await callback.answer("❌ الملف غير موجود.", show_alert=True)
+        return
+    file_id = str(lesson.get("file_id") or "")
+    if not file_id:
+        await callback.answer("⚠️ هذا الملف قديم ولم تُحفظ نسخة Telegram له. أعد إرسال الملف مرة واحدة.", show_alert=True)
+        return
+    await callback.answer("📥 جاري إرسال الملف…")
+    try:
+        await bot.send_document(callback.from_user.id, file_id, caption=f"📚 {html.escape(str(lesson['file_name']))}")
+    except Exception:
+        logger.exception("Telegram file resend failed")
+        await callback.answer("⚠️ تعذر تنزيل الملف الآن.", show_alert=True)
+
+
 @router.callback_query(F.data.startswith("smart_explain:"))
 async def smart_explain(callback: CallbackQuery, db: Database, ai_service: AIService) -> None:
-    lesson = db.get_lesson(int(callback.data.split(":")[1]))
+    lesson = db.get_lesson(int(callback.data.split(":")[1]), callback.from_user.id)
     if not lesson:
         await callback.answer("❌ الدرس غير موجود.", show_alert=True)
         return
-    await callback.answer("🧠 جاري استخدام Gemini…")
+    await callback.answer("🧠 جاري استخدام الذكاء الاصطناعي…")
     try:
         analysis = await ai_service.analyze_lesson(lesson["extracted_text"])
         summary = analysis.get("summary", "لم يتم إنشاء شرح.")
@@ -247,34 +311,39 @@ async def smart_explain(callback: CallbackQuery, db: Database, ai_service: AISer
         concepts_text = "\n".join(f"• {html.escape(str(item))}" for item in concepts) or "• لا توجد مفاهيم إضافية."
         await callback.message.edit_text(
             f"🧠 <b>شرح الدرس: {_lesson_title(lesson['file_name'])}</b>\n\n"
+            "🧠 <b>طريقة الشرح: الذكاء الاصطناعي (Gemini)</b>\n\n"
             f"{html.escape(summary[:5000])}\n\n"
             f"📌 <b>أهم المفاهيم</b>\n{concepts_text}\n\n"
-            "📄 ولشرح الدرس صفحة بصفحة اضغط زر «شرح صفحة بصفحة».",
+            "⚙️ استخراج الصفحات والتنقل وحفظ الملفات تعمل بنظام البوت، وليست جزءًا من الذكاء الاصطناعي.",
             reply_markup=lesson_menu(lesson["id"]),
         )
     except Exception:
         logger.exception("Smart explanation failed")
         await callback.message.edit_text(
-            f"⚠️ <b>تعذر استخدام Gemini مؤقتًا.</b>\n\n"
-            "لم يتعطل الدرس: استخدم الشرح المحلي أو حاول مرة أخرى لاحقًا.",
+            "⚠️ <b>تعذر استخدام الذكاء الاصطناعي مؤقتًا.</b>\n\n"
+            "لم يتعطل الملف: يمكنك استخدام شرح الصفحات المحلي أو المحاولة مرة أخرى.",
             reply_markup=lesson_menu(lesson["id"]),
         )
 
 
 @router.callback_query(F.data.startswith("smart_quiz:"))
 async def smart_quiz(callback: CallbackQuery, state: FSMContext, db: Database, quiz_generator: QuizGenerator) -> None:
-    lesson = db.get_lesson(int(callback.data.split(":")[1]))
+    lesson = db.get_lesson(int(callback.data.split(":")[1]), callback.from_user.id)
     if not lesson:
         await callback.answer("❌ الدرس غير موجود.", show_alert=True)
         return
-    await callback.answer("🧠 جاري إنشاء اختبار ذكي…")
+    await callback.answer("🧠 جاري إنشاء اختبار بالذكاء الاصطناعي…")
     user = db.get_user(callback.from_user.id)
     try:
         questions = await quiz_generator.create_smart(lesson["extracted_text"], user["question_count"], user["difficulty"])
-        quiz_id = db.create_quiz(lesson["id"], quiz_generator.serialize(questions))
+        quiz_id = db.create_quiz(lesson["id"], quiz_generator.serialize(questions), len(questions), user["difficulty"])
         await state.set_state(QuizState.active)
         await state.update_data(quiz_id=quiz_id, lesson_id=lesson["id"], questions=questions, answers=[], group_mode=False)
-        await callback.message.edit_text(f"🧠 <b>تم إنشاء الاختبار الذكي #{quiz_id}</b>\n\nنبدأ الآن!", reply_markup=lesson_menu(lesson["id"]))
+        await callback.message.edit_text(
+            f"🧠 <b>تم إنشاء الاختبار الذكي #{quiz_id}</b>\n\n"
+            "🧠 <b>طريقة الاختبار: الذكاء الاصطناعي</b>\n\nنبدأ الآن!",
+            reply_markup=lesson_menu(lesson["id"]),
+        )
         await send_question(callback.message, state, quiz_id, questions, 0, [], db)
     except Exception:
         logger.exception("Smart quiz failed")
