@@ -100,6 +100,31 @@ class AIService:
                 )
         return result
 
+    async def generate_practical_idea(self, text: str) -> dict:
+        """Turn lesson content into one realistic learning/application idea."""
+        chunks = chunk_text(text, max_chars=9000)
+        if not chunks:
+            raise ValueError("Lesson text is empty")
+        source = "\n\n--- جزء ---\n\n".join(chunks[:8])
+        prompt = f"""استخرج من الدرس التالي فكرة عملية واحدة ذكية تساعد الطالب على تحويل ما تعلمه إلى تطبيق حقيقي.
+أعد JSON فقط بهذا الشكل:
+{{
+  "idea": "اسم الفكرة العملية",
+  "why": "لماذا ترتبط الفكرة مباشرة بالدرس",
+  "steps": ["خطوة 1", "خطوة 2", "خطوة 3"],
+  "example": "مثال واقعي مختصر"
+}}
+
+القواعد:
+- اعتمد على محتوى الدرس فقط.
+- لا تخترع موضوعًا لا علاقة له بالدرس.
+- اجعل الفكرة قابلة للتنفيذ لطالب جامعي وبأدوات بسيطة قدر الإمكان.
+- لا تكرر شرح الدرس؛ حوّله إلى تطبيق أو تجربة أو تمرين عملي.
+
+نص الدرس:
+{source}"""
+        return await self._json(prompt, temperature=0.35, timeout=20.0)
+
     async def generate_questions(self, text: str, count: int, difficulty: str) -> list[dict]:
         chunks = chunk_text(text, max_chars=9000)
         source = "\n\n--- جزء ---\n\n".join(chunks[:10])
