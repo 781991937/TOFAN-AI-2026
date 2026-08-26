@@ -67,7 +67,9 @@ async def finish_quiz(
                     lines.append(f"   💡 {explanation}")
 
     from app.bot.keyboards import result_menu
-    await message.answer("\n".join(lines)[:3900], reply_markup=result_menu(lesson_id, group=group_mode))
+    data = await state.get_data()
+    bot_mode = data.get("engine") == "local"
+    await message.answer("\n".join(lines)[:3900], reply_markup=result_menu(lesson_id, group=group_mode, bot=bot_mode))
     await state.clear()
 
 
