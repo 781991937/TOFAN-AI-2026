@@ -10,105 +10,61 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.webhook.aiohttp_server import SimpleRequestHandler, setup_application
 
 from app.bot.clock import ClockStopMiddleware, router as clock_router
-from app.bot.handlers import router
-from app.bot.enhancements import router as enhancements_router
-from app.bot.local_first import router as local_first_router
-from app.bot.navigation import router as navigation_router
-from app.bot.page_images import router as page_images_router
+from app.bot.quiz_engine import router as quiz_router
+from app.bot.automation import router as automation_router
+from app.bot.automation_lesson import router as automation_lesson_router
 from app.bot.library import router as library_router
 from app.bot.sections import router as sections_router
+from app.bot.ai_quizzes import router as ai_quizzes_router
+from app.bot.ai_navigation import router as ai_navigation_router
+from app.bot.ai_pages import router as ai_pages_router
 from app.config_gemini import Settings
 from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(name)s | %(message)s")
 
-
 async def health(request: web.Request) -> web.Response:
-    return web.json_response({"status": "ok", "service": "TOFAN AI 2026"})
-
+    return web.json_response({"status":"ok","service":"TOFAN AI 2026"})
 
 async def run_web_server(dp: Dispatcher, bot: Bot) -> web.AppRunner:
-    app = web.Application()
-    app.router.add_get("/", health)
-    app.router.add_get("/health", health)
-    external_url = (os.getenv("TELEGRAM_WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").rstrip("/")
-    webhook_secret = os.getenv("TELEGRAM_WEBHOOK_SECRET") or None
-    if not external_url:
-        raise RuntimeError("TELEGRAM_WEBHOOK_URL or RENDER_EXTERNAL_URL is required in production.")
-    webhook_path = "/telegram/webhook"
-    webhook_url = f"{external_url}{webhook_path}"
-    SimpleRequestHandler(
-        dispatcher=dp,
-        bot=bot,
-        handle_in_background=True,
-        secret_token=webhook_secret,
-    ).register(app, path=webhook_path)
-    await bot.set_webhook(
-        url=webhook_url,
-        secret_token=webhook_secret,
-        drop_pending_updates=True,
-        allowed_updates=dp.resolve_used_update_types(),
-    )
-    logging.info("Telegram webhook configured: %s", webhook_url)
-    setup_application(app, dp, bot=bot)
-    port = int(os.getenv("PORT", "10000"))
-    runner = web.AppRunner(app)
-    await runner.setup()
-    await web.TCPSite(runner, "0.0.0.0", port).start()
-    logging.info("Health/webhook server listening on port %s", port)
-    return runner
-
+    app=web.Application(); app.router.add_get("/",health); app.router.add_get("/health",health)
+    external_url=(os.getenv("TELEGRAM_WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL") or "").rstrip("/")
+    secret=os.getenv("TELEGRAM_WEBHOOK_SECRET") or None
+    if not external_url: raise RuntimeError("TELEGRAM_WEBHOOK_URL or RENDER_EXTERNAL_URL is required in production.")
+    path="/telegram/webhook"; url=f"{external_url}{path}"
+    SimpleRequestHandler(dispatcher=dp,bot=bot,handle_in_background=True,secret_token=secret).register(app,path=path)
+    await bot.set_webhook(url=url,secret_token=secret,drop_pending_updates=True,allowed_updates=dp.resolve_used_update_types())
+    setup_application(app,dp,bot=bot)
+    runner=web.AppRunner(app); await runner.setup(); await web.TCPSite(runner,"0.0.0.0",int(os.getenv("PORT","10000"))).start(); return runner
 
 async def main() -> None:
-    settings = Settings.from_env()
-    settings.ensure_directories()
-    database_target = settings.database_url or str(settings.database_path)
-    db = Database(database_target)
-    extractor = FileExtractor()
-    ai_service = AIService(settings.gemini_api_key, settings.gemini_model, settings.database_path)
-    quiz_generator = QuizGenerator(ai_service, settings.database_path)
-    bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    dp = Dispatcher(storage=MemoryStorage())
-
-    dp["db"] = db
-    dp["extractor"] = extractor
-    dp["ai_service"] = ai_service
-    dp["quiz_generator"] = quiz_generator
-
-    # Stop the live home clock whenever a callback navigates away from the main menu.
+    settings=Settings.from_env(); settings.ensure_directories()
+    db=Database(settings.database_url or str(settings.database_path))
+    extractor=FileExtractor(); ai_service=AIService(settings.gemini_api_key,settings.gemini_model,settings.database_path); quiz_generator=QuizGenerator(ai_service,settings.database_path)
+    bot=Bot(token=settings.telegram_bot_token,default=DefaultBotProperties(parse_mode=ParseMode.HTML)); dp=Dispatcher(storage=MemoryStorage())
+    dp["db"]=db; dp["extractor"]=extractor; dp["ai_service"]=ai_service; dp["quiz_generator"]=quiz_generator
     dp.callback_query.outer_middleware(ClockStopMiddleware())
 
-    # The clock router owns /start and the home button so the live clock is the actual main menu.
+    # One router per responsibility. Legacy duplicated routers are intentionally not loaded.
     dp.include_router(clock_router)
-
-    # Order matters: navigation handles the new lesson/file flow before legacy handlers.
-    dp.include_router(page_images_router)
+    dp.include_router(quiz_router)
     dp.include_router(sections_router)
-    dp.include_router(navigation_router)
-    dp.include_router(local_first_router)
-    dp.include_router(enhancements_router)
-    dp.include_router(router)
+    dp.include_router(ai_quizzes_router)
+    dp.include_router(ai_navigation_router)
+    dp.include_router(ai_pages_router)
     dp.include_router(library_router)
+    dp.include_router(automation_lesson_router)
+    dp.include_router(automation_router)
 
-    external_url = os.getenv("TELEGRAM_WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL")
-    storage_mode = "PostgreSQL" if settings.database_url else "SQLite-local"
-    logging.info("TOFAN AI 2026 started | storage=%s | Gemini=explicit-only", storage_mode)
-
+    external_url=os.getenv("TELEGRAM_WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL")
     if bool(os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_EXTERNAL_URL") or external_url):
-        web_runner = await run_web_server(dp, bot)
-        try:
-            await asyncio.Event().wait()
-        finally:
-            await web_runner.cleanup()
-            await bot.session.close()
+        runner=await run_web_server(dp,bot)
+        try: await asyncio.Event().wait()
+        finally: await runner.cleanup(); await bot.session.close()
     else:
         await bot.delete_webhook(drop_pending_updates=True)
-        try:
-            await dp.start_polling(bot)
-        finally:
-            await bot.session.close()
+        try: await dp.start_polling(bot)
+        finally: await bot.session.close()
 
-
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == "__main__": asyncio.run(main())
