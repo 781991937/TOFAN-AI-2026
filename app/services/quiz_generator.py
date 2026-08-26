@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import random
+import re
 import sqlite3
 from pathlib import Path
 
@@ -30,17 +31,46 @@ class QuizGenerator:
         return hashlib.sha256(raw).hexdigest()
 
     @staticmethod
+    def _smart_file_count(text: str, requested: int) -> int:
+        """Choose a sensible question count from the amount of usable lesson content.
+
+        File quizzes are capped at 20. Very short files get fewer questions instead
+        of padding the quiz with repeated or invented questions. A section quiz
+        normally requests 50 and is deliberately left untouched here.
+        """
+        requested = max(1, min(int(requested or 1), 50))
+        if requested > 20:
+            return requested
+
+        clean = re.sub(r"\s+", " ", text or "").strip()
+        chars = len(clean)
+        words = len(clean.split())
+
+        # These are intentionally conservative. They estimate how much distinct
+        # material is available; the generator may still return fewer questions.
+        if words < 120 or chars < 700:
+            content_limit = 5
+        elif words < 250 or chars < 1500:
+            content_limit = 8
+        elif words < 450 or chars < 2800:
+            content_limit = 12
+        elif words < 750 or chars < 5000:
+            content_limit = 15
+        else:
+            content_limit = 20
+
+        return min(requested, content_limit)
+
+    @staticmethod
     def _fresh_variant(questions: list[dict]) -> list[dict]:
         """Create a genuinely different presentation without changing correctness."""
         result = []
         for q in questions:
             item = dict(q)
             options = list(item.get("options") or [])
-            answer = str(item.get("answer", ""))
             if len(options) > 1:
                 random.shuffle(options)
                 item["options"] = options
-                # answer stays as the option text, so correctness remains valid.
             result.append(item)
         random.shuffle(result)
         return result
@@ -55,13 +85,16 @@ class QuizGenerator:
     ) -> list[dict]:
         if not text.strip():
             raise ValueError("Lesson text is empty")
-        count = max(1, min(count, 50))
+
+        count = self._smart_file_count(text, count)
         mode = "ai" if use_ai else "local"
         key = self._key(text, count, difficulty, mode)
 
         if self.cache_path and not fresh:
             with sqlite3.connect(self.cache_path) as conn:
-                row = conn.execute("SELECT questions_json FROM quiz_cache WHERE cache_key=?", (key,)).fetchone()
+                row = conn.execute(
+                    "SELECT questions_json FROM quiz_cache WHERE cache_key=?", (key,)
+                ).fetchone()
             if row:
                 return json.loads(row[0])
 
@@ -89,7 +122,9 @@ class QuizGenerator:
             return await self.create(text, count, difficulty, use_ai=True, fresh=True)
         except Exception as exc:
             logger.warning("Smart quiz Gemini failed; using local fallback: %s", exc)
-            questions = generate_local_questions(text, min(count, 50), difficulty)
+            questions = generate_local_questions(
+                text, self._smart_file_count(text, count), difficulty
+            )
             if not questions:
                 raise
             return self._fresh_variant(questions)
