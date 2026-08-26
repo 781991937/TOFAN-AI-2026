@@ -3,8 +3,15 @@ set -euo pipefail
 
 export DEBIAN_FRONTEND=noninteractive
 
+# Keep Render's runtime aligned with the repository's pinned Python version.
+python - <<'PY'
+import sys
+assert sys.version_info[:2] == (3, 13), f"Expected Python 3.13, got {sys.version}"
+print("Python runtime:", sys.version)
+PY
+
 # pdftotext is a native Poppler binding, so Render needs its Linux build
-# dependencies before pip installs the Python package.
+a# dependencies before pip installs the Python package.
 apt-get update
 apt-get install -y --no-install-recommends \
   build-essential \
@@ -27,6 +34,6 @@ print(f"pdftotext OK: {pdftotext.__file__}")
 print(f"pypdf OK: {pypdf.__version__}")
 PY
 
-# Catch syntax/import problems before Render starts the service.
+# Catch syntax and application import/test problems before Render starts the service.
 python -m compileall -q app
-python -m pytest -q tests/test_runtime_smoke.py
+python -m pytest -q
