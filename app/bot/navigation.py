@@ -45,15 +45,14 @@ def _lesson_text(lesson, all_lessons: list) -> str:
     if " - " in title:
         title = title.split(" - ", 1)[1]
     category = str(lesson["category"] or "📂 مواد أخرى")
-    summary = str(lesson["summary"] or "لم يتم حفظ شرح محلي لهذا الدرس بعد.").strip()
 
     return (
         f"📖 <b>{html.escape(title)}</b>\n"
         f"🔢 <b>الدرس {number} من {total}</b>\n"
         f"📚 <b>القسم:</b> {html.escape(category)}\n\n"
-        "⚙️ <b>طريقة العرض: نظام البوت</b>\n\n"
-        "📘 <b>شرح مختصر لاستيعاب الدرس</b>\n"
-        f"{html.escape(summary[:2800])}"
+        "⚙️ <b>طريقة العرض: نظام البوت والأتمتة</b>\n\n"
+        "📄 <b>المحتوى الأصلي محفوظ كما استلمه البوت.</b>\n"
+        "يمكنك فتح الصفحات والتنقل بينها أو تنزيل الملف من أزرار الدرس."
     )[:3900]
 
 
