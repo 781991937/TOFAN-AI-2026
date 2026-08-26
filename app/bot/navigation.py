@@ -4,7 +4,7 @@ import html
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
-from app.bot.keyboards import lesson_list_menu, lesson_menu
+from app.bot.keyboards import lesson_list_menu, automation_lesson_menu
 from app.database import Database
 
 router = Router(name="navigation")
@@ -51,10 +51,9 @@ def _lesson_text(lesson, all_lessons: list) -> str:
         f"📖 <b>{html.escape(title)}</b>\n"
         f"🔢 <b>الدرس {number} من {total}</b>\n"
         f"📚 <b>القسم:</b> {html.escape(category)}\n\n"
-        "⚙️ <b>طريقة الشرح: نظام البوت</b>\n\n"
+        "⚙️ <b>طريقة العرض: نظام البوت</b>\n\n"
         "📘 <b>شرح مختصر لاستيعاب الدرس</b>\n"
-        f"{html.escape(summary[:2800])}\n\n"
-        "🧠 عند اختيار «شرح ذكي» سيستخدم الذكاء الاصطناعي لتحليل الدرس بعمق."
+        f"{html.escape(summary[:2800])}"
     )[:3900]
 
 
@@ -113,5 +112,5 @@ async def open_lesson(callback: CallbackQuery, db: Database) -> None:
     lessons = db.get_lessons(callback.from_user.id, 1000)
     await callback.message.edit_text(
         _lesson_text(lesson, lessons),
-        reply_markup=lesson_menu(lesson_id),
+        reply_markup=automation_lesson_menu(lesson_id),
     )
