@@ -13,6 +13,7 @@ from app.bot.handlers import router
 from app.bot.enhancements import router as enhancements_router
 from app.bot.local_first import router as local_first_router
 from app.bot.page_images import router as page_images_router
+from app.bot.library import router as library_router
 from app.config_gemini import Settings
 from app.database import Database
 from app.services import AIService, FileExtractor, QuizGenerator
@@ -61,6 +62,7 @@ async def main() -> None:
     dp.include_router(local_first_router)
     dp.include_router(enhancements_router)
     dp.include_router(router)
+    dp.include_router(library_router)
     external_url = os.getenv("TELEGRAM_WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL")
     storage_mode = "PostgreSQL" if settings.database_url else "SQLite-local"
     logging.info("TOFAN AI 2026 started | storage=%s | Gemini=explicit-only", storage_mode)
