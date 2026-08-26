@@ -61,8 +61,10 @@ def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🧠 شرح ذكي", callback_data=f"smart_explain:{lesson_id}")],
         [InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"filequiz:{lesson_id}")],
         [InlineKeyboardButton(text="📖 صفحات الدرس", callback_data=f"pages:{lesson_id}")],
+        [InlineKeyboardButton(text="📥 تنزيل الملف", callback_data=f"download:{lesson_id}")],
         [InlineKeyboardButton(text="⬅️ الدرس السابق", callback_data=f"prevlesson:{lesson_id}"), InlineKeyboardButton(text="الدرس التالي ➡️", callback_data=f"nextlesson:{lesson_id}")],
         [InlineKeyboardButton(text="⬅️ دروس الملف", callback_data=f"fileback:{lesson_id}")],
+        [InlineKeyboardButton(text="🗑️ حذف الملف", callback_data=f"delete_lesson:{lesson_id}")],
     ])
 
 
