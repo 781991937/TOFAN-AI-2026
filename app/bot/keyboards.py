@@ -29,10 +29,7 @@ def ai_categories_menu(categories: list, action: str) -> InlineKeyboardMarkup:
     for row in categories:
         category = str(row["category"])
         count = int(row["lesson_count"])
-        rows.append([InlineKeyboardButton(
-            text=f"{category}  ({count} درس)",
-            callback_data=f"ai_category:{action}:{_enc(category)}",
-        )])
+        rows.append([InlineKeyboardButton(text=f"{category}  ({count} درس)", callback_data=f"ai_category:{action}:{_enc(category)}")])
     rows.append([InlineKeyboardButton(text="⬅️ قسم الذكاء", callback_data="ai_section")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -40,10 +37,7 @@ def ai_categories_menu(categories: list, action: str) -> InlineKeyboardMarkup:
 def ai_files_menu(files: list, action: str) -> InlineKeyboardMarkup:
     rows = []
     for key, name, count in files:
-        rows.append([InlineKeyboardButton(
-            text=f"📘 {name}  ({count} درس)",
-            callback_data=f"ai_file:{action}:{_enc(key)}",
-        )])
+        rows.append([InlineKeyboardButton(text=f"📘 {name}  ({count} درس)", callback_data=f"ai_file:{action}:{_enc(key)}")])
     rows.append([InlineKeyboardButton(text="⬅️ المواد", callback_data=f"ai_pick:{action}")])
     rows.append([InlineKeyboardButton(text="🏠 الرئيسية", callback_data="home")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -57,10 +51,7 @@ def ai_lessons_menu(lessons: list, action: str) -> InlineKeyboardMarkup:
             title = title.split(" - ", 1)[1]
         if len(title) > 38:
             title = title[:35] + "..."
-        rows.append([InlineKeyboardButton(
-            text=f"📖 الدرس {number}: {title}",
-            callback_data=f"ai_lesson:{action}:{int(lesson['id'])}",
-        )])
+        rows.append([InlineKeyboardButton(text=f"📖 الدرس {number}: {title}", callback_data=f"ai_lesson:{action}:{int(lesson['id'])}")])
     rows.append([InlineKeyboardButton(text="⬅️ المواد", callback_data=f"ai_pick:{action}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -128,11 +119,7 @@ def file_list_menu(lessons: list, category: str) -> InlineKeyboardMarkup:
             name = name.split(" - ", 1)[0]
         if len(name) > 40:
             name = name[:37] + "..."
-        rows.append([InlineKeyboardButton(
-            text=f"📘 {name}  ({item['count']} درس)",
-            callback_data=f"file:{_enc(key)}",
-        )])
-    rows.append([InlineKeyboardButton(text="🎓 اختبار القسم — 50 سؤال", callback_data=f"categoryquiz:{_enc(category)}")])
+        rows.append([InlineKeyboardButton(text=f"📘 {name}  ({item['count']} درس)", callback_data=f"file:{_enc(key)}")])
     rows.append([InlineKeyboardButton(text="⬅️ القسم", callback_data=f"category:{_enc(category)}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
