@@ -73,11 +73,12 @@ def ai_lesson_menu(lid, key):
 
 
 def automation_lesson_menu(lid):
-    # اختبار الدرس يظهر في نهاية صفحات الدرس فقط، حتى لا تتكرر وظيفته في أكثر من مكان.
+    # قسم البوت: الأتمتة والتنظيم محليًا، واختبار الدرس متاح في نهاية قائمة الدرس.
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📖 صفحات الدرس", callback_data=f"pages:{lid}"), InlineKeyboardButton(text="📥 تنزيل الملف", callback_data=f"download:{lid}")],
         [InlineKeyboardButton(text="⬅️ الملف السابق", callback_data=f"prevfile:{lid}"), InlineKeyboardButton(text="الملف التالي ➡️", callback_data=f"nextfile:{lid}")],
         [InlineKeyboardButton(text="🗑️ حذف الملف", callback_data=f"delete_lesson:{lid}"), InlineKeyboardButton(text="⬅️ المكتبة", callback_data="bot_library")],
+        [InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"bot_quiz:{lid}")],
     ])
 
 
