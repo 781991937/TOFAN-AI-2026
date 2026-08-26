@@ -22,6 +22,8 @@ def lesson_menu(lesson_id: int) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="📖 شرح صفحة بصفحة", callback_data=f"pages:{lesson_id}")],
         [InlineKeyboardButton(text="🧠 شرح ذكي", callback_data=f"smart_explain:{lesson_id}")],
         [InlineKeyboardButton(text="🧠 اختبار ذكي", callback_data=f"smart_quiz:{lesson_id}")],
+        [InlineKeyboardButton(text="📥 تنزيل الملف", callback_data=f"download:{lesson_id}")],
+        [InlineKeyboardButton(text="⬅️ الملف السابق", callback_data=f"prevlesson:{lesson_id}"), InlineKeyboardButton(text="الملف التالي ➡️", callback_data=f"nextlesson:{lesson_id}")],
         [InlineKeyboardButton(text="🗑️ حذف الملف", callback_data=f"delete_lesson:{lesson_id}")],
         [InlineKeyboardButton(text="⬅️ رجوع للمكتبة", callback_data="library")],
         [InlineKeyboardButton(text="🏠 الرئيسية", callback_data="home")],
@@ -94,6 +96,7 @@ def result_menu(lesson_id: int, group: bool = False) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text="🔁 اختبار جديد", callback_data=f"filequiz:{lesson_id}")],
         [InlineKeyboardButton(text="🧠 اختبار ذكي", callback_data=f"smart_quiz:{lesson_id}")],
         [InlineKeyboardButton(text="📖 شرح صفحة بصفحة", callback_data=f"pages:{lesson_id}")],
+        [InlineKeyboardButton(text="📥 تنزيل الملف", callback_data=f"download:{lesson_id}")],
         [InlineKeyboardButton(text="⬅️ رجوع للدرس", callback_data=f"lesson:{lesson_id}")],
     ]
     if group:
