@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import html
 import logging
 
@@ -15,9 +16,18 @@ logger = logging.getLogger(__name__)
 router = Router(name="library")
 
 
-def _decode(value: str) -> str:
-    value += "=" * (-len(value) % 4)
-    return base64.urlsafe_b64decode(value.encode()).decode("utf-8")
+def _decode(value: str, db: Database, user_id: int) -> str:
+    """Resolve the short category token; keep legacy base64 support for old buttons."""
+    categories = db.get_categories(user_id)
+    for row in categories:
+        category = str(row["category"])
+        if hashlib.sha256(category.encode("utf-8")).hexdigest()[:12] == value:
+            return category
+    try:
+        padded = value + "=" * (-len(value) % 4)
+        return base64.urlsafe_b64decode(padded.encode()).decode("utf-8")
+    except Exception:
+        return "📂 مواد أخرى"
 
 
 def classify_lesson(lesson) -> str:
@@ -59,7 +69,7 @@ async def library_home(callback: CallbackQuery, db: Database) -> None:
 
 @router.callback_query(F.data.startswith("category:"))
 async def open_category(callback: CallbackQuery, db: Database) -> None:
-    category = _decode(callback.data.split(":", 1)[1])
+    category = _decode(callback.data.split(":", 1)[1], db, callback.from_user.id)
     lessons = db.get_lessons_by_category(callback.from_user.id, category)
     await callback.answer()
     if not lessons:
@@ -75,19 +85,34 @@ async def open_category(callback: CallbackQuery, db: Database) -> None:
 async def file_quiz(callback: CallbackQuery, state: FSMContext, db: Database, quiz_generator: QuizGenerator) -> None:
     lesson_id = int(callback.data.split(":", 1)[1])
     lesson = db.get_lesson(lesson_id, callback.from_user.id)
-    await callback.answer("🧠 تجهيز 20 سؤالًا...")
     if not lesson:
-        await callback.message.answer("❌ الملف غير موجود.")
+        await callback.answer("❌ الملف غير موجود.", show_alert=True)
         return
+    await callback.answer("🧠 أحلل محتوى الملف وأجهز الاختبار...")
     try:
-        questions = (await quiz_generator.create(lesson["extracted_text"], 20, "medium", fresh=True))[:20]
-        if len(questions) < 20:
-            await callback.message.answer(f"⚠️ محتوى الملف لا يكفي لصناعة 20 سؤالًا مختلفًا. المتاح: {len(questions)}.")
+        text = str(lesson["extracted_text"] or "").strip()
+        if not text:
+            await callback.message.answer("⚠️ الملف لا يحتوي نصًا كافيًا لصناعة اختبار.")
             return
-        quiz_id = db.create_quiz(lesson_id, quiz_generator.serialize(questions), 20, "medium")
+
+        # المطلوب: الاختبار يتكيف مع حجم المحتوى، ولا يكرر الأسئلة للوصول إلى رقم ثابت.
+        estimated = max(5, min(20, len(text) // 350))
+        if len(text) < 1200:
+            estimated = max(3, min(10, len(text) // 180))
+        target = max(3, min(20, estimated))
+
+        questions = (await quiz_generator.create(text, target, "medium", fresh=True))[:target]
+        if not questions:
+            await callback.message.answer("⚠️ المحتوى غير كافٍ لصناعة أسئلة مفيدة.")
+            return
+
+        actual = len(questions)
+        quiz_id = db.create_quiz(lesson_id, quiz_generator.serialize(questions), actual, "medium")
         await state.set_state(QuizState.active)
         await state.update_data(quiz_id=quiz_id, lesson_id=lesson_id, questions=questions, answers=[], group_mode=False)
-        await callback.message.edit_text(f"📝 <b>اختبار الملف</b>\n📚 {html.escape(str(lesson['file_name']))}\n\n🎯 <b>20 سؤالًا متنوعًا</b>\nنبدأ الآن!")
+        await callback.message.edit_text(
+            f"📝 <b>اختبار الملف</b>\n📚 {html.escape(str(lesson['file_name']))}\n\n🎯 <b>{actual} أسئلة متنوعة</b>\nعدد الأسئلة تحدد حسب محتوى الملف.\n\nنبدأ الآن!"
+        )
         await send_question(callback.message, state, quiz_id, questions, 0, [], db)
     except Exception:
         logger.exception("File quiz failed")
@@ -96,9 +121,9 @@ async def file_quiz(callback: CallbackQuery, state: FSMContext, db: Database, qu
 
 @router.callback_query(F.data.startswith("categoryquiz:"))
 async def category_quiz(callback: CallbackQuery, state: FSMContext, db: Database, quiz_generator: QuizGenerator) -> None:
-    category = _decode(callback.data.split(":", 1)[1])
+    category = _decode(callback.data.split(":", 1)[1], db, callback.from_user.id)
     lessons = db.get_lessons_by_category(callback.from_user.id, category)
-    await callback.answer("🧠 تجهيز 50 سؤالًا من القسم...")
+    await callback.answer("🧠 تجهيز الاختبار الشامل للقسم...")
     if not lessons:
         await callback.message.answer("❌ لا توجد ملفات في هذا القسم.")
         return
@@ -121,7 +146,7 @@ async def category_quiz(callback: CallbackQuery, state: FSMContext, db: Database
 
 @router.callback_query(F.data.startswith("categoryfiles:"))
 async def category_files(callback: CallbackQuery, db: Database) -> None:
-    category = _decode(callback.data.split(":", 1)[1])
+    category = _decode(callback.data.split(":", 1)[1], db, callback.from_user.id)
     lessons = db.get_lessons_by_category(callback.from_user.id, category)
     await callback.answer()
     await callback.message.edit_text(
