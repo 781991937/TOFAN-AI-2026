@@ -146,7 +146,7 @@ def lesson_list_menu(lessons: list, file_key: str) -> InlineKeyboardMarkup:
         if len(title) > 40:
             title = title[:37] + "..."
         rows.append([InlineKeyboardButton(text=f"📖 الدرس {number}: {title}", callback_data=f"lesson:{int(lesson['id'])}")])
-    rows.append([InlineKeyboardButton(text="⬅️ الملفات", callback_data="categoryfiles:back")])
+    rows.append([InlineKeyboardButton(text="⬅️ الملفات", callback_data=f"fileback:{_enc(file_key)}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
