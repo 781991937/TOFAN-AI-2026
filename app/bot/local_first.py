@@ -84,8 +84,7 @@ def _page_message(lesson, pages: list[dict], index: int) -> str:
     return (
         f"📖 <b>شرح الدرس — صفحة {page_number}</b>\n"
         f"📄 <b>صفحة {index + 1} من {len(pages)}</b>\n\n"
-        "⚙️ <b>طريقة الشرح: نظام البوت المحلي</b>\n"
-        "\n"
+        "⚙️ <b>طريقة الشرح: نظام البوت المحلي</b>\n\n"
         f"🧠 <b>افهم الصفحة ببساطة</b>\n{summary}\n\n"
         f"📌 <b>أهم النقاط</b>\n{points_text}\n\n"
         f"💡 <b>مصطلحات مهمة:</b> {terms_text}"
@@ -135,11 +134,9 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
         text = clean_text(extractor.extract(path))
         if len(text) < 20:
             raise ValueError("لم أستطع استخراج نص كافٍ من الملف.")
-
         lessons = split_lessons(text)
         if not lessons:
             raise ValueError("لم أجد محتوى صالحًا لإنشاء الدروس.")
-
         if owner_id != 0:
             db.ensure_user(owner_id, getattr(message.from_user, "first_name", "") or "")
 
@@ -153,47 +150,27 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
             else:
                 clean_title = lesson_title.replace("/", "-").replace("\\", "-").strip()
                 lesson_name = f"{Path(safe_name).stem} - {clean_title or f'الدرس {number}'}{suffix}"
-
             pages = _page_cache(lesson_text)
             page_text = "\n".join(text for _, text in page_parts(lesson_text))
             analysis = local_analysis(page_text)
             cache = json.dumps(pages, ensure_ascii=False)
-            lesson_id = db.create_lesson(
-                owner_id,
-                lesson_name,
-                suffix[1:],
-                str(path),
-                lesson_text,
-                file_id=document.file_id,
-            )
-            db.update_lesson_analysis(
-                lesson_id,
-                analysis["summary"],
-                json.dumps(analysis["concepts"], ensure_ascii=False),
-                cache,
-            )
+            lesson_id = db.create_lesson(owner_id, lesson_name, suffix[1:], str(path), lesson_text, file_id=document.file_id)
+            db.update_lesson_analysis(lesson_id, analysis["summary"], json.dumps(analysis["concepts"], ensure_ascii=False), cache)
             saved.append((lesson_id, lesson_name, analysis, len(pages)))
 
         if not saved:
             raise ValueError("لم أجد دروسًا تحتوي على نص كافٍ.")
-
         if len(saved) == 1:
             lesson_id, lesson_name, analysis, page_count = saved[0]
             await message.answer(
-                f"✅ <b>تم حفظ الدرس #{lesson_id}</b>\n"
-                f"📚 <b>{html.escape(lesson_name)}</b>\n"
-                f"📄 <b>{page_count} صفحة</b> محفوظة للشرح صفحة بصفحة\n\n"
-                f"{_format_local_analysis(analysis)}\n\n"
+                f"✅ <b>تم حفظ الدرس #{lesson_id}</b>\n📚 <b>{html.escape(lesson_name)}</b>\n"
+                f"📄 <b>{page_count} صفحة</b> محفوظة للشرح صفحة بصفحة\n\n{_format_local_analysis(analysis)}\n\n"
                 "💾 <b>الملف محفوظ داخل Telegram ويمكن تنزيله من البوت حتى لو حذفته من هاتفك.</b>",
                 reply_markup=lesson_menu(lesson_id),
             )
             return
 
-        lines = [
-            f"✅ <b>تم تقسيم الملف إلى {len(saved)} دروس مستقلة</b>",
-            f"📚 <b>الملف:</b> {html.escape(safe_name)}",
-            "",
-        ]
+        lines = [f"✅ <b>تم تقسيم الملف إلى {len(saved)} دروس مستقلة</b>", f"📚 <b>الملف:</b> {html.escape(safe_name)}", ""]
         for number, (lesson_id, lesson_name, analysis, page_count) in enumerate(saved, start=1):
             summary = html.escape((analysis.get("summary") or "").replace("\n", " ")[:180])
             lines.append(f"{number}. 📖 <b>الدرس #{lesson_id}</b> — {html.escape(lesson_name)}")
@@ -202,7 +179,6 @@ async def save_local_lesson(message: Message, db: Database, bot, extractor: File
                 lines.append(f"   ↳ {summary}")
         lines.append("\n💾 <b>كل الدروس مرتبطة بنسخة Telegram الأصلية ويمكن تنزيل الملف من أي درس.</b>")
         await message.answer("\n".join(lines))
-
     except Exception as exc:
         logger.exception("Local lesson processing failed")
         await message.answer(f"⚠️ حدث خطأ أثناء معالجة الملف: {html.escape(str(exc))}")
@@ -252,9 +228,7 @@ async def _move_lesson(callback: CallbackQuery, db: Database, lesson_id: int, di
     target = lessons[pos]
     await callback.answer()
     await callback.message.edit_text(
-        f"📘 <b>{html.escape(str(target['file_name']))}</b>\n\n"
-        "⚙️ <b>قسم الأتمتة والبوت</b>\n"
-        "اختر ما تريد من الملف:",
+        f"📘 <b>{html.escape(str(target['file_name']))}</b>\n\n⚙️ <b>قسم الأتمتة والبوت</b>\nاختر ما تريد من الملف:",
         reply_markup=lesson_menu(int(target["id"])),
     )
 
@@ -275,7 +249,7 @@ async def download_lesson(callback: CallbackQuery, db: Database, bot) -> None:
     if not lesson:
         await callback.answer("❌ الملف غير موجود.", show_alert=True)
         return
-    file_id = str(lesson.get("file_id") or "")
+    file_id = str(lesson["file_id"] or "")
     if not file_id:
         await callback.answer("⚠️ هذا الملف قديم ولم تُحفظ نسخة Telegram له. أعد إرسال الملف مرة واحدة.", show_alert=True)
         return
@@ -301,27 +275,20 @@ async def smart_explain(callback: CallbackQuery, db: Database, ai_service: AISer
             cached_pages = json.loads(lesson["key_points"] or "[]")
         except (TypeError, json.JSONDecodeError):
             cached_pages = _page_cache(lesson["extracted_text"])
-        db.update_lesson_analysis(
-            lesson["id"],
-            summary,
-            json.dumps(analysis.get("concepts", []), ensure_ascii=False),
-            json.dumps(cached_pages, ensure_ascii=False),
-        )
+        db.update_lesson_analysis(lesson["id"], summary, json.dumps(analysis.get("concepts", []), ensure_ascii=False), json.dumps(cached_pages, ensure_ascii=False))
         concepts = analysis.get("concepts", [])[:12]
         concepts_text = "\n".join(f"• {html.escape(str(item))}" for item in concepts) or "• لا توجد مفاهيم إضافية."
         await callback.message.edit_text(
             f"🧠 <b>شرح الدرس: {_lesson_title(lesson['file_name'])}</b>\n\n"
             "🧠 <b>طريقة الشرح: الذكاء الاصطناعي (Gemini)</b>\n\n"
-            f"{html.escape(summary[:5000])}\n\n"
-            f"📌 <b>أهم المفاهيم</b>\n{concepts_text}\n\n"
+            f"{html.escape(summary[:5000])}\n\n📌 <b>أهم المفاهيم</b>\n{concepts_text}\n\n"
             "⚙️ استخراج الصفحات والتنقل وحفظ الملفات تعمل بنظام البوت، وليست جزءًا من الذكاء الاصطناعي.",
             reply_markup=lesson_menu(lesson["id"]),
         )
     except Exception:
         logger.exception("Smart explanation failed")
         await callback.message.edit_text(
-            "⚠️ <b>تعذر استخدام الذكاء الاصطناعي مؤقتًا.</b>\n\n"
-            "لم يتعطل الملف: يمكنك استخدام شرح الصفحات المحلي أو المحاولة مرة أخرى.",
+            "⚠️ <b>تعذر استخدام الذكاء الاصطناعي مؤقتًا.</b>\n\nلم يتعطل الملف: يمكنك استخدام شرح الصفحات المحلي أو المحاولة مرة أخرى.",
             reply_markup=lesson_menu(lesson["id"]),
         )
 
@@ -340,14 +307,10 @@ async def smart_quiz(callback: CallbackQuery, state: FSMContext, db: Database, q
         await state.set_state(QuizState.active)
         await state.update_data(quiz_id=quiz_id, lesson_id=lesson["id"], questions=questions, answers=[], group_mode=False)
         await callback.message.edit_text(
-            f"🧠 <b>تم إنشاء الاختبار الذكي #{quiz_id}</b>\n\n"
-            "🧠 <b>طريقة الاختبار: الذكاء الاصطناعي</b>\n\nنبدأ الآن!",
+            f"🧠 <b>تم إنشاء الاختبار الذكي #{quiz_id}</b>\n\n🧠 <b>طريقة الاختبار: الذكاء الاصطناعي</b>\n\nنبدأ الآن!",
             reply_markup=lesson_menu(lesson["id"]),
         )
         await send_question(callback.message, state, quiz_id, questions, 0, [], db)
     except Exception:
         logger.exception("Smart quiz failed")
-        await callback.message.edit_text(
-            "⚠️ <b>تعذر إنشاء الاختبار الذكي الآن.</b>\n\nحاول مرة أخرى لاحقًا.",
-            reply_markup=lesson_menu(lesson["id"]),
-        )
+        await callback.message.edit_text("⚠️ <b>تعذر إنشاء الاختبار الذكي الآن.</b>\n\nحاول مرة أخرى لاحقًا.", reply_markup=lesson_menu(lesson["id"]))
