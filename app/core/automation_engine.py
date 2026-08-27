@@ -1,7 +1,7 @@
 """Pure Python automation engine.
 
-No Telegram/aiogram imports live here.  This is the reusable engine for
-extracting documents, splitting lessons/pages and preparing local analysis.
+This layer is deliberately independent from Telegram and from the AI engine.
+It owns document extraction, lesson splitting and deterministic page building.
 """
 
 import json
@@ -9,24 +9,20 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.services.file_extractor import FileExtractor, clean_text, page_parts, split_lessons
-from app.services.local_engine import local_analysis
 
 
 @dataclass(slots=True)
 class LessonPage:
     number: int
     text: str
-    summary: str
-    key_points: list[str]
-    terms: list[str]
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "page": self.number,
             "text": self.text,
-            "summary": self.summary,
-            "key_points": self.key_points,
-            "terms": self.terms,
+            "summary": "",
+            "key_points": [],
+            "terms": [],
         }
 
 
@@ -44,22 +40,13 @@ class AutomationEngine:
         return split_lessons(text) or [("الدرس الكامل", text)]
 
     def build_pages(self, text: str) -> list[dict[str, Any]]:
-        pages: list[dict[str, Any]] = []
-        for number, body in page_parts(clean_text(text)):
-            analysis = local_analysis(body)
-            pages.append(
-                LessonPage(
-                    number=int(number),
-                    text=body,
-                    summary=str(analysis.get("summary") or "")[:2200],
-                    key_points=[str(x) for x in (analysis.get("key_points") or [])[:6]],
-                    terms=[str(x) for x in (analysis.get("english_terms") or [])[:8]],
-                ).as_dict()
-            )
-        return pages
+        """Build deterministic pages only; no AI/local analysis is performed."""
+        return [LessonPage(number=int(number), text=body).as_dict() for number, body in page_parts(clean_text(text))]
 
     def serialize_pages(self, pages: list[dict[str, Any]]) -> str:
         return json.dumps(pages, ensure_ascii=False)
 
     def analyze(self, text: str) -> dict[str, Any]:
-        return local_analysis(clean_text(text))
+        """Compatibility method: deterministic metadata only, never AI."""
+        clean = clean_text(text)
+        return {"summary": "", "concepts": [], "key_points": [], "english_terms": [], "text_length": len(clean)}
