@@ -73,21 +73,20 @@ async def main() -> None:
     dp["automation_engine"] = runtime.automation
     dp.callback_query.outer_middleware(ClockStopMiddleware())
 
-    # Isolation routers must be registered before their legacy presentation
-    # routers. They use dedicated callback prefixes/guards to keep AI and bot
-    # sections independent while the old modules remain available for the
-    # functions that are not being replaced yet.
+    # Isolation first: AI and bot have separate callback namespaces. The bot
+    # page router must be before legacy automation so pages: and bot_quiz:
+    # cannot fall through to handlers that try to edit a photo as text.
     dp.include_router(clock_router)
     dp.include_router(quiz_router)
     dp.include_router(ai_isolation_router)
     dp.include_router(bot_library_isolation_router)
+    dp.include_router(bot_page_images_router)
     dp.include_router(sections_router)
     dp.include_router(ai_quizzes_router)
     dp.include_router(ai_navigation_router)
     dp.include_router(ai_pages_router)
     dp.include_router(library_router)
     dp.include_router(automation_lesson_router)
-    dp.include_router(bot_page_images_router)
     dp.include_router(automation_router)
 
     external_url = os.getenv("TELEGRAM_WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL")
