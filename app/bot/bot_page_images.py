@@ -36,8 +36,6 @@ def _pages(lesson) -> list[dict]:
     try:
         cached = json.loads(lesson["key_points"] or "[]")
         if isinstance(cached, list) and cached and isinstance(cached[0], dict) and "page" in cached[0]:
-            # Older DOCX records could contain one giant cached page. Re-split it
-            # so existing uploads immediately use the new page navigation.
             if suffix == ".docx" and len(cached) == 1 and len(text) > VIRTUAL_PAGE_CHARS:
                 return _virtual_pages(text)
             return cached
@@ -53,6 +51,7 @@ def _keyboard(lesson_id: int, pages: list[dict], index: int) -> InlineKeyboardMa
         rows.append([InlineKeyboardButton(text=(f"🔵 {numbers[i]}" if i == index else f"📄 {numbers[i]}"), callback_data=f"bot_page:{lesson_id}:{i}") for i in range(start, min(start + 6, len(numbers)))])
     nav = []
     if index > 0:
+        nav.append(InlineKeyboardButton(text="⏮️ الأولى", callback_data=f"bot_page:{lesson_id}:0"))
         nav.append(InlineKeyboardButton(text="⬅️ السابقة", callback_data=f"bot_page:{lesson_id}:{index - 1}"))
     if index < len(pages) - 1:
         nav.append(InlineKeyboardButton(text="التالية ➡️", callback_data=f"bot_page:{lesson_id}:{index + 1}"))
@@ -78,7 +77,6 @@ def _font(size: int):
 
 
 def _shape_rtl(text: str) -> str:
-    """Shape Arabic without relying on Pillow/libraqm."""
     try:
         import arabic_reshaper
         from bidi.algorithm import get_display
