@@ -32,9 +32,14 @@ def _virtual_pages(text: str) -> list[dict]:
 
 def _pages(lesson) -> list[dict]:
     text = str(lesson["extracted_text"] or "")
+    suffix = Path(str(lesson["file_name"] or "")).suffix.lower()
     try:
         cached = json.loads(lesson["key_points"] or "[]")
         if isinstance(cached, list) and cached and isinstance(cached[0], dict) and "page" in cached[0]:
+            # Older DOCX records could contain one giant cached page. Re-split it
+            # so existing uploads immediately use the new page navigation.
+            if suffix == ".docx" and len(cached) == 1 and len(text) > VIRTUAL_PAGE_CHARS:
+                return _virtual_pages(text)
             return cached
     except Exception:
         pass
@@ -45,10 +50,7 @@ def _keyboard(lesson_id: int, pages: list[dict], index: int) -> InlineKeyboardMa
     rows = []
     numbers = [int(item.get("page", i + 1)) for i, item in enumerate(pages)]
     for start in range(0, len(numbers), 6):
-        rows.append([
-            InlineKeyboardButton(text=(f"🔵 {numbers[i]}" if i == index else f"📄 {numbers[i]}"), callback_data=f"bot_page:{lesson_id}:{i}")
-            for i in range(start, min(start + 6, len(numbers)))
-        ])
+        rows.append([InlineKeyboardButton(text=(f"🔵 {numbers[i]}" if i == index else f"📄 {numbers[i]}"), callback_data=f"bot_page:{lesson_id}:{i}") for i in range(start, min(start + 6, len(numbers)))])
     nav = []
     if index > 0:
         nav.append(InlineKeyboardButton(text="⬅️ السابقة", callback_data=f"bot_page:{lesson_id}:{index - 1}"))
@@ -64,11 +66,7 @@ def _keyboard(lesson_id: int, pages: list[dict], index: int) -> InlineKeyboardMa
 
 def _caption(lesson, index: int, total: int, rendered_original: bool) -> str:
     note = "🖼️ الصفحة من الملف الأصلي بدون تلخيص أو إعادة تنسيق." if rendered_original else "🖼️ نسخة مرئية من محتوى الصفحة."
-    return (
-        "🤖 <b>البوت والأتمتة — Python</b>\n"
-        f"📖 <b>{html.escape(str(lesson['file_name']))}</b>\n"
-        f"📄 <b>الصفحة {index + 1} من {total}</b>\n\n{note}"
-    )
+    return "🤖 <b>البوت والأتمتة — Python</b>\n" f"📖 <b>{html.escape(str(lesson['file_name']))}</b>\n" f"📄 <b>الصفحة {index + 1} من {total}</b>\n\n{note}"
 
 
 def _font(size: int):
@@ -91,14 +89,12 @@ def _shape_rtl(text: str) -> str:
 
 def _render_text_page(text: str) -> bytes:
     from PIL import Image, ImageDraw
-
     width, height, margin = 1600, 2200, 90
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
     font, small = _font(42), _font(32)
     max_width = width - margin * 2
     lines: list[str] = []
-
     for paragraph in str(text or "").splitlines():
         words = paragraph.split()
         if not words:
@@ -113,20 +109,15 @@ def _render_text_page(text: str) -> bytes:
                 lines.append(current)
                 current = word
         lines.append(current)
-
     y = margin
     for line in lines:
         if y > height - margin - 100:
             break
         has_arabic = any("\u0600" <= c <= "\u06ff" for c in line)
         display_line = _shape_rtl(line) if has_arabic else line
-        anchor = "ra" if has_arabic else "la"
-        x = width - margin if has_arabic else margin
-        draw.text((x, y), display_line, font=font, fill="black", anchor=anchor)
+        draw.text((width - margin if has_arabic else margin, y), display_line, font=font, fill="black", anchor="ra" if has_arabic else "la")
         y += 62
-
-    footer = _shape_rtl("TOFAN AI • البوت والأتمتة — Python")
-    draw.text((width - margin, height - margin + 5), footer, font=small, fill="black", anchor="ra")
+    draw.text((width - margin, height - margin + 5), _shape_rtl("TOFAN AI • البوت والأتمتة — Python"), font=small, fill="black", anchor="ra")
     out = io.BytesIO()
     image.save(out, format="JPEG", quality=88, optimize=True)
     return out.getvalue()
@@ -164,8 +155,7 @@ async def _render_page(lesson, pages: list[dict], index: int, bot: Bot) -> tuple
         converted = _convert_docx_to_pdf(raw, str(lesson["file_name"]))
         if converted:
             return render_pdf_bytes(converted, index), True
-    body = str(pages[index].get("text") or "").strip()
-    return _render_text_page(body), False
+    return _render_text_page(str(pages[index].get("text") or "").strip()), False
 
 
 async def _show(callback: CallbackQuery, lesson, index: int, bot: Bot) -> None:
@@ -253,12 +243,7 @@ async def bot_lesson_quiz_from_page(callback: CallbackQuery, state: FSMContext, 
         quiz_id = db.create_quiz(lesson_id, quiz_generator.serialize(questions), len(questions), "medium")
         await state.set_state(QuizState.active)
         await state.update_data(quiz_id=quiz_id, lesson_id=lesson_id, questions=questions, answers=[], group_mode=False, engine="local", user_id=callback.from_user.id)
-        await callback.message.answer(
-            f"📝 <b>اختبار الدرس</b>\n📖 <b>{html.escape(str(lesson['file_name']))}</b>\n"
-            "🤖 <b>البوت والأتمتة — Python</b>\n"
-            f"🎯 <b>{len(questions)} سؤالًا</b>\n⏱️ <b>15 ثانية لكل سؤال</b>\n\n"
-            "إذا لم تختر إجابة خلال 15 ثانية سينتقل الاختبار تلقائيًا للسؤال التالي."
-        )
+        await callback.message.answer(f"📝 <b>اختبار الدرس</b>\n📖 <b>{html.escape(str(lesson['file_name']))}</b>\n🤖 <b>البوت والأتمتة — Python</b>\n🎯 <b>{len(questions)} سؤالًا</b>\n⏱️ <b>15 ثانية لكل سؤال</b>\n\nإذا لم تختر إجابة خلال 15 ثانية سينتقل الاختبار تلقائيًا للسؤال التالي.")
         await send_question(callback.message, state, quiz_id, questions, 0, [], db)
     except Exception as exc:
         logger.exception("Local bot lesson quiz from page failed")
