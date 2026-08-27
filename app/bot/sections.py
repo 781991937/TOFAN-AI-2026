@@ -12,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery
 
 from app.bot.keyboards import ai_categories_menu, ai_category_menu, ai_files_menu, ai_lessons_menu, ai_lesson_menu, section_menu
-from app.bot.library import file_lessons, find_file, token
+from app.bot.library import file_lessons, find_file, token, sync_categories
 from app.bot.quiz_engine import QuizState, send_question
 from app.database import Database
 from app.services import AIService, QuizGenerator
@@ -27,7 +27,8 @@ def _is_ai_category(category: str) -> bool:
 
 
 def _ai_lessons(db: Database, user_id: int) -> list:
-    return [x for x in db.get_lessons(user_id, 1000) if _is_ai_category(str(x["category"] or ""))]
+    lessons = sync_categories(db, user_id)
+    return [x for x in lessons if _is_ai_category(str(x["category"] or ""))]
 
 
 def _categories(lessons: list) -> list[dict]:
@@ -82,13 +83,7 @@ def _term_text(data: dict) -> str:
 @router.callback_query(F.data == "ai_section")
 async def ai_section(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text(
-        "🧠 <b>قسم الذكاء الاصطناعي</b>\n\n"
-        "📚 المكتبة ← الملف ← الدرس ← الصفحة.\n"
-        "🧠 الشرح والاختبارات هنا فقط بواسطة الذكاء الاصطناعي.\n"
-        "🐍 محرك Python الخاص بالبوت والأتمتة منفصل تمامًا.",
-        reply_markup=section_menu("ai"),
-    )
+    await callback.message.edit_text("🧠 <b>قسم الذكاء الاصطناعي</b>\n\n📚 المكتبة ← الملف ← الدرس ← الصفحة.\n🧠 الشرح والاختبارات هنا فقط بواسطة الذكاء الاصطناعي.\n🐍 محرك Python الخاص بالبوت والأتمتة منفصل تمامًا.", reply_markup=section_menu("ai"))
 
 
 @router.callback_query(F.data == "ai_library")
@@ -135,10 +130,7 @@ async def ai_file(callback: CallbackQuery, db: Database):
         await callback.message.edit_text("❌ الملف غير موجود في قسم الذكاء الاصطناعي.")
         return
     selected = file_lessons(lessons, key)
-    await callback.message.edit_text(
-        f"🧠 <b>قسم الذكاء الاصطناعي</b>\n📚 <b>{html.escape(str(selected[0]['category'] or '📂 مواد أخرى'))}</b>\n📘 <b>{html.escape(str(selected[0]['file_name']))}</b>\n\nاختر الدرس:",
-        reply_markup=ai_lessons_menu(selected, key),
-    )
+    await callback.message.edit_text(f"🧠 <b>قسم الذكاء الاصطناعي</b>\n📚 <b>{html.escape(str(selected[0]['category'] or '📂 مواد أخرى'))}</b>\n📘 <b>{html.escape(str(selected[0]['file_name']))}</b>\n\nاختر الدرس:", reply_markup=ai_lessons_menu(selected, key))
 
 
 @router.callback_query(F.data.startswith("ai_fileback:"))
@@ -165,11 +157,7 @@ async def ai_lesson(callback: CallbackQuery, db: Database):
         return
     lessons = file_lessons(_ai_lessons(db, callback.from_user.id), _key(lesson))
     number = next((i + 1 for i, row in enumerate(lessons) if int(row["id"]) == int(lesson_id)), 1)
-    await callback.message.edit_text(
-        f"📖 <b>{html.escape(_title(lesson))}</b>\n🔢 <b>الدرس {number} من {len(lessons)}</b>\n📚 <b>{html.escape(str(lesson['category'] or '📂 مواد أخرى'))}</b>\n\n"
-        "🧠 <b>الشرح والاختبار: الذكاء الاصطناعي</b>\nاختر الوظيفة:",
-        reply_markup=ai_lesson_menu(int(lesson_id), _key(lesson)),
-    )
+    await callback.message.edit_text(f"📖 <b>{html.escape(_title(lesson))}</b>\n🔢 <b>الدرس {number} من {len(lessons)}</b>\n📚 <b>{html.escape(str(lesson['category'] or '📂 مواد أخرى'))}</b>\n\n🧠 <b>الشرح والاختبار: الذكاء الاصطناعي</b>\nاختر الوظيفة:", reply_markup=ai_lesson_menu(int(lesson_id), _key(lesson)))
 
 
 @router.callback_query(F.data.startswith("ai_lessonback:"))
@@ -192,12 +180,7 @@ async def ai_explain(callback: CallbackQuery, db: Database, ai_service: AIServic
     await callback.answer("🧠 جاري الشرح…")
     try:
         analysis = await ai_service.analyze_lesson(str(lesson["extracted_text"] or ""))
-        await callback.message.edit_text(
-            f"🧠 <b>شرح الدرس</b>\n📖 <b>{html.escape(_title(lesson))}</b>\n\n"
-            f"{html.escape(str(analysis.get('summary') or 'لا يوجد شرح كافٍ.'))}\n\n"
-            f"🇬🇧 <b>المصطلحات ومعانيها</b>\n{_term_text(analysis)}",
-            reply_markup=ai_lesson_menu(int(lesson["id"]), _key(lesson)),
-        )
+        await callback.message.edit_text(f"🧠 <b>شرح الدرس</b>\n📖 <b>{html.escape(_title(lesson))}</b>\n\n{html.escape(str(analysis.get('summary') or 'لا يوجد شرح كافٍ.'))}\n\n🇬🇧 <b>المصطلحات ومعانيها</b>\n{_term_text(analysis)}", reply_markup=ai_lesson_menu(int(lesson["id"]), _key(lesson)))
     except Exception:
         logger.exception("AI lesson explanation failed")
         await callback.message.edit_text("⚠️ تعذر تشغيل الذكاء الاصطناعي لهذا الدرس.")
@@ -222,9 +205,7 @@ async def ai_quiz(callback: CallbackQuery, state: FSMContext, db: Database, quiz
         quiz_id = db.create_quiz(int(lesson["id"]), quiz_generator.serialize(questions), len(questions), "medium")
         await state.set_state(QuizState.active)
         await state.update_data(quiz_id=quiz_id, lesson_id=int(lesson["id"]), questions=questions, answers=[], group_mode=False, engine="ai", user_id=callback.from_user.id)
-        await callback.message.edit_text(
-            f"📝 <b>اختبار الدرس</b>\n🧠 <b>الذكاء الاصطناعي</b>\n🎯 <b>{len(questions)} سؤالًا</b>\n⏱️ <b>15 ثانية لكل سؤال</b>\n\nإذا انتهى الوقت ينتقل للسؤال التالي تلقائيًا."
-        )
+        await callback.message.edit_text(f"📝 <b>اختبار الدرس</b>\n🧠 <b>الذكاء الاصطناعي</b>\n🎯 <b>{len(questions)} سؤالًا</b>\n⏱️ <b>15 ثانية لكل سؤال</b>\n\nإذا انتهى الوقت ينتقل للسؤال التالي تلقائيًا.")
         await send_question(callback.message, state, quiz_id, questions, 0, [], db)
     except Exception:
         logger.exception("AI lesson quiz failed")
