@@ -1,4 +1,8 @@
-"""AI-only file navigation."""
+"""AI interface file navigation.
+
+Navigation uses the same complete lesson library as Bot/Automation. This
+module only controls the AI-side presentation and never filters by subject.
+"""
 
 import html
 
@@ -6,15 +10,10 @@ from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
 from app.bot.keyboards import ai_lesson_menu
-from app.bot.library import file_lessons
+from app.bot.library import file_lessons, sync_categories
 from app.database import Database
 
 router = Router(name="ai_navigation")
-
-
-def _is_ai(lesson) -> bool:
-    value = str(lesson["category"] or "").casefold()
-    return "الذكاء الاصطناعي" in value or "artificial intelligence" in value or "intelligent agent" in value
 
 
 def _key(lesson) -> str:
@@ -22,10 +21,10 @@ def _key(lesson) -> str:
 
 
 async def _move(callback: CallbackQuery, db: Database, lesson_id: int, direction: int):
-    all_lessons = [x for x in db.get_lessons(callback.from_user.id, 1000) if _is_ai(x)]
+    all_lessons = sync_categories(db, callback.from_user.id)
     current = db.get_lesson(lesson_id, callback.from_user.id)
-    if not current or not _is_ai(current):
-        await callback.answer("❌ الدرس غير موجود في قسم الذكاء الاصطناعي.", show_alert=True)
+    if not current:
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
         return
 
     groups = []
@@ -51,7 +50,10 @@ async def _move(callback: CallbackQuery, db: Database, lesson_id: int, direction
     await callback.answer()
     await callback.message.edit_text(
         "🧠 <b>قسم الذكاء الاصطناعي</b>\n"
-        f"📘 <b>{html.escape(str(target['file_name']))}</b>\n\nاختر الدرس:",
+        f"📚 <b>{html.escape(str(target['category'] or '📂 مواد أخرى'))}</b>\n"
+        f"📘 <b>{html.escape(str(target['file_name']))}</b>\n\n"
+        "اختر الدرس:\n"
+        "🧠 الشرح والاختبار هنا يعملان بمحرك الذكاء الاصطناعي.",
         reply_markup=ai_lesson_menu(int(selected[0]["id"]), key),
     )
 
