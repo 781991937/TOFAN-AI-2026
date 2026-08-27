@@ -34,12 +34,7 @@ async def save_file(message: Message, db: Database, bot, automation_engine: Auto
     safe_name = Path(document.file_name or "lesson").name
     path = Path("data/uploads") / f"{owner_id}_{message.message_id}_{safe_name}"
     path.parent.mkdir(parents=True, exist_ok=True)
-
-    await message.answer(
-        "📥 <b>تم استلام الملف</b>\n\n"
-        "🐍 محرك Python يستخرج المحتوى ويقسمه إلى دروس وصفحات.\n"
-        "🧠 الذكاء الاصطناعي لا يعمل داخل هذا القسم."
-    )
+    await message.answer("📥 <b>تم استلام الملف</b>\n\n🐍 محرك Python يستخرج المحتوى ويقسمه إلى دروس وصفحات.\n🧠 الذكاء الاصطناعي لا يعمل داخل هذا القسم.")
 
     try:
         await bot.download(document, destination=path)
@@ -52,46 +47,25 @@ async def save_file(message: Message, db: Database, bot, automation_engine: Auto
         saved = []
 
         for number, (lesson_title, lesson_text) in enumerate(lessons, 1):
-            lesson_text = automation_engine.extractor and str(lesson_text).strip()
+            lesson_text = str(lesson_text).strip()
             if len(lesson_text) < 20:
                 continue
 
-            lesson_name = (
-                safe_name
-                if len(lessons) == 1
-                else f"{Path(safe_name).stem} - {lesson_title or f'الدرس {number}'}{suffix}"
-            )
+            lesson_name = safe_name if len(lessons) == 1 else f"{Path(safe_name).stem} - {lesson_title or f'الدرس {number}'}{suffix}"
             category = classify_lesson({
                 "file_name": lesson_name,
                 "extracted_text": lesson_text,
                 "category": "📂 مواد أخرى",
             })
             pages = automation_engine.build_pages(lesson_text)
-            lesson_id = db.create_lesson(
-                owner_id,
-                lesson_name,
-                suffix[1:] or "txt",
-                str(path),
-                lesson_text,
-                category=category,
-                file_id=document.file_id,
-            )
-            db.update_lesson_analysis(
-                lesson_id,
-                "",
-                json.dumps([], ensure_ascii=False),
-                automation_engine.serialize_pages(pages),
-            )
+            lesson_id = db.create_lesson(owner_id, lesson_name, suffix[1:] or "txt", str(path), lesson_text, category=category, file_id=document.file_id)
+            db.update_lesson_analysis(lesson_id, "", json.dumps([], ensure_ascii=False), automation_engine.serialize_pages(pages))
             saved.append((lesson_id, lesson_name, category, len(pages)))
 
         if not saved:
             raise ValueError("لم أجد محتوى صالحًا لإنشاء الدروس.")
 
-        lines = [
-            f"✅ <b>تم حفظ {len(saved)} درسًا</b>",
-            f"📁 <b>الملف:</b> {html.escape(safe_name)}",
-            "",
-        ]
+        lines = [f"✅ <b>تم حفظ {len(saved)} درسًا</b>", f"📁 <b>الملف:</b> {html.escape(safe_name)}", ""]
         for i, (_lesson_id, name, category, pages) in enumerate(saved, 1):
             lines.append(f"{i}. 📖 <b>{html.escape(name)}</b>")
             lines.append(f"   📚 {html.escape(category)} • 📄 {pages} صفحة")
