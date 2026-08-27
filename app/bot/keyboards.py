@@ -73,8 +73,6 @@ def ai_lesson_menu(lid, key):
 
 
 def automation_lesson_menu(lid):
-    # قسم البوت: الصفحات والتنقل والتنزيل من قائمة الدرس.
-    # اختبار الدرس يظهر في آخر صفحة فقط.
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📖 صفحات الدرس", callback_data=f"pages:{lid}"), InlineKeyboardButton(text="📥 تنزيل الملف", callback_data=f"download:{lid}")],
         [InlineKeyboardButton(text="⬅️ الملف السابق", callback_data=f"prevfile:{lid}"), InlineKeyboardButton(text="الملف التالي ➡️", callback_data=f"nextfile:{lid}")],
@@ -87,9 +85,7 @@ def lesson_menu(lid):
 
 
 def delete_lesson_confirm(lid):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🗑️ نعم، احذف الملف", callback_data=f"confirm_delete:{lid}"), InlineKeyboardButton(text="❌ إلغاء", callback_data=f"lesson:{lid}")]
-    ])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🗑️ نعم، احذف الملف", callback_data=f"confirm_delete:{lid}"), InlineKeyboardButton(text="❌ إلغاء", callback_data=f"lesson:{lid}")]])
 
 
 def file_list_menu(lessons, cat):
@@ -139,20 +135,13 @@ def difficulty_menu():
     return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🟢 سهل", callback_data="difficulty:easy"), InlineKeyboardButton(text="🟡 متوسط", callback_data="difficulty:medium")], [InlineKeyboardButton(text="🔴 صعب", callback_data="difficulty:hard")]])
 
 
-# توافق رجعي: sections.py القديمة تستدعي page_keyboard.
-# الاسم الموحد الجديد هو page_kb، وهذا يمنع انهيار Render عند فتح صفحات قسم الذكاء.
 def page_keyboard(lid, pages, i):
     rows = []
     for s in range(0, len(pages), 6):
-        rows.append([
-            InlineKeyboardButton(
-                text=("🔵" if j == i else "📄") + f" {pages[j][0]}",
-                callback_data=f"ai_page:{lid}:{j}",
-            )
-            for j in range(s, min(s + 6, len(pages)))
-        ])
+        rows.append([InlineKeyboardButton(text=("🔵" if j == i else "📄") + f" {pages[j][0]}", callback_data=f"ai_page:{lid}:{j}") for j in range(s, min(s + 6, len(pages)))])
     nav = []
     if i > 0:
+        nav.append(InlineKeyboardButton(text="⏮️ الأولى", callback_data=f"ai_page:{lid}:0"))
         nav.append(InlineKeyboardButton(text="⬅️ السابقة", callback_data=f"ai_page:{lid}:{i - 1}"))
     if i < len(pages) - 1:
         nav.append(InlineKeyboardButton(text="التالية ➡️", callback_data=f"ai_page:{lid}:{i + 1}"))
