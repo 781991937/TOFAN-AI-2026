@@ -1,13 +1,13 @@
 """Bot/Automation lesson controls.
 
-These handlers are deliberately separate from AI navigation.
+The library is shared with the AI interface. This module owns the
+Python/deterministic side only: navigation, file download and deletion.
 """
 
 import html
 import logging
 
 from aiogram import F, Router
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import CallbackQuery
 
 from app.bot.bot_library_isolation import _bot_lessons
@@ -19,11 +19,6 @@ logger = logging.getLogger(__name__)
 router = Router(name="automation_lesson")
 
 
-def _is_ai(category: str) -> bool:
-    value = str(category or "").casefold()
-    return "الذكاء الاصطناعي" in value or "artificial intelligence" in value or "intelligent agent" in value
-
-
 def _key(lesson) -> str:
     return str(lesson["file_id"] or lesson["file_path"] or lesson["file_name"])
 
@@ -32,8 +27,8 @@ def _key(lesson) -> str:
 async def open_lesson(callback: CallbackQuery, db: Database):
     lesson = db.get_lesson(int(callback.data.split(":", 1)[1]), callback.from_user.id)
     await callback.answer()
-    if not lesson or _is_ai(str(lesson["category"] or "")):
-        await callback.message.edit_text("❌ هذا الدرس تابع لقسم الذكاء الاصطناعي.")
+    if not lesson:
+        await callback.message.edit_text("❌ هذا الدرس غير موجود.")
         return
     selected = file_lessons(_bot_lessons(db, callback.from_user.id), _key(lesson))
     number = next((i + 1 for i, row in enumerate(selected) if int(row["id"]) == int(lesson["id"])), 1)
@@ -41,7 +36,9 @@ async def open_lesson(callback: CallbackQuery, db: Database):
         f"📖 <b>{html.escape(str(lesson['file_name']))}</b>\n"
         f"🔢 <b>الدرس {number} من {len(selected)}</b>\n"
         f"📚 <b>{html.escape(str(lesson['category'] or '📂 مواد أخرى'))}</b>\n\n"
-        "🐍 <b>البوت والأتمتة — Python</b>\n\nاختر الوظيفة:",
+        "🐍 <b>البوت والأتمتة — Python</b>\n\n"
+        "🐍 الاستخراج والتنظيم والتنقل وإدارة الملفات تعمل بمحرك Python.\n"
+        "📚 هذا نفس الدرس الموجود في المكتبة العامة؛ الاختلاف في وظائف هذا القسم.\n\nاختر الوظيفة:",
         reply_markup=lesson_menu(int(lesson["id"])),
     )
 
@@ -49,11 +46,10 @@ async def open_lesson(callback: CallbackQuery, db: Database):
 async def _move(callback: CallbackQuery, db: Database, lesson_id: int, direction: int) -> None:
     lessons = _bot_lessons(db, callback.from_user.id)
     current = db.get_lesson(lesson_id, callback.from_user.id)
-    if not current or _is_ai(str(current["category"] or "")):
-        await callback.answer("❌ الدرس غير موجود في قسم البوت.", show_alert=True)
+    if not current:
+        await callback.answer("❌ الدرس غير موجود.", show_alert=True)
         return
 
-    # Move between files, not between individual lessons.
     groups = []
     seen = set()
     for item in lessons:
@@ -75,7 +71,7 @@ async def _move(callback: CallbackQuery, db: Database, lesson_id: int, direction
     selected = file_lessons(lessons, key)
     await callback.answer()
     await callback.message.edit_text(
-        f"🤖 <b>قسم البوت والأتمتة — Python</b>\n"
+        "🤖 <b>قسم البوت والأتمتة — Python</b>\n"
         f"📘 <b>{html.escape(str(target['file_name']))}</b>\n\nاختر الدرس:",
         reply_markup=__import__("app.bot.keyboards", fromlist=["bot_lesson_list"]).bot_lesson_list(selected, key),
     )
@@ -94,7 +90,7 @@ async def next_file(callback: CallbackQuery, db: Database):
 @router.callback_query(F.data.startswith("download:"))
 async def download_file(callback: CallbackQuery, db: Database, bot):
     lesson = db.get_lesson(int(callback.data.split(":", 1)[1]), callback.from_user.id)
-    if not lesson or _is_ai(str(lesson["category"] or "")):
+    if not lesson:
         await callback.answer("❌ الملف غير موجود.", show_alert=True)
         return
     file_id = str(lesson["file_id"] or "").strip()
@@ -135,7 +131,7 @@ async def confirm_delete(callback: CallbackQuery, db: Database):
         return
     remaining = _bot_lessons(db, callback.from_user.id)
     if not remaining:
-        await callback.message.edit_text("📚 مكتبة البوت والأتمتة فارغة.")
+        await callback.message.edit_text("📚 المكتبة فارغة.")
         return
     category = str(lesson["category"] or "📂 مواد أخرى")
     category_lessons = [x for x in remaining if str(x["category"] or "") == category]
