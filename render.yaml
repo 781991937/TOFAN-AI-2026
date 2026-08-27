@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: TOFAN-AI-2026-1
+    runtime: docker
+    plan: free
+    region: oregon
+    repo: https://github.com/781991937/TOFAN-AI-2026.git
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    autoDeployTrigger: commit
