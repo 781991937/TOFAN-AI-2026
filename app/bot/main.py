@@ -16,12 +16,10 @@ from app.bot.bot_page_images import router as bot_page_images_router
 from app.bot.bot_library_isolation import router as bot_library_isolation_router
 from app.bot.ai_isolation import router as ai_isolation_router
 from app.bot.automation_lesson import router as automation_lesson_router
-from app.bot.library import router as library_router
 from app.bot.sections import router as sections_router
 from app.bot.ai_quizzes import router as ai_quizzes_router
 from app.bot.ai_navigation import router as ai_navigation_router
 from app.bot.ai_pages import router as ai_pages_router
-from app.bot import ui_fixes
 from app.config_gemini import Settings
 from app.core import PythonRuntime
 
@@ -55,39 +53,32 @@ async def main() -> None:
     settings = Settings.from_env()
     settings.ensure_directories()
 
-    # Python is the application runtime. Engines are composed here once;
-    # Telegram routers are only the presentation/transport layer.
+    # Python is the application runtime. AI, automation and Telegram are
+    # composed once and exposed to routers as services; routers are adapters.
     runtime = PythonRuntime.build(settings)
 
-    bot = Bot(
-        token=settings.telegram_bot_token,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML),
-    )
+    bot = Bot(token=settings.telegram_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     dp = Dispatcher(storage=MemoryStorage())
-
     dp["db"] = runtime.db
     dp["extractor"] = runtime.extractor
+    dp["automation_engine"] = runtime.automation
     dp["ai_service"] = runtime.ai.ai_service
     dp["quiz_generator"] = runtime.ai.quiz_generator
     dp["ai_engine"] = runtime.ai
-    dp["automation_engine"] = runtime.automation
     dp.callback_query.outer_middleware(ClockStopMiddleware())
 
-    # Isolation first: AI and bot have separate callback namespaces. The bot
-    # page router must be before legacy automation so pages: and bot_quiz:
-    # cannot fall through to handlers that try to edit a photo as text.
+    # Domain order is explicit. No legacy generic library/UI router is loaded.
     dp.include_router(clock_router)
     dp.include_router(quiz_router)
     dp.include_router(ai_isolation_router)
     dp.include_router(bot_library_isolation_router)
     dp.include_router(bot_page_images_router)
+    dp.include_router(automation_lesson_router)
+    dp.include_router(automation_router)
     dp.include_router(sections_router)
     dp.include_router(ai_quizzes_router)
     dp.include_router(ai_navigation_router)
     dp.include_router(ai_pages_router)
-    dp.include_router(library_router)
-    dp.include_router(automation_lesson_router)
-    dp.include_router(automation_router)
 
     external_url = os.getenv("TELEGRAM_WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL")
     if bool(os.getenv("RENDER_SERVICE_ID") or os.getenv("RENDER_EXTERNAL_URL") or external_url):
