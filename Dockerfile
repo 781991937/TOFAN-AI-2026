@@ -23,7 +23,7 @@ RUN python -m pip install --upgrade pip \
 COPY . .
 
 # Fail the image build before deployment if the Python/PDF stack is broken.
-RUN python -c "import pdftotext, fitz, pypdf; print('PDF stack OK')" \
+RUN python -c "import pdftotext, pymupdf, pypdf; print('PDF stack OK')" \
     && python -m compileall -q app \
     && python -m pytest -q tests/test_runtime_smoke.py
 
