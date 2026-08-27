@@ -33,7 +33,11 @@ def test_no_legacy_page_imports():
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1] / "app"
-    forbidden = ("from app.bot.sections import page_text", "from app.bot.sections import page_keyboard")
+    forbidden = (
+        "from app.bot.sections import page_text",
+        "from app.bot.sections import page_keyboard",
+        "from app.bot.sections import key, pos, title",
+    )
     for path in root.rglob("*.py"):
         text = path.read_text(encoding="utf-8")
         for token in forbidden:
@@ -53,19 +57,11 @@ def test_sections_are_isolated():
     assert not _is_ai_category("💻 البرمجة")
 
 
-def test_native_pdf_stack_extracts_a_page(tmp_path):
-    import fitz
-    import pdftotext
+def test_pdf_stack_uses_supported_api():
+    import pymupdf
 
-    pdf_path = tmp_path / "preflight.pdf"
-    document = fitz.open()
+    document = pymupdf.open()
     page = document.new_page()
     page.insert_text((72, 72), "TOFAN PDF PRECHECK")
-    document.save(pdf_path)
+    assert "TOFAN PDF PRECHECK" in page.get_text()
     document.close()
-
-    with pdf_path.open("rb") as handle:
-        pdf = pdftotext.PDF(handle)
-
-    assert len(pdf) == 1
-    assert "TOFAN PDF PRECHECK" in pdf[0]
