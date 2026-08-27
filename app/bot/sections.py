@@ -1,7 +1,9 @@
 """Top-level AI section router.
 
-Only the AI domain lives here. Page navigation is delegated to ai_pages.py;
-the Bot/Automation domain has its own isolated routers.
+The AI section and Bot/Automation section intentionally share the same lesson
+library. The separation is by behavior: AI provides AI-powered explanations
+and quizzes, while Bot/Automation provides deterministic Python-driven
+navigation, extraction and file handling.
 """
 
 import html
@@ -21,14 +23,9 @@ logger = logging.getLogger(__name__)
 router = Router(name="ai_section")
 
 
-def _is_ai_category(category: str) -> bool:
-    value = str(category or "").casefold()
-    return "الذكاء الاصطناعي" in value or "artificial intelligence" in value or "intelligent agent" in value
-
-
 def _ai_lessons(db: Database, user_id: int) -> list:
-    lessons = sync_categories(db, user_id)
-    return [x for x in lessons if _is_ai_category(str(x["category"] or ""))]
+    """Return the complete shared lesson library for the AI interface."""
+    return sync_categories(db, user_id)
 
 
 def _categories(lessons: list) -> list[dict]:
@@ -83,17 +80,18 @@ def _term_text(data: dict) -> str:
 @router.callback_query(F.data == "ai_section")
 async def ai_section(callback: CallbackQuery):
     await callback.answer()
-    await callback.message.edit_text("🧠 <b>قسم الذكاء الاصطناعي</b>\n\n📚 المكتبة ← الملف ← الدرس ← الصفحة.\n🧠 الشرح والاختبارات هنا فقط بواسطة الذكاء الاصطناعي.\n🐍 محرك Python الخاص بالبوت والأتمتة منفصل تمامًا.", reply_markup=section_menu("ai"))
+    await callback.message.edit_text("🧠 <b>قسم الذكاء الاصطناعي</b>\n\n📚 نفس مكتبة جميع الدروس والمواد.\n🧠 الشرح والاختبارات هنا تعمل بمحرك الذكاء الاصطناعي.\n🐍 محرك Python الخاص بالبوت والأتمتة منفصل عن الذكاء الاصطناعي.", reply_markup=section_menu("ai"))
 
 
 @router.callback_query(F.data == "ai_library")
 async def ai_library(callback: CallbackQuery, db: Database):
-    categories = _categories(_ai_lessons(db, callback.from_user.id))
+    lessons = _ai_lessons(db, callback.from_user.id)
+    categories = _categories(lessons)
     await callback.answer()
     if not categories:
-        await callback.message.edit_text("📚 <b>مكتبة الذكاء الاصطناعي فارغة</b>\n\nأرسل ملف مادة الذكاء الاصطناعي أولًا.")
+        await callback.message.edit_text("📚 <b>المكتبة فارغة</b>\n\nأرسل أي ملف دراسي أولًا.")
         return
-    await callback.message.edit_text("🧠 <b>مكتبة الذكاء الاصطناعي</b>\n\nاختر القسم:", reply_markup=ai_categories_menu(categories))
+    await callback.message.edit_text("🧠 <b>مكتبة الدروس</b>\n\nجميع المواد متاحة هنا. اختر القسم:", reply_markup=ai_categories_menu(categories))
 
 
 @router.callback_query(F.data.startswith("ai_category:"))
@@ -103,9 +101,9 @@ async def ai_category(callback: CallbackQuery, db: Database):
     category = next((str(x["category"]) for x in _categories(lessons) if token(str(x["category"])) == value), None)
     await callback.answer()
     if not category:
-        await callback.message.edit_text("❌ قسم الذكاء الاصطناعي غير موجود.")
+        await callback.message.edit_text("❌ القسم غير موجود.")
         return
-    await callback.message.edit_text(f"🧠 <b>{html.escape(category)}</b>\n\nاختر:", reply_markup=ai_category_menu(category))
+    await callback.message.edit_text(f"📚 <b>{html.escape(category)}</b>\n\nاختر:", reply_markup=ai_category_menu(category))
 
 
 @router.callback_query(F.data.startswith("ai_categoryfiles:"))
@@ -127,10 +125,10 @@ async def ai_file(callback: CallbackQuery, db: Database):
     key = find_file(lessons, callback.data.split(":", 1)[1])
     await callback.answer()
     if not key:
-        await callback.message.edit_text("❌ الملف غير موجود في قسم الذكاء الاصطناعي.")
+        await callback.message.edit_text("❌ الملف غير موجود.")
         return
     selected = file_lessons(lessons, key)
-    await callback.message.edit_text(f"🧠 <b>قسم الذكاء الاصطناعي</b>\n📚 <b>{html.escape(str(selected[0]['category'] or '📂 مواد أخرى'))}</b>\n📘 <b>{html.escape(str(selected[0]['file_name']))}</b>\n\nاختر الدرس:", reply_markup=ai_lessons_menu(selected, key))
+    await callback.message.edit_text(f"📚 <b>{html.escape(str(selected[0]['category'] or '📂 مواد أخرى'))}</b>\n📘 <b>{html.escape(str(selected[0]['file_name']))}</b>\n\nاختر الدرس:", reply_markup=ai_lessons_menu(selected, key))
 
 
 @router.callback_query(F.data.startswith("ai_fileback:"))
@@ -152,12 +150,12 @@ async def ai_lesson(callback: CallbackQuery, db: Database):
     _, lesson_id, _ = callback.data.split(":", 2)
     lesson = db.get_lesson(int(lesson_id), callback.from_user.id)
     await callback.answer()
-    if not lesson or not _is_ai_category(str(lesson["category"] or "")):
-        await callback.message.edit_text("❌ هذا الدرس تابع لقسم آخر.")
+    if not lesson:
+        await callback.message.edit_text("❌ هذا الدرس غير موجود.")
         return
     lessons = file_lessons(_ai_lessons(db, callback.from_user.id), _key(lesson))
     number = next((i + 1 for i, row in enumerate(lessons) if int(row["id"]) == int(lesson_id)), 1)
-    await callback.message.edit_text(f"📖 <b>{html.escape(_title(lesson))}</b>\n🔢 <b>الدرس {number} من {len(lessons)}</b>\n📚 <b>{html.escape(str(lesson['category'] or '📂 مواد أخرى'))}</b>\n\n🧠 <b>الشرح والاختبار: الذكاء الاصطناعي</b>\nاختر الوظيفة:", reply_markup=ai_lesson_menu(int(lesson_id), _key(lesson)))
+    await callback.message.edit_text(f"📖 <b>{html.escape(_title(lesson))}</b>\n🔢 <b>الدرس {number} من {len(lessons)}</b>\n📚 <b>{html.escape(str(lesson['category'] or '📂 مواد أخرى'))}</b>\n\n🧠 <b>الشرح والاختبار: الذكاء الاصطناعي</b>\n🐍 <b>التنقل والاستخراج: Python</b>\n\nاختر الوظيفة:", reply_markup=ai_lesson_menu(int(lesson_id), _key(lesson)))
 
 
 @router.callback_query(F.data.startswith("ai_lessonback:"))
@@ -174,7 +172,7 @@ async def ai_lessonback(callback: CallbackQuery, db: Database):
 @router.callback_query(F.data.startswith("ai_explain:"))
 async def ai_explain(callback: CallbackQuery, db: Database, ai_service: AIService):
     lesson = db.get_lesson(int(callback.data.split(":", 1)[1]), callback.from_user.id)
-    if not lesson or not _is_ai_category(str(lesson["category"] or "")):
+    if not lesson:
         await callback.answer("❌ الدرس غير موجود.", show_alert=True)
         return
     await callback.answer("🧠 جاري الشرح…")
@@ -189,7 +187,7 @@ async def ai_explain(callback: CallbackQuery, db: Database, ai_service: AIServic
 @router.callback_query(F.data.startswith("ai_quiz:"))
 async def ai_quiz(callback: CallbackQuery, state: FSMContext, db: Database, quiz_generator: QuizGenerator):
     lesson = db.get_lesson(int(callback.data.split(":", 1)[1]), callback.from_user.id)
-    if not lesson or not _is_ai_category(str(lesson["category"] or "")):
+    if not lesson:
         await callback.answer("❌ الدرس غير موجود.", show_alert=True)
         return
     text = str(lesson["extracted_text"] or "").strip()
