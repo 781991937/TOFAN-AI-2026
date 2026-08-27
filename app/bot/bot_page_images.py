@@ -26,15 +26,24 @@ router = Router(name="bot_page_images")
 
 
 def _pages(lesson) -> list[dict]:
+    text = str(lesson["extracted_text"] or "")
+    suffix = Path(str(lesson["file_name"] or "")).suffix.lower()
     try:
         pages = json.loads(lesson["key_points"] or "[]")
         if isinstance(pages, list) and pages and isinstance(pages[0], dict) and "page" in pages[0]:
+            # Old DOCX records were sometimes cached as one virtual page even
+            # when the extracted lesson is much longer. Rebuild those pages.
+            if suffix == ".docx" and len(pages) == 1 and len(text) > 1800:
+                return [
+                    {"page": number, "text": body, "summary": "", "key_points": [], "terms": []}
+                    for number, body in page_parts(text)
+                ]
             return pages
     except Exception:
         pass
     return [
         {"page": number, "text": body, "summary": "", "key_points": [], "terms": []}
-        for number, body in page_parts(str(lesson["extracted_text"] or ""))
+        for number, body in page_parts(text)
     ]
 
 
@@ -49,7 +58,6 @@ def _keyboard(lesson_id: int, pages: list[dict], index: int) -> InlineKeyboardMa
             )
             for i in range(start, min(start + 6, len(numbers)))
         ])
-
     nav = []
     if index > 0:
         nav.append(InlineKeyboardButton(text="⬅️ السابقة", callback_data=f"bot_page:{lesson_id}:{index - 1}"))
@@ -57,12 +65,8 @@ def _keyboard(lesson_id: int, pages: list[dict], index: int) -> InlineKeyboardMa
         nav.append(InlineKeyboardButton(text="التالية ➡️", callback_data=f"bot_page:{lesson_id}:{index + 1}"))
     if nav:
         rows.append(nav)
-
-    # اختبار الدرس يظهر في آخر صفحة فقط.
     if index == len(pages) - 1:
         rows.append([InlineKeyboardButton(text="📝 اختبار الدرس", callback_data=f"bot_quiz:{lesson_id}")])
-
-    # هذا الزر يعيد المستخدم إلى قائمة دروس الملف، وليس إلى قائمة خيارات الدرس.
     rows.append([InlineKeyboardButton(text="⬅️ دروس الملف", callback_data=f"bot_lessonback:{lesson_id}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -88,36 +92,13 @@ def _font(size: int):
     return ImageFont.load_default()
 
 
-def _docx_text_pages(text: str, chars_per_page: int = 1800) -> list[str]:
-    chunks = []
-    current = []
-    size = 0
-    for line in str(text or "").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        if current and size + len(line) + 1 > chars_per_page:
-            chunks.append("\n".join(current))
-            current, size = [], 0
-        current.append(line)
-        size += len(line) + 1
-    if current:
-        chunks.append("\n".join(current))
-    return chunks or ["لا يوجد نص واضح في هذه الصفحة."]
-
-
 def _render_text_page(text: str) -> bytes:
     from PIL import Image, ImageDraw
-
-    width, height = 1600, 2200
-    margin = 90
+    width, height, margin = 1600, 2200, 90
     image = Image.new("RGB", (width, height), "white")
     draw = ImageDraw.Draw(image)
-    font = _font(42)
-    small = _font(34)
-    y = margin
+    font, small = _font(42), _font(34)
     max_width = width - margin * 2
-
     lines = []
     for paragraph in str(text or "").splitlines():
         words = paragraph.split()
@@ -133,13 +114,13 @@ def _render_text_page(text: str) -> bytes:
                 lines.append(current)
                 current = word
         lines.append(current)
-
+    y = margin
     for line in lines:
         if y > height - margin - 80:
             break
-        draw.text((width - margin, y), line, font=font, fill="black", anchor="ra", direction="rtl" if any("\u0600" <= c <= "\u06ff" for c in line) else None)
+        rtl = any("\u0600" <= c <= "\u06ff" for c in line)
+        draw.text((width - margin, y), line, font=font, fill="black", anchor="ra", direction="rtl" if rtl else None)
         y += 62
-
     draw.text((width - margin, height - margin + 5), "TOFAN AI • البوت والأتمتة — Python", font=small, fill="black", anchor="ra", direction="rtl")
     out = io.BytesIO()
     image.save(out, format="JPEG", quality=88, optimize=True)
@@ -175,19 +156,14 @@ async def _render_page(lesson, pages: list[dict], index: int, bot: Bot) -> tuple
     file_id = str(lesson["file_id"] or "").strip()
     if not file_id:
         raise ValueError("لا توجد نسخة Telegram أصلية لهذا الملف. أعد رفع الملف مرة واحدة.")
-
     raw, telegram_path = await download_telegram_file(bot, file_id)
     suffix = Path(str(lesson["file_name"] or telegram_path)).suffix.lower()
     if suffix == ".pdf" or raw.startswith(b"%PDF"):
         return render_pdf_bytes(raw, int(pages[index].get("page", index + 1)) - 1), True
-
     if suffix == ".docx":
         converted = _convert_docx_to_pdf(raw, str(lesson["file_name"]))
         if converted:
             return render_pdf_bytes(converted, index), True
-
-    # Fallback for DOCX/other text documents: never fail the page button.
-    # Use the already stored Python page content so the navigation remains usable.
     body = str(pages[index].get("text") or pages[index].get("summary") or "").strip()
     return _render_text_page(body), False
 
@@ -266,12 +242,7 @@ async def bot_lessonback(callback: CallbackQuery, db: Database) -> None:
 
 
 @router.callback_query(F.data.startswith("bot_quiz:"))
-async def bot_lesson_quiz_from_page(
-    callback: CallbackQuery,
-    state: FSMContext,
-    db: Database,
-    quiz_generator: QuizGenerator,
-) -> None:
+async def bot_lesson_quiz_from_page(callback: CallbackQuery, state: FSMContext, db: Database, quiz_generator: QuizGenerator) -> None:
     lesson_id = int(callback.data.split(":", 1)[1])
     lesson = db.get_lesson(lesson_id, callback.from_user.id)
     if not lesson:
@@ -289,16 +260,7 @@ async def bot_lesson_quiz_from_page(
             return
         quiz_id = db.create_quiz(lesson_id, quiz_generator.serialize(questions), len(questions), "medium")
         await state.set_state(QuizState.active)
-        await state.update_data(
-            quiz_id=quiz_id,
-            lesson_id=lesson_id,
-            questions=questions,
-            answers=[],
-            group_mode=False,
-            engine="local",
-            user_id=callback.from_user.id,
-        )
-        # The source message is a photo, so edit_text is invalid here.
+        await state.update_data(quiz_id=quiz_id, lesson_id=lesson_id, questions=questions, answers=[], group_mode=False, engine="local", user_id=callback.from_user.id)
         if callback.message:
             await callback.message.answer(
                 f"📝 <b>اختبار الدرس</b>\n\n📖 <b>{html.escape(str(lesson['file_name']))}</b>\n"
