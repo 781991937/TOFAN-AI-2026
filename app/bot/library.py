@@ -31,13 +31,19 @@ def classify_lesson(lesson) -> str:
     return category if score else "📂 مواد أخرى"
 
 
-def prepare_categories(db, user_id: int):
-    """Compatibility helper used by the AI quiz adapter; never renders UI."""
+def sync_categories(db, user_id: int) -> list:
+    """Repair categories of old uploads deterministically before a domain opens."""
     lessons = db.get_lessons(user_id, 1000)
     for lesson in lessons:
         category = classify_lesson(lesson)
         if str(lesson["category"] or "") != category:
             db.update_lesson_category(int(lesson["id"]), category)
+    return db.get_lessons(user_id, 1000)
+
+
+def prepare_categories(db, user_id: int):
+    """Compatibility helper used by the AI quiz adapter; never renders UI."""
+    sync_categories(db, user_id)
     return db.get_categories(user_id)
 
 
