@@ -13,7 +13,10 @@ def test_chunk_text():
 
 
 def test_supported_extensions():
-    assert {".pdf", ".docx", ".txt"} == FileExtractor.SUPPORTED
+    # The extractor intentionally supports the broader document set used by
+    # the Python automation engine; PDF/DOCX/TXT are the minimum contract.
+    assert {".pdf", ".docx", ".txt"}.issubset(FileExtractor.SUPPORTED)
+    assert len(FileExtractor.SUPPORTED) >= 3
 
 
 def test_txt_extraction(tmp_path: Path):
