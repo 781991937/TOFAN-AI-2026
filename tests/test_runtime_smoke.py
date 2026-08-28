@@ -50,11 +50,18 @@ def test_quiz_timeout_is_15_seconds():
     assert QUESTION_TIMEOUT == 15
 
 
-def test_sections_are_isolated():
-    from app.bot.bot_library_isolation import _is_ai_category
+def test_bot_library_is_shared():
+    from app.bot.bot_library_isolation import _categories
 
-    assert _is_ai_category("🤖 مقدمة الذكاء الاصطناعي")
-    assert not _is_ai_category("💻 البرمجة")
+    lessons = [
+        {"category": "🤖 مقدمة الذكاء الاصطناعي"},
+        {"category": "💻 البرمجة"},
+        {"category": "🤖 مقدمة الذكاء الاصطناعي"},
+    ]
+    categories = _categories(lessons)
+    names = {row["category"] for row in categories}
+    assert "🤖 مقدمة الذكاء الاصطناعي" in names
+    assert "💻 البرمجة" in names
 
 
 def test_pdf_stack_uses_supported_api():
