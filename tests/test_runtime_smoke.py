@@ -64,6 +64,36 @@ def test_bot_library_is_shared():
     assert "💻 البرمجة" in names
 
 
+def test_split_lessons_supports_arabic_ordinals():
+    from app.services.file_extractor import split_lessons
+
+    text = """الدرس الأول: المنطق الرياضي
+محتوى الدرس الأول.
+الدرس الثاني: القضايا المنطقية
+محتوى الدرس الثاني.
+الدرس الثالث: الروابط المنطقية
+محتوى الدرس الثالث."""
+    lessons = split_lessons(text)
+    assert len(lessons) == 3
+    assert lessons[0][0] == "المنطق الرياضي"
+    assert lessons[1][0] == "القضايا المنطقية"
+    assert lessons[2][0] == "الروابط المنطقية"
+
+
+def test_split_lessons_supports_english_ordinals():
+    from app.services.file_extractor import split_lessons
+
+    text = """Lesson One: Logic
+First lesson content.
+Lesson Two: Sets
+Second lesson content.
+Lesson Three: Relations
+Third lesson content."""
+    lessons = split_lessons(text)
+    assert len(lessons) == 3
+    assert [title for title, _ in lessons] == ["Logic", "Sets", "Relations"]
+
+
 def test_pdf_stack_uses_supported_api():
     import pymupdf
 
