@@ -2,7 +2,9 @@ import asyncio
 import html
 import json
 import logging
+import re
 import time
+import unicodedata
 
 from aiogram import F, Router
 from aiogram.fsm.context import FSMContext
@@ -15,6 +17,7 @@ logger = logging.getLogger(__name__)
 router = Router(name="quiz_engine")
 
 QUESTION_TIMEOUT = 15
+MAX_MESSAGE_LENGTH = 3900
 _timeout_tasks: dict[int, asyncio.Task] = {}
 
 
@@ -30,8 +33,49 @@ def answer_matches(question: dict, answer: str) -> bool:
     return bool(expected) and actual == expected
 
 
+_ALLOWED_HTML = re.compile(
+    r"</?(?:b|strong|i|em|u|s|code|pre|blockquote)(?:\s[^>]*)?>",
+    re.IGNORECASE,
+)
+_TAG_TOKEN = "__TOFAN_HTML_TAG_{:04d}__"
+
+
+def _format_content(value: object) -> str:
+    """Safely format lesson/AI text for Telegram HTML without breaking languages or formulas."""
+    text = str(value or "")
+    text = text.replace("\x00", "")
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = unicodedata.normalize("NFC", text)
+
+    # Page markers from extracted PDFs are implementation metadata, not study text.
+    text = re.sub(r"\[\[PAGE:\s*\d+\]\]", "", text, flags=re.IGNORECASE)
+
+    # Preserve only Telegram-safe HTML tags already produced by the AI.
+    tags: list[str] = []
+
+    def hold_tag(match: re.Match[str]) -> str:
+        tags.append(match.group(0))
+        return _TAG_TOKEN.format(len(tags) - 1)
+
+    text = _ALLOWED_HTML.sub(hold_tag, text)
+    text = html.escape(text, quote=False)
+
+    # Also support common Markdown produced by models, while keeping formulas such as p < q safe.
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text, flags=re.DOTALL)
+    text = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", text)
+    text = re.sub(r"`([^`\n]+)`", r"<code>\1</code>", text)
+
+    for index, tag in enumerate(tags):
+        text = text.replace(_TAG_TOKEN.format(index), tag)
+
+    # Keep paragraphs readable without changing the actual language/content.
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
 def _safe(value: object) -> str:
-    return html.escape(str(value or ""))
+    return _format_content(value)
 
 
 def _cancel_timeout(user_id: int) -> None:
@@ -56,7 +100,8 @@ def question_keyboard(options: list[str], index: int, paused: bool = False) -> I
     rows = []
     if not paused:
         for i, option in enumerate(options):
-            rows.append([InlineKeyboardButton(text=str(option)[:60], callback_data=f"ans:{index}:{i}")])
+            label = _format_content(option).replace("<", "").replace(">", "")
+            rows.append([InlineKeyboardButton(text=label[:60], callback_data=f"ans:{index}:{i}")])
     rows.append(_controls(paused))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -102,6 +147,83 @@ async def _start_question_timeout(message: Message, state: FSMContext, quiz_id: 
     _timeout_tasks[user_id] = asyncio.create_task(_question_timeout(message, state, quiz_id, questions, index, db))
 
 
+def _review_header(score: int, total: int, percentage: float) -> list[str]:
+    return [
+        "🏁 <b>انتهى الاختبار</b>",
+        "━━━━━━━━━━━━━━━━━━",
+        f"🎯 <b>النتيجة:</b> {score} / {total}",
+        f"📊 <b>النسبة:</b> {percentage}%",
+        "━━━━━━━━━━━━━━━━━━",
+    ]
+
+
+def _build_review_lines(questions: list[dict], answers: list[str]) -> list[str]:
+    lines = ["📋 <b>مراجعة الإجابات</b>"]
+    wrong_count = 0
+
+    for i, (question, answer) in enumerate(zip(questions, answers), 1):
+        if answer_matches(question, answer):
+            continue
+
+        wrong_count += 1
+        lines.extend(
+            [
+                "",
+                f"❌ <b>السؤال {i}</b>",
+                f"📝 <b>إجابتك:</b> {_safe(answer) or 'بدون إجابة'}",
+                f"✅ <b>الصحيح:</b> {_safe(question.get('answer')) or 'غير محدد'}",
+            ]
+        )
+
+        explanation = _safe(question.get("explanation"))
+        if explanation:
+            lines.extend(
+                [
+                    "💡 <b>الشرح:</b>",
+                    f"<blockquote>{explanation}</blockquote>",
+                ]
+            )
+
+        # Keep each error visually separated, regardless of Arabic, English, or mixed text.
+        lines.append("──────────────────")
+
+    if wrong_count == 0:
+        lines.extend(["", "🎉 <b>ممتاز!</b> لم تسجل أي إجابة خاطئة."])
+    else:
+        lines.extend(["", f"📌 <b>عدد الأخطاء:</b> {wrong_count}"])
+
+    return lines
+
+
+def _message_chunks(lines: list[str], limit: int = MAX_MESSAGE_LENGTH) -> list[str]:
+    """Split on complete lines so Telegram never receives broken HTML tags."""
+    chunks: list[str] = []
+    current = ""
+
+    for line in lines:
+        candidate = line if not current else f"{current}\n{line}"
+        if len(candidate) <= limit:
+            current = candidate
+            continue
+
+        if current:
+            chunks.append(current)
+            current = line
+        else:
+            # A single unbroken source line can still be very long. Split it safely at whitespace.
+            while len(line) > limit:
+                cut = line.rfind(" ", 0, limit)
+                if cut <= 0:
+                    cut = limit
+                chunks.append(line[:cut])
+                line = line[cut:].lstrip()
+            current = line
+
+    if current:
+        chunks.append(current)
+    return chunks or [""]
+
+
 async def finish_quiz(message: Message, state: FSMContext, quiz_id: int, lesson_id: int, questions: list[dict], answers: list[str], db: Database, group_mode: bool = False) -> None:
     data = await state.get_data()
     user_id = int(data.get("user_id", 0) or (message.from_user.id if message.from_user else message.chat.id))
@@ -114,24 +236,20 @@ async def finish_quiz(message: Message, state: FSMContext, quiz_id: int, lesson_
     percentage = round(score / total * 100, 1) if total else 0
     db.save_result(message.from_user.id, quiz_id, score, total, percentage, json.dumps(answers, ensure_ascii=False))
 
-    lines = ["🏁 <b>انتهى الاختبار!</b>", "", f"✅ النتيجة: <b>{score}/{total}</b>", f"📊 النسبة: <b>{percentage}%</b>"]
+    lines = _review_header(score, total, percentage)
     if group_mode:
-        lines.append("\n👥 أضيفت نتيجتك إلى لوحة المتصدرين.")
+        lines.extend(["", "👥 <b>لوحة المتصدرين</b>", "أضيفت نتيجتك إلى لوحة المتصدرين."])
     else:
-        lines.append("\n📋 <b>مراجعة الأخطاء</b>")
-        for i, (q, answer) in enumerate(zip(questions, answers), 1):
-            if answer_matches(q, answer):
-                lines.append(f"\n✅ {i}. صحيحة")
-            else:
-                lines.append(f"\n❌ {i}. إجابتك: {_safe(answer) or 'بدون إجابة'}")
-                lines.append(f"   الصحيح: {_safe(q.get('answer'))}")
-                explanation = _safe(q.get("explanation"))
-                if explanation:
-                    lines.append(f"   💡 {explanation}")
+        lines.extend(["", *_build_review_lines(questions, answers)])
 
     from app.bot.keyboards import result_menu
+
     bot_mode = data.get("engine") == "local"
-    await message.answer("\n".join(lines)[:3900], reply_markup=result_menu(lesson_id, group=group_mode, bot=bot_mode))
+    chunks = _message_chunks(lines)
+    for index, chunk in enumerate(chunks):
+        markup = result_menu(lesson_id, group=group_mode, bot=bot_mode) if index == len(chunks) - 1 else None
+        await message.answer(chunk, reply_markup=markup)
+
     await state.clear()
 
 
@@ -147,11 +265,12 @@ async def send_question(message: Message, state: FSMContext, quiz_id: int, quest
     q_type = str(q.get("type", "mcq"))
     text = (
         f"❓ <b>السؤال {index + 1} من {len(questions)}</b>\n"
-        f"⏱️ <b>الوقت: {QUESTION_TIMEOUT} ثانية</b>\n\n"
+        f"⏱️ <b>الوقت:</b> {QUESTION_TIMEOUT} ثانية\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
         f"{_safe(q.get('question'))}"
     )
     if q_type == "short":
-        await message.answer(text + "\n\n✍️ اكتب إجابتك وأرسلها.", reply_markup=question_keyboard([], index))
+        await message.answer(text + "\n\n✍️ <b>اكتب إجابتك ثم أرسلها.</b>", reply_markup=question_keyboard([], index))
     else:
         options = [str(x) for x in (q.get("options") or [])]
         await message.answer(text, reply_markup=question_keyboard(options, index))
