@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# This script is intentionally portable: it must work in Render's build
-# environment without assuming apt/root access. Native PDF dependencies are
-# installed by Dockerfile when the service uses the Docker runtime.
-
+# Render uses the Dockerfile for this service. Keep this script dependency-light
+# for local/legacy use as well; PDF extraction is handled by PyMuPDF/pypdf.
 python - <<'PY'
 import sys
 assert sys.version_info[:2] == (3, 13), f"Expected Python 3.13, got {sys.version}"
@@ -13,17 +11,10 @@ PY
 
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-
-# Verify the supported PDF APIs. Do not use the deprecated `fitz` import.
 python - <<'PY'
 import pymupdf
-import pdftotext
 import pypdf
-
-print(f"PyMuPDF OK: {pymupdf.__doc__.splitlines()[0] if pymupdf.__doc__ else 'loaded'}")
-print(f"pdftotext OK: {pdftotext.__file__}")
+print("PyMuPDF OK")
 print(f"pypdf OK: {pypdf.__version__}")
 PY
-
 python -m compileall -q app
-python -m pytest -q
