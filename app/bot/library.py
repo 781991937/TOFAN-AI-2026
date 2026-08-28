@@ -46,7 +46,7 @@ def _auto_split_file(db, lessons: list) -> bool:
     for lesson in lessons:
         groups.setdefault(_key(lesson), []).append(lesson)
 
-    for key, rows in groups.items():
+    for _key_value, rows in groups.items():
         if len(rows) != 1:
             continue
         lesson = rows[0]
@@ -95,7 +95,7 @@ def sync_categories(db, user_id: int) -> list:
     return db.get_lessons(user_id, 1000)
 
 
-def prepare_categories(db: Database, user_id: int):
+def prepare_categories(db, user_id: int):
     """Compatibility helper used by the AI quiz adapter; never renders UI."""
     sync_categories(db, user_id)
     return db.get_categories(user_id)
