@@ -1,13 +1,14 @@
 from pathlib import Path
 import json
 import re
+import unicodedata
 
 from docx import Document
 from pypdf import PdfReader
 
 try:
     import pdftotext
-except ImportError:  # pragma: no cover - kept as a safety fallback for local environments
+except ImportError:  # pragma: no cover
     pdftotext = None
 
 try:
@@ -37,14 +38,16 @@ _ENGLISH_ORDINALS = {
 }
 
 
+def _arabic_normalize_for_matching(value: str) -> str:
+    value = unicodedata.normalize("NFC", value or "")
+    # Normalize common OCR/PDF variants only for heading detection.
+    return (
+        value.replace("إ", "ا").replace("أ", "ا").replace("آ", "ا")
+        .replace("ٱ", "ا").replace("ـ", "")
+    )
+
+
 class FileExtractor:
-    """Extract common educational documents without involving the AI engine.
-
-    PDF extraction uses Poppler first and keeps real page boundaries. When a
-    PDF contains bookmarks/outline entries, the level-1 outline is also used
-    as a reliable lesson-boundary signal.
-    """
-
     SUPPORTED = {
         ".pdf", ".docx", ".txt", ".md", ".csv", ".json", ".py", ".js", ".ts", ".html", ".css",
         ".xml", ".yaml", ".yml", ".rst", ".tex", ".log", ".ini", ".cfg", ".rtf", ".xlsx", ".pptx"
@@ -64,11 +67,7 @@ class FileExtractor:
             return self._pptx(path)
         if suffix == ".json":
             try:
-                return json.dumps(
-                    json.loads(path.read_text(encoding="utf-8", errors="replace")),
-                    ensure_ascii=False,
-                    indent=2,
-                )
+                return json.dumps(json.loads(path.read_text(encoding="utf-8", errors="replace")), ensure_ascii=False, indent=2)
             except Exception:
                 pass
         text = path.read_text(encoding="utf-8", errors="replace")
@@ -78,13 +77,11 @@ class FileExtractor:
 
     @staticmethod
     def _pdf(path: Path) -> str:
-        """Extract every PDF page and inject outline-based lesson markers."""
         toc_by_page: dict[int, list[str]] = {}
         if pymupdf is not None:
             try:
                 doc = pymupdf.open(str(path))
-                toc = doc.get_toc()
-                for item in toc:
+                for item in doc.get_toc():
                     if len(item) >= 3 and int(item[0]) == 1 and int(item[2]) >= 1:
                         title = str(item[1] or "").strip()
                         if title:
@@ -149,23 +146,15 @@ class FileExtractor:
         return "\n".join(parts)
 
 
-def _repair_arabic_line(line: str) -> str:
-    hints = {
-        "ىلإ", "نم", "يف", "نع", "ىلع", "اذه", "هذه", "وه", "يه", "رابتخا",
-        "ىنعملا", "ةملكلا", "يبرعلاب", "لاثملاب", "سردلا", "ةرضاحملا", "ةدحولا", "لصفلا",
-    }
-    words = re.findall(r"[\u0600-\u06FF]+", line)
-    if len(words) < 2 or not any(w in hints for w in words):
-        return line
-    tokens = re.split(r"(\s+)", line)
-    return "".join(
-        t[::-1] if re.fullmatch(r"[\u0600-\u06FF]+", t or "") and len(t) >= 2 else t
-        for t in tokens
-    )
-
-
 def clean_text(text: str) -> str:
+    """Clean extracted text without reversing Arabic or other RTL languages.
+
+    PDF extraction may already return logical RTL text. Reversing Arabic words
+    here corrupts the source, so cleanup is deliberately Unicode-safe and
+    language-neutral.
+    """
     text = (text or "").replace("\x00", "").replace("\u00ad", "").replace("\ufeff", "")
+    text = unicodedata.normalize("NFC", text)
     cleaned = []
     for raw in text.replace("\f", "\n").splitlines():
         line = " ".join(raw.split()).strip()
@@ -185,12 +174,11 @@ def clean_text(text: str) -> str:
             continue
         if re.fullmatch(r"[-_=·•\s]{3,}", line):
             continue
-        cleaned.append(_repair_arabic_line(line))
+        cleaned.append(line)
     return "\n".join(cleaned).strip()
 
 
 def page_parts(text: str, chars_per_page: int = 1800) -> list[tuple[int, str]]:
-    """Return real PDF pages when markers exist; otherwise create stable virtual pages."""
     text = clean_text(text)
     if not text:
         return []
@@ -204,16 +192,13 @@ def page_parts(text: str, chars_per_page: int = 1800) -> list[tuple[int, str]]:
             if body:
                 pages.append((int(match.group(1)), body))
         return pages
-    chunks = []
-    current = []
-    size = 0
-    page_no = 1
+
+    chunks, current, size, page_no = [], [], 0, 1
     for line in text.splitlines():
         if current and size + len(line) + 1 > chars_per_page:
             chunks.append((page_no, "\n".join(current).strip()))
             page_no += 1
-            current = []
-            size = 0
+            current, size = [], 0
         current.append(line)
         size += len(line) + 1
     if current:
@@ -222,56 +207,62 @@ def page_parts(text: str, chars_per_page: int = 1800) -> list[tuple[int, str]]:
 
 
 def _lesson_heading(line: str):
-    """Return a lesson title when a line is clearly a lesson/chapter heading."""
+    """Recognize Arabic/English lesson headings, including common PDF OCR variants."""
     value = line.strip()
     if not value or len(value) > 180:
         return None
 
-    number = r"(?:[0-9٠-٩]+|" + "|".join(map(re.escape, _ARABIC_ORDINALS)) + r")"
+    normalized = _arabic_normalize_for_matching(value)
+    ordinal_pattern = "|".join(re.escape(x) for x in _ARABIC_ORDINALS)
     arabic = re.match(
-        rf"^\s*(?:الدرس|درس|المحاضرة|محاضرة|الوحدة|وحدة|الفصل|فصل)\s*(?:رقم\s*)?({number})\b\s*[:：\-–—.]?\s*(.*)$",
-        value,
+        rf"^\s*(?:الدرس|درس|المحاضرة|محاضرة|الوحدة|وحدة|الفصل|فصل)\s*(?:رقم\s*)?({ordinal_pattern}|[0-9٠-٩]+)\b\s*[:：\-–—.]?\s*(.*)$",
+        normalized,
         re.I,
     )
     if arabic:
-        title = arabic.group(2).strip() or value
-        return title
+        original_tail = value[value.lower().find(arabic.group(2).lower()):] if arabic.group(2) else ""
+        return (original_tail or arabic.group(2) or value).strip()
 
-    english_number = r"(?:[0-9]+|" + "|".join(_ENGLISH_ORDINALS) + r")"
+    english_ordinal = "|".join(_ENGLISH_ORDINALS)
     english = re.match(
-        rf"^\s*(?:lesson|lecture|unit|chapter)\s*(?:number\s*)?({english_number})\b\s*[:：\-–—.]?\s*(.*)$",
+        rf"^\s*(?:lesson|lecture|unit|chapter)\s*(?:number\s*)?({english_ordinal}|[0-9]+)\b\s*[:：\-–—.]?\s*(.*)$",
         value,
         re.I,
     )
     if english:
-        title = english.group(2).strip() or value
-        return title
+        return (english.group(2).strip() or value)
 
+    # Headings commonly produced by OCR: "Lesson 1" / "الدرس 1" without a title.
+    if re.match(r"^\s*(?:Lesson|Lecture|Unit|Chapter)\s+[0-9]+\s*$", value, re.I):
+        return value
+    if re.match(r"^\s*(?:الدرس|المحاضرة|الوحدة|الفصل)\s+[0-9٠-٩]+\s*$", normalized):
+        return value
     return None
 
 
 def split_lessons(text: str) -> list[tuple[str, str]]:
-    """Split a document into real lessons using explicit headings or PDF outlines."""
+    """Split one uploaded document into independent lessons.
+
+    Priority: explicit [[LESSON:...]] markers/bookmarks, then Arabic/English
+    lesson headings. If no boundary exists, keep the document as one lesson.
+    """
     text = clean_text(text)
     if not text:
         return []
 
     lines = text.splitlines()
     starts: list[tuple[int, str]] = []
-    pending_outline_title: str | None = None
-
     for i, line in enumerate(lines):
         marker = LESSON_MARKER_RE.fullmatch(line.strip())
         if marker:
-            pending_outline_title = marker.group(1).strip()
-            starts.append((i, pending_outline_title or f"الدرس {len(starts) + 1}"))
+            title = marker.group(1).strip()
+            starts.append((i, title or f"الدرس {len(starts) + 1}"))
             continue
-
         title = _lesson_heading(line)
         if title:
             starts.append((i, title))
 
-    # De-duplicate a marker followed immediately by the same textual heading.
+    # Remove duplicate marker/heading pairs at the same location.
     deduped: list[tuple[int, str]] = []
     for start in starts:
         if deduped and start[0] <= deduped[-1][0] + 1:
@@ -284,15 +275,12 @@ def split_lessons(text: str) -> list[tuple[str, str]]:
     if not starts:
         return [("الدرس الكامل", text)]
 
-    lessons: list[tuple[str, str]] = []
+    lessons = []
     for n, (start, title) in enumerate(starts):
         end = starts[n + 1][0] if n + 1 < len(starts) else len(lines)
-        body_lines = lines[start:end]
-        body = "\n".join(
-            line for line in body_lines
-            if not LESSON_MARKER_RE.fullmatch(line.strip())
-        ).strip()
-        if body:
+        body_lines = [line for line in lines[start:end] if not LESSON_MARKER_RE.fullmatch(line.strip())]
+        body = "\n".join(body_lines).strip()
+        if body and len(body) >= 20:
             lessons.append((title or f"الدرس {n + 1}", body))
 
     if starts[0][0] > 0 and lessons:
