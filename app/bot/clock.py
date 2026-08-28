@@ -1,9 +1,9 @@
 import asyncio
-from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from aiogram import BaseMiddleware, F, Router
 from aiogram.filters import CommandStart
+from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
 from app.bot.brand import brand_header, digital_clock
@@ -35,7 +35,6 @@ def start_clock(message: Message) -> None:
     chat_id = int(chat_id)
     stop_clock(chat_id)
     generation = _CLOCK_GENERATIONS[chat_id]
-    # Keep the original main-menu keyboard. Never capture a section keyboard.
     keyboard = main_menu()
 
     async def _run():
@@ -47,8 +46,7 @@ def start_clock(message: Message) -> None:
                 try:
                     await message.edit_text(clock_text(), reply_markup=keyboard)
                 except Exception:
-                    # A newer screen may have replaced this message. The task must die
-                    # instead of putting the old main menu/clock back over it.
+                    # Never overwrite a newer section screen with the main menu.
                     return
         except asyncio.CancelledError:
             return
@@ -71,14 +69,18 @@ router = Router(name="clock")
 
 
 @router.message(CommandStart())
-async def clock_start(message: Message, db) -> None:
+async def clock_start(message: Message, db, state: FSMContext) -> None:
+    await state.clear()
     db.ensure_user(message.from_user.id, message.from_user.first_name or "")
     sent = await message.answer(clock_text(), reply_markup=main_menu())
     start_clock(sent)
 
 
 @router.callback_query(F.data == "home")
-async def clock_home(callback: CallbackQuery) -> None:
+async def clock_home(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
     await callback.answer()
-    await callback.message.edit_text(clock_text(), reply_markup=main_menu())
-    start_clock(callback.message)
+    if callback.message:
+        stop_clock(callback.message.chat.id)
+        await callback.message.edit_text(clock_text(), reply_markup=main_menu())
+        start_clock(callback.message)
