@@ -46,11 +46,8 @@ def _format_content(value: object) -> str:
     text = text.replace("\x00", "")
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = unicodedata.normalize("NFC", text)
-
-    # Page markers from extracted PDFs are implementation metadata, not study text.
     text = re.sub(r"\[\[PAGE:\s*\d+\]\]", "", text, flags=re.IGNORECASE)
 
-    # Preserve only Telegram-safe HTML tags already produced by the AI.
     tags: list[str] = []
 
     def hold_tag(match: re.Match[str]) -> str:
@@ -60,7 +57,6 @@ def _format_content(value: object) -> str:
     text = _ALLOWED_HTML.sub(hold_tag, text)
     text = html.escape(text, quote=False)
 
-    # Also support common Markdown produced by models, while keeping formulas such as p < q safe.
     text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text, flags=re.DOTALL)
     text = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"<i>\1</i>", text)
     text = re.sub(r"`([^`\n]+)`", r"<code>\1</code>", text)
@@ -68,7 +64,6 @@ def _format_content(value: object) -> str:
     for index, tag in enumerate(tags):
         text = text.replace(_TAG_TOKEN.format(index), tag)
 
-    # Keep paragraphs readable without changing the actual language/content.
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
@@ -76,6 +71,13 @@ def _format_content(value: object) -> str:
 
 def _safe(value: object) -> str:
     return _format_content(value)
+
+
+def _button_text(value: object) -> str:
+    """Return plain, readable button text; Telegram inline buttons do not need HTML."""
+    text = _format_content(value)
+    text = _ALLOWED_HTML.sub("", text)
+    return html.unescape(text).strip()
 
 
 def _cancel_timeout(user_id: int) -> None:
@@ -100,8 +102,7 @@ def question_keyboard(options: list[str], index: int, paused: bool = False) -> I
     rows = []
     if not paused:
         for i, option in enumerate(options):
-            label = _format_content(option).replace("<", "").replace(">", "")
-            rows.append([InlineKeyboardButton(text=label[:60], callback_data=f"ans:{index}:{i}")])
+            rows.append([InlineKeyboardButton(text=_button_text(option)[:60], callback_data=f"ans:{index}:{i}")])
     rows.append(_controls(paused))
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -184,7 +185,6 @@ def _build_review_lines(questions: list[dict], answers: list[str]) -> list[str]:
                 ]
             )
 
-        # Keep each error visually separated, regardless of Arabic, English, or mixed text.
         lines.append("──────────────────")
 
     if wrong_count == 0:
@@ -210,7 +210,6 @@ def _message_chunks(lines: list[str], limit: int = MAX_MESSAGE_LENGTH) -> list[s
             chunks.append(current)
             current = line
         else:
-            # A single unbroken source line can still be very long. Split it safely at whitespace.
             while len(line) > limit:
                 cut = line.rfind(" ", 0, limit)
                 if cut <= 0:
