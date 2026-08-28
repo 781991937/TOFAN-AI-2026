@@ -12,7 +12,7 @@ from pathlib import Path
 from aiogram import F, Router
 from aiogram.types import Message
 
-from app.bot.keyboards import lesson_menu
+from app.bot.keyboards import bot_lesson_list, lesson_menu
 from app.bot.library import classify_lesson
 from app.database import Database
 from app.core.automation_engine import AutomationEngine
@@ -65,16 +65,24 @@ async def save_file(message: Message, db: Database, bot, automation_engine: Auto
         if not saved:
             raise ValueError("لم أجد محتوى صالحًا لإنشاء الدروس.")
 
-        lines = [f"✅ <b>تم حفظ {len(saved)} درسًا</b>", f"📁 <b>الملف:</b> {html.escape(safe_name)}", ""]
+        lines = [f"✅ <b>تم حفظ {len(saved)} درسًا منفصلًا</b>", f"📁 <b>الملف:</b> {html.escape(safe_name)}", ""]
         for i, (_lesson_id, name, category, pages) in enumerate(saved, 1):
             lines.append(f"{i}. 📖 <b>{html.escape(name)}</b>")
             lines.append(f"   📚 {html.escape(category)} • 📄 {pages} صفحة")
-        lines.append("\n🖼️ زر <b>صفحات الدرس</b> يعرض الصفحات من الملف الأصلي عندما تكون النسخة الأصلية متاحة.")
+        lines.append("\n🧠 لكل درس اختبار مستقل من قسم الذكاء الاصطناعي، وبعد إنهاء دروس الملف ستجد الاختبار الشامل.")
+        lines.append("🖼️ صفحات كل درس تبقى مرتبطة بالملف الأصلي.")
 
         if len(saved) == 1:
             await message.answer("\n".join(lines), reply_markup=lesson_menu(saved[0][0]))
         else:
-            await message.answer("\n".join(lines))
+            key = str(document.file_id or path)
+            await message.answer("\n".join(lines), reply_markup=bot_lesson_list(
+                [
+                    {"id": lesson_id, "file_name": name}
+                    for lesson_id, name, _category, _pages in saved
+                ],
+                key,
+            ))
     except Exception as exc:
         logger.exception("Python automation file processing failed")
         await message.answer(f"⚠️ <b>تعذر معالجة الملف</b>\n{html.escape(str(exc))}")
