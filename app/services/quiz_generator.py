@@ -1,8 +1,10 @@
 import hashlib
+import html
 import json
 import random
 import re
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 from .ai_service import AIService
@@ -40,6 +42,30 @@ class QuizGenerator:
         return min(requested, limit)
 
     @staticmethod
+    def _clean_text(value) -> str:
+        """Normalize AI question content and remove raw HTML/Telegram markup."""
+        text = html.unescape(str(value or ""))
+        text = re.sub(r"<\/?(?:b|strong|i|em|u|s|code|pre|blockquote)(?:\s[^>]*)?>", "", text, flags=re.I)
+        text = text.replace("\r\n", "\n").replace("\r", "\n")
+        text = unicodedata.normalize("NFC", text)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        return text.strip()
+
+    @classmethod
+    def _sanitize_questions(cls, questions: list[dict]) -> list[dict]:
+        """Keep quiz data plain; the Telegram renderer controls presentation."""
+        cleaned = []
+        for raw in questions or []:
+            item = dict(raw)
+            for key in ("question", "answer", "explanation"):
+                if key in item:
+                    item[key] = cls._clean_text(item[key])
+            if item.get("options") is not None:
+                item["options"] = [cls._clean_text(option) for option in (item.get("options") or [])]
+            cleaned.append(item)
+        return cleaned
+
+    @staticmethod
     def _fresh_variant(questions: list[dict]) -> list[dict]:
         result = []
         for question in questions:
@@ -54,7 +80,7 @@ class QuizGenerator:
 
     async def create_local(self, text: str, count: int = 10, difficulty: str = "medium") -> list[dict]:
         count = self.smart_count(text, count)
-        questions = generate_local_questions(text, count, difficulty)
+        questions = self._sanitize_questions(generate_local_questions(text, count, difficulty))
         if not questions:
             raise RuntimeError("لم أستطع إنشاء أسئلة من محتوى الملف")
         return self._fresh_variant(questions)
@@ -65,7 +91,7 @@ class QuizGenerator:
             raise ValueError("Lesson text is empty")
         count = self.smart_count(text, count)
         variant = hashlib.sha1(f"{random.random()}".encode()).hexdigest()[:10]
-        questions = await self.ai_service.generate_questions(text, count, difficulty, variant=variant)
+        questions = self._sanitize_questions(await self.ai_service.generate_questions(text, count, difficulty, variant=variant))
         if not questions:
             raise RuntimeError("الذكاء الاصطناعي لم ينتج أسئلة كافية من المحتوى")
         return self._fresh_variant(questions)
