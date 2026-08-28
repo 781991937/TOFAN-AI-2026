@@ -7,8 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# pdftotext is a native Poppler binding. Install its OS dependencies
-# inside the image so Render does not need apt access in its native runtime.
+# Native dependencies required by pdftotext.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
@@ -22,7 +21,7 @@ RUN python -m pip install --upgrade pip \
 
 COPY . .
 
-# Fail the image build before deployment if the Python/PDF stack is broken.
+# Validate the PDF stack and application before Render starts the service.
 RUN python -c "import pdftotext, pymupdf, pypdf; print('PDF stack OK')" \
     && python -m compileall -q app \
     && python -m pytest -q tests/test_runtime_smoke.py
