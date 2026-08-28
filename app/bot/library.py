@@ -5,8 +5,12 @@ bot_library_isolation.py (Bot/Automation) and sections.py (AI).
 """
 
 import hashlib
+import json
+from pathlib import Path
 
 from aiogram import Router
+
+from app.services.file_extractor import split_lessons
 
 router = Router(name="library_compat")
 
@@ -31,8 +35,58 @@ def classify_lesson(lesson) -> str:
     return category if score else "📂 مواد أخرى"
 
 
+def _key(lesson) -> str:
+    return str(lesson["file_id"] or lesson["file_path"] or lesson["file_name"])
+
+
+def _auto_split_file(db, lessons: list) -> bool:
+    """Repair a legacy one-row upload when its extracted text contains multiple lessons."""
+    changed = False
+    groups: dict[str, list] = {}
+    for lesson in lessons:
+        groups.setdefault(_key(lesson), []).append(lesson)
+
+    for key, rows in groups.items():
+        if len(rows) != 1:
+            continue
+        lesson = rows[0]
+        parts = split_lessons(str(lesson["extracted_text"] or ""))
+        if len(parts) <= 1:
+            continue
+
+        source_name = str(lesson["file_name"] or "الملف")
+        suffix = Path(source_name).suffix
+        stem = Path(source_name).stem
+        category = str(lesson["category"] or classify_lesson(lesson))
+
+        first_title, first_text = parts[0]
+        first_name = f"{stem} - {first_title}{suffix}"
+        db.update_lesson_text_and_name(int(lesson["id"]), first_name, first_text, category)
+
+        for number, (title, body) in enumerate(parts[1:], 2):
+            body = str(body).strip()
+            if len(body) < 20:
+                continue
+            name = f"{stem} - {title or f'الدرس {number}'}{suffix}"
+            new_id = db.create_lesson(
+                int(lesson["telegram_id"]),
+                name,
+                str(lesson["file_type"] or suffix.lstrip(".") or "txt"),
+                str(lesson["file_path"] or ""),
+                body,
+                category=category,
+                file_id=str(lesson["file_id"] or ""),
+            )
+            db.update_lesson_analysis(new_id, "", json.dumps([], ensure_ascii=False), "")
+        changed = True
+
+    return changed
+
+
 def sync_categories(db, user_id: int) -> list:
-    """Repair categories of old uploads deterministically before a domain opens."""
+    """Repair old categories and old one-row multi-lesson uploads before opening a domain."""
+    lessons = db.get_lessons(user_id, 1000)
+    _auto_split_file(db, lessons)
     lessons = db.get_lessons(user_id, 1000)
     for lesson in lessons:
         category = classify_lesson(lesson)
@@ -41,7 +95,7 @@ def sync_categories(db, user_id: int) -> list:
     return db.get_lessons(user_id, 1000)
 
 
-def prepare_categories(db, user_id: int):
+def prepare_categories(db: Database, user_id: int):
     """Compatibility helper used by the AI quiz adapter; never renders UI."""
     sync_categories(db, user_id)
     return db.get_categories(user_id)
@@ -50,18 +104,18 @@ def prepare_categories(db, user_id: int):
 def files_in_category(lessons: list):
     grouped = {}
     for lesson in lessons:
-        key = str(lesson["file_id"] or lesson["file_path"] or lesson["file_name"])
+        key = _key(lesson)
         grouped.setdefault(key, [str(lesson["file_name"] or "الملف"), 0])[1] += 1
     return [(key, name, count) for key, (name, count) in grouped.items()]
 
 
 def find_file(lessons: list, file_token: str):
     for lesson in lessons:
-        key = str(lesson["file_id"] or lesson["file_path"] or lesson["file_name"])
+        key = _key(lesson)
         if token(key) == file_token:
             return key
     return None
 
 
 def file_lessons(lessons: list, key: str):
-    return [x for x in lessons if str(x["file_id"] or x["file_path"] or x["file_name"]) == key]
+    return [x for x in lessons if _key(x) == key]
