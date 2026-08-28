@@ -5,7 +5,7 @@ import html
 from aiogram import F, Router
 from aiogram.types import CallbackQuery
 
-from app.bot.keyboards import bot_categories_menu, file_list_menu, bot_lesson_list, lesson_menu
+from app.bot.keyboards import bot_categories_menu, file_list_menu, bot_lesson_list, lesson_menu, section_menu
 from app.bot.library import find_file, file_lessons, token, sync_categories
 from app.database import Database
 
@@ -30,13 +30,65 @@ def _categories(lessons: list) -> list[dict]:
     return [{"category": category, "lesson_count": count} for category, count in counts.items()]
 
 
+@router.callback_query(F.data == "bot_section")
+async def bot_section(callback: CallbackQuery) -> None:
+    """Open the Bot/Automation section from the main menu.
+
+    This callback is intentionally owned by the Bot router. Previously the
+    main menu exposed ``bot_section`` but no registered handler consumed it,
+    so tapping the button appeared to do nothing.
+    """
+    await callback.answer()
+    await callback.message.edit_text(
+        "🤖 <b>قسم البوت والأتمتة</b>\n\n"
+        "📚 جميع الدروس والمواد متاحة هنا مثل قسم الذكاء الاصطناعي.\n"
+        "🐍 الاختلاف هنا في وظائف Python: استخراج الملفات، تنظيمها، التنقل بين الصفحات والملفات، والتنزيل والحذف.\n"
+        "🧠 الشرح والاختبارات الذكية لها واجهتها الخاصة في قسم الذكاء الاصطناعي.\n\n"
+        "اختر الخدمة:",
+        reply_markup=section_menu("bot"),
+    )
+
+
+@router.callback_query(F.data == "file_management")
+async def file_management(callback: CallbackQuery) -> None:
+    """Explain how file management works instead of leaving a dead button."""
+    await callback.answer()
+    await callback.message.edit_text(
+        "📥 <b>إدارة الملفات</b>\n\n"
+        "أرسل الملف الدراسي هنا مباشرة.\n\n"
+        "🐍 سيقوم Python باستخراج المحتوى وتقسيمه إلى دروس وصفحات وحفظه في مكتبتك.\n"
+        "📄 المدعوم: PDF وDOCX وTXT والملفات البرمجية المدعومة.\n"
+        "📦 الحد الأقصى للملف: 20 MB.\n\n"
+        "بعد الحفظ يمكنك فتح الدرس، عرض صفحاته، تنزيل الملف أو حذفه.\n\n"
+        "⬅️ ارجع للقسم ثم أرسل الملف كرسالة جديدة.",
+        reply_markup=section_menu("bot"),
+    )
+
+
+@router.callback_query(F.data == "navigation_help")
+async def navigation_help(callback: CallbackQuery) -> None:
+    """Show the navigation guide used by both lesson interfaces."""
+    await callback.answer()
+    await callback.message.edit_text(
+        "🧭 <b>طريقة التنقل</b>\n\n"
+        "📚 <b>المكتبة</b> ← الأقسام ← الملفات ← الدروس.\n"
+        "📖 <b>صفحات الدرس</b> ← اختر رقم الصفحة أو السابقة/التالية.\n"
+        "⏮️ <b>الأولى</b> ← تعيدك لأول صفحة.\n"
+        "⬅️ <b>الملف السابق</b> / <b>الملف التالي</b> ← التنقل بين الملفات.\n"
+        "📥 <b>تنزيل الملف</b> ← إرسال النسخة الأصلية من تيليجرام.\n"
+        "🗑️ <b>حذف الملف</b> ← حذف درس المستخدم من المكتبة.\n\n"
+        "💡 كل الدروس مشتركة بين القسمين؛ الذي يتغير هو الوظائف وطريقة المعالجة.",
+        reply_markup=section_menu("bot"),
+    )
+
+
 @router.callback_query(F.data == "bot_library")
 async def bot_library(callback: CallbackQuery, db: Database):
     lessons = _bot_lessons(db, callback.from_user.id)
     categories = _categories(lessons)
     await callback.answer()
     if not categories:
-        await callback.message.edit_text("📚 <b>المكتبة فارغة</b>\n\nأرسل أي ملف دراسي أولًا.")
+        await callback.message.edit_text("📚 <b>المكتبة فارغة</b>\n\nأرسل أي ملف دراسي أولًا.", reply_markup=section_menu("bot"))
         return
     await callback.message.edit_text("🤖 <b>مكتبة البوت والأتمتة</b>\n\nجميع المواد متاحة هنا. اختر القسم:\n\n🐍 التنقل والاستخراج وإدارة الملفات تعمل بمحرك Python.", reply_markup=bot_categories_menu(categories))
 
@@ -48,7 +100,7 @@ async def bot_category(callback: CallbackQuery, db: Database):
     category = next((str(row["category"]) for row in _categories(lessons) if token(row["category"]) == value), None)
     await callback.answer()
     if not category:
-        await callback.message.edit_text("❌ القسم غير موجود.")
+        await callback.message.edit_text("❌ القسم غير موجود.", reply_markup=section_menu("bot"))
         return
     selected = [lesson for lesson in lessons if str(lesson["category"] or "") == category]
     await callback.message.edit_text(f"📚 <b>{html.escape(category)}</b>\n\nاختر الملف:", reply_markup=file_list_menu(selected, category))
@@ -60,7 +112,7 @@ async def bot_file(callback: CallbackQuery, db: Database):
     key = find_file(lessons, callback.data.split(":", 1)[1])
     await callback.answer()
     if not key:
-        await callback.message.edit_text("❌ الملف غير موجود.")
+        await callback.message.edit_text("❌ الملف غير موجود.", reply_markup=section_menu("bot"))
         return
     selected = file_lessons(lessons, key)
     await callback.message.edit_text(f"🤖 <b>قسم البوت والأتمتة</b>\n📚 <b>{html.escape(str(selected[0]['category'] or '📂 مواد أخرى'))}</b>\n📘 <b>{html.escape(str(selected[0]['file_name']))}</b>\n\nاختر الدرس:", reply_markup=bot_lesson_list(selected, key))
@@ -72,7 +124,7 @@ async def bot_fileback(callback: CallbackQuery, db: Database):
     key = find_file(lessons, callback.data.split(":", 1)[1])
     await callback.answer()
     if not key:
-        await callback.message.edit_text("❌ الملف غير موجود.")
+        await callback.message.edit_text("❌ الملف غير موجود.", reply_markup=section_menu("bot"))
         return
     selected = file_lessons(lessons, key)
     category = str(selected[0]["category"] or "📂 مواد أخرى")
@@ -87,7 +139,7 @@ async def bot_lesson(callback: CallbackQuery, db: Database):
     lesson = db.get_lesson(lesson_id, callback.from_user.id)
     await callback.answer()
     if not lesson:
-        await callback.message.edit_text("❌ هذا الدرس غير موجود.")
+        await callback.message.edit_text("❌ هذا الدرس غير موجود.", reply_markup=section_menu("bot"))
         return
     lessons = _bot_lessons(db, callback.from_user.id)
     selected = file_lessons(lessons, str(lesson["file_id"] or lesson["file_path"] or lesson["file_name"]))
