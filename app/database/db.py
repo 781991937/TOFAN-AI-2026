@@ -147,6 +147,15 @@ class Database:
         with self._connect() as conn:
             self._execute(conn, "UPDATE lessons SET summary=?, concepts=?, key_points=? WHERE id=?", (summary, concepts, key_points, lesson_id))
 
+    def update_lesson_text_and_name(self, lesson_id: int, file_name: str, extracted_text: str, category: str | None = None) -> None:
+        """Rewrite a legacy lesson row after discovering multiple lessons in one upload."""
+        extracted_text = (extracted_text or "").replace("\x00", "")
+        with self._connect() as conn:
+            if category is None:
+                self._execute(conn, "UPDATE lessons SET file_name=?, extracted_text=? WHERE id=?", (file_name, extracted_text, lesson_id))
+            else:
+                self._execute(conn, "UPDATE lessons SET file_name=?, extracted_text=?, category=? WHERE id=?", (file_name, extracted_text, category, lesson_id))
+
     def update_lesson_category(self, lesson_id: int, category: str) -> None:
         with self._connect() as conn:
             self._execute(conn, "UPDATE lessons SET category=? WHERE id=?", (category, lesson_id))
