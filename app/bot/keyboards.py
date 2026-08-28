@@ -59,6 +59,8 @@ def ai_lessons_menu(lessons, key):
         t = t[:22] + "..." if len(t) > 25 else t
         b.append(InlineKeyboardButton(text=f"📖 {n}: {t}", callback_data=f"ai_lesson:{int(l['id'])}:{_enc(key)}"))
     rows = _rows(b)
+    if len(lessons) > 1:
+        rows.append([InlineKeyboardButton(text="🎓 اختبار شامل للملف", callback_data=f"ai_filequiz:{_enc(key)}")])
     rows.append([InlineKeyboardButton(text="⬅️ الملفات", callback_data=f"ai_fileback:{_enc(key)}")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -85,7 +87,7 @@ def lesson_menu(lid):
 
 
 def delete_lesson_confirm(lid):
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🗑️ نعم، احذف الملف", callback_data=f"confirm_delete:{lid}"), InlineKeyboardButton(text="❌ إلغاء", callback_data=f"lesson:{lid}")]])
+    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🗑️ نعم، احذف الدرس", callback_data=f"confirm_delete:{lid}"), InlineKeyboardButton(text="❌ إلغاء", callback_data=f"lesson:{lid}")]])
 
 
 def file_list_menu(lessons, cat):
@@ -117,10 +119,13 @@ def lessons_list_menu(lessons):
     return bot_categories_menu([{"category": k, "lesson_count": v} for k, v in cats.items()])
 
 
-def result_menu(lid, group=False, bot=False):
+def result_menu(lid, group=False, bot=False, comprehensive_key: str | None = None):
     retry = f"bot_quiz:{lid}" if bot else f"ai_quiz:{lid}"
     back = f"lesson:{lid}" if bot else f"ai_lessonback:{lid}"
-    return InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔁 اختبار جديد", callback_data=retry), InlineKeyboardButton(text="⬅️ رجوع للدرس", callback_data=back)]])
+    rows = [[InlineKeyboardButton(text="🔁 اختبار جديد", callback_data=retry), InlineKeyboardButton(text="⬅️ رجوع للدرس", callback_data=back)]]
+    if comprehensive_key and not bot:
+        rows.insert(0, [InlineKeyboardButton(text="🎓 الاختبار الشامل للملف", callback_data=f"ai_filequiz:{_enc(comprehensive_key)}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def settings_menu(count, difficulty):
