@@ -19,9 +19,16 @@ def token(value: str) -> str:
     return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
 
 
+def _field(lesson, name: str, default=""):
+    try:
+        return lesson[name]
+    except (KeyError, IndexError, TypeError):
+        return lesson.get(name, default) if hasattr(lesson, "get") else default
+
+
 def classify_lesson(lesson) -> str:
-    name = str(lesson.get("file_name", "")).casefold()
-    text = str(lesson.get("extracted_text", ""))[:16000].casefold()
+    name = str(_field(lesson, "file_name", "")).casefold()
+    text = str(_field(lesson, "extracted_text", ""))[:16000].casefold()
     source = f"{name}\n{text}"
     rules = [
         ("🤖 مقدمة الذكاء الاصطناعي", ["artificial intelligence", "الذكاء الاصطناعي", "intelligent agent", "intelligent agents", "الوكلاء الأذكياء", "peas", "turing test", "اختبار تورينغ", "state space", "problem solving", "knowledge representation"]),
@@ -36,7 +43,7 @@ def classify_lesson(lesson) -> str:
 
 
 def _key(lesson) -> str:
-    return str(lesson["file_id"] or lesson["file_path"] or lesson["file_name"])
+    return str(_field(lesson, "file_id", "") or _field(lesson, "file_path", "") or _field(lesson, "file_name", ""))
 
 
 def _auto_split_file(db, lessons: list) -> bool:
@@ -50,14 +57,14 @@ def _auto_split_file(db, lessons: list) -> bool:
         if len(rows) != 1:
             continue
         lesson = rows[0]
-        parts = split_lessons(str(lesson["extracted_text"] or ""))
+        parts = split_lessons(str(_field(lesson, "extracted_text", "") or ""))
         if len(parts) <= 1:
             continue
 
-        source_name = str(lesson["file_name"] or "الملف")
+        source_name = str(_field(lesson, "file_name", "الملف") or "الملف")
         suffix = Path(source_name).suffix
         stem = Path(source_name).stem
-        category = str(lesson["category"] or classify_lesson(lesson))
+        category = str(_field(lesson, "category", "") or classify_lesson(lesson))
 
         first_title, first_text = parts[0]
         first_name = f"{stem} - {first_title}{suffix}"
@@ -71,11 +78,11 @@ def _auto_split_file(db, lessons: list) -> bool:
             new_id = db.create_lesson(
                 int(lesson["telegram_id"]),
                 name,
-                str(lesson["file_type"] or suffix.lstrip(".") or "txt"),
-                str(lesson["file_path"] or ""),
+                str(_field(lesson, "file_type", "") or suffix.lstrip(".") or "txt"),
+                str(_field(lesson, "file_path", "") or ""),
                 body,
                 category=category,
-                file_id=str(lesson["file_id"] or ""),
+                file_id=str(_field(lesson, "file_id", "") or ""),
             )
             db.update_lesson_analysis(new_id, "", json.dumps([], ensure_ascii=False), "")
         changed = True
@@ -105,7 +112,7 @@ def files_in_category(lessons: list):
     grouped = {}
     for lesson in lessons:
         key = _key(lesson)
-        grouped.setdefault(key, [str(lesson["file_name"] or "الملف"), 0])[1] += 1
+        grouped.setdefault(key, [str(_field(lesson, "file_name", "الملف") or "الملف"), 0])[1] += 1
     return [(key, name, count) for key, (name, count) in grouped.items()]
 
 
