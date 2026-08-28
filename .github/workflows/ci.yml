@@ -23,10 +23,10 @@ jobs:
       - name: Verify PDF stack
         run: |
           python - <<'PY'
-          import fitz
+          import pymupdf
           import pdftotext
           import pypdf
-          print('PyMuPDF:', fitz.__doc__.splitlines()[0] if fitz.__doc__ else 'OK')
+          print('PyMuPDF:', pymupdf.__doc__.splitlines()[0] if pymupdf.__doc__ else 'OK')
           print('pdftotext:', pdftotext.__file__)
           print('pypdf:', pypdf.__version__)
           PY
