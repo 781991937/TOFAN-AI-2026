@@ -76,13 +76,15 @@ async def save_file(message: Message, db: Database, bot, automation_engine: Auto
             await message.answer("\n".join(lines), reply_markup=lesson_menu(saved[0][0]))
         else:
             key = str(document.file_id or path)
-            await message.answer("\n".join(lines), reply_markup=bot_lesson_list(
-                [
-                    {"id": lesson_id, "file_name": name}
-                    for lesson_id, name, _category, _pages in saved
-                ],
-                key,
-            ))
+            lesson_buttons = [
+                {
+                    "id": lesson_id,
+                    "file_id": document.file_id,
+                    "file_name": name,
+                }
+                for lesson_id, name, _category, _pages in saved
+            ]
+            await message.answer("\n".join(lines), reply_markup=bot_lesson_list(lesson_buttons, key))
     except Exception as exc:
         logger.exception("Python automation file processing failed")
         await message.answer(f"⚠️ <b>تعذر معالجة الملف</b>\n{html.escape(str(exc))}")
