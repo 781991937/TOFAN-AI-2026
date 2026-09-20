@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.models import Course
+from app.db.models import AcademicUnit, Course, Institution
 from .models import Agent, AgentKind, AgentStatus, AgentTool
 
 
@@ -57,6 +57,7 @@ def create_teacher_agent(
         model_name=None,
         memory_enabled=True,
         teacher_course_id=course_id,
+        teacher_institution_id=course.academic_unit_id,
     )
     db.add(agent)
     db.flush()
@@ -64,6 +65,51 @@ def create_teacher_agent(
     db.flush()
     return agent
 
+
+
+def provision_teacher_agents_for_institution(
+    db: Session,
+    *,
+    institution_id: str,
+) -> list[Agent]:
+    """Create draft AI teachers for every existing course in an institution.
+
+    No human instructor is created or assigned. Each course receives its own
+    independent AI teacher agent. The operation is idempotent.
+    """
+    institution = db.get(Institution, institution_id)
+    if institution is None or not institution.is_active:
+        raise ValueError("Active institution not found.")
+
+    courses = db.scalars(
+        select(Course)
+        .join(AcademicUnit, AcademicUnit.id == Course.academic_unit_id)
+        .where(
+            AcademicUnit.institution_id == institution_id,
+            AcademicUnit.is_active.is_(True),
+            Course.is_active.is_(True),
+        )
+        .order_by(Course.name)
+    ).all()
+
+    created: list[Agent] = []
+    for course in courses:
+        slug = f"teacher-{institution.code or institution.id[:8]}-{course.id[:8]}"
+        existing = db.scalar(select(Agent).where(Agent.slug == slug))
+        if existing is not None:
+            continue
+        agent = create_teacher_agent(
+            db,
+            name=f"مدرس {course.name}",
+            slug=slug,
+            course_id=course.id,
+            description=f"وكيل مدرس ذكاء اصطناعي لمادة {course.name} في {institution.name}.",
+        )
+        agent.teacher_institution_id = institution_id
+        created.append(agent)
+
+    db.flush()
+    return created
 
 def get_teacher_profile(db: Session, agent: Agent) -> TeacherAgentProfile:
     course_id = getattr(agent, "teacher_course_id", None)
