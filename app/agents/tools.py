@@ -23,6 +23,7 @@ class ToolDefinition:
     handler: Callable[[Session, str], str]
     sensitive: bool = False
     parameters: dict | None = None
+    allowed_agent_slug: str | None = None
 
 
 class ToolRegistry:
@@ -229,6 +230,21 @@ def build_default_registry() -> ToolRegistry:
                     "curriculum_course_id": {"type": "string", "description": "Canonical TOFAN curriculum course ID. Required for TOFAN-native teacher agents."},
                 },
                 "required": ["query", "limit"],
+                "additionalProperties": False,
+            },
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="payments.confirm",
+            description="Privileged action: confirm a genuinely verified payment transaction and activate global curriculum access.",
+            handler=confirm_payment_tool,
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={
+                "type": "object",
+                "properties": {"transaction_id": {"type": "string"}},
+                "required": ["transaction_id"],
                 "additionalProperties": False,
             },
         )
