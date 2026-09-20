@@ -176,6 +176,8 @@ class ContentFile(Base):
     page_count: Mapped[int | None] = mapped_column(Integer)
     mime_type: Mapped[str | None] = mapped_column(String(150))
     status: Mapped[ContentStatus] = mapped_column(default=ContentStatus.DRAFT, nullable=False)
+    assessment_json: Mapped[str | None] = mapped_column(Text)
+    assessment_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
 
 
