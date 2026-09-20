@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.agents.models import Agent, AgentKind
 from app.agents.teaching_policy import grant_paid_global_access
 from app.agents.payment_tools import confirm_payment_transaction
+from app.agents.academy_access_policy import course_access_tier, has_academy_content_access
 from app.agents.main_manager import MainManagerService
 from app.auth.dependencies import get_current_user, get_db
 from app.auth.authorization import require_owner_or_admin
@@ -22,7 +23,7 @@ from app.db.identity_models import (
     StudentProfile,
     UserType,
 )
-from app.db.models import AcademicUnit, BiometricCredentialRecord, Institution, User, Entitlement, TeachingAccess
+from app.db.models import AcademicUnit, AcademicPeriod, BiometricCredentialRecord, Institution, User, Entitlement, TeachingAccess, Course, Unit, Lecture, ContentFile, ContentStatus, TeachingSource
 
 router = APIRouter(prefix="/student", tags=["student-identity"])
 
@@ -107,6 +108,84 @@ def get_profile(
 
 
 @router.get("/access")
+@router.get("/academy/catalog")
+def get_academy_catalog(
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == actor.id))
+    if profile is None or profile.profile_status != ProfileStatus.VERIFIED:
+        raise HTTPException(status_code=403, detail="Complete and verify the student profile first.")
+
+    if profile.user_type != UserType.UNIVERSITY_STUDENT:
+        return {
+            "scope": "global",
+            "message": "Independent learners use the TOFAN global curriculum.",
+            "courses": [],
+        }
+
+    if not profile.major_unit_id:
+        raise HTTPException(status_code=409, detail="Specialization is required before opening academy courses.")
+
+    courses = db.scalars(
+        select(Course).where(
+            Course.academic_unit_id == profile.major_unit_id,
+            Course.is_active.is_(True),
+        ).order_by(Course.name)
+    ).all()
+
+    result = []
+    for course in courses:
+        tier = course_access_tier(db, course.id).value
+        units = db.scalars(select(Unit).where(Unit.course_id == course.id).order_by(Unit.position)).all()
+        lectures = []
+        for unit in units:
+            rows = db.scalars(select(Lecture).where(Lecture.unit_id == unit.id).order_by(Lecture.position)).all()
+            for lecture in rows:
+                files = db.scalars(select(ContentFile).where(
+                    ContentFile.lecture_id == lecture.id,
+                    ContentFile.teaching_source == TeachingSource.GLOBAL_CURRICULUM,
+                ).order_by(ContentFile.uploaded_at)).all()
+                file_items = []
+                for content in files:
+                    published = content.status in (ContentStatus.FREE, ContentStatus.PAID)
+                    accessible = has_academy_content_access(db, user_id=actor.id, content_file_id=content.id) if published else False
+                    file_items.append({
+                        "id": content.id,
+                        "name": content.original_name,
+                        "status": content.status,
+                        "accessible": accessible,
+                    })
+                lectures.append({
+                    "id": lecture.id,
+                    "title": lecture.title,
+                    "position": lecture.position,
+                    "status": lecture.status,
+                    "accessible": any(item["accessible"] for item in file_items),
+                    "files": file_items,
+                })
+
+        period = db.get(AcademicPeriod, course.academic_period_id) if course.academic_period_id else None
+        result.append({
+            "id": course.id,
+            "code": course.code,
+            "name": course.name,
+            "description": course.description,
+            "access_tier": tier,
+            "year_number": None if period is None else period.year_number,
+            "term_number": None if period is None else period.term_number,
+            "lectures": lectures,
+        })
+
+    return {
+        "scope": "academy",
+        "institution_id": profile.institution_id,
+        "college_unit_id": profile.college_unit_id,
+        "major_unit_id": profile.major_unit_id,
+        "courses": result,
+    }
+
+
 def get_student_access(
     db: Session = Depends(get_db),
     actor: User = Depends(get_current_user),
