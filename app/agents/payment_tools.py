@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.agents.models import Agent, AgentKind, AgentStatus
 from app.agents.teaching_policy import grant_paid_global_access
+from app.agents.academy_access_policy import course_access_tier
+from app.db.models import AcademyAccessTier
 from app.db.identity_models import PaymentStatus, PaymentTransaction
 from app.db.models import AuditLog, Entitlement, TeachingAccess, Lecture, Unit
 
@@ -47,6 +49,8 @@ def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
         course_id = transaction.product_key.split(":", 1)[1].strip()
         if not course_id:
             raise ValueError("academy_course payment requires a course id.")
+        if course_access_tier(db, course_id) != AcademyAccessTier.PAID:
+            raise ValueError("This academy course is free and does not require a paid entitlement.")
         lecture_ids = db.scalars(
             select(Lecture.id)
             .join(Unit, Lecture.unit_id == Unit.id)
