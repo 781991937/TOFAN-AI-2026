@@ -72,7 +72,7 @@ def echo_tool(_: Session, input_text: str) -> str:
     return input_text
 
 
-def health_tool(_: Session, _: str) -> str:
+def health_tool(_: Session, _input_text: str) -> str:
     return "ok"
 
 
