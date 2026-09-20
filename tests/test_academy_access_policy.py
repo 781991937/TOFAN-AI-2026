@@ -1,7 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
-from app.agents.academy_access_policy import content_access_tier, period_access_tier, validate_content_status
+from app.agents.academy_access_policy import content_access_tier, has_academy_content_access, period_access_tier, validate_content_status
 from app.db.base import Base
 from app.db.models import (
     AcademyAccessTier,
@@ -14,6 +14,9 @@ from app.db.models import (
     Lecture,
     Unit,
     TeachingSource,
+    Entitlement,
+    TeachingAccess,
+    User,
 )
 
 
@@ -134,3 +137,32 @@ def test_student_private_content_is_not_affected_by_academy_tier_rule():
         assert "academy curriculum" in str(exc)
     else:
         raise AssertionError("Student files must remain private and outside academy publishing rules.")
+
+
+def test_first_semester_content_is_accessible_without_payment():
+    db = setup()
+    content = make_content(db, year=1, term=1)
+    user = User(display_name="Student")
+    db.add(user)
+    db.flush()
+
+    assert has_academy_content_access(db, user_id=user.id, content_file_id=content.id) is True
+
+
+def test_paid_academy_content_requires_lecture_entitlement():
+    db = setup()
+    content = make_content(db, year=1, term=2)
+    user = User(display_name="Student")
+    db.add(user)
+    db.flush()
+
+    assert has_academy_content_access(db, user_id=user.id, content_file_id=content.id) is False
+
+    db.add(Entitlement(
+        user_id=user.id,
+        lecture_id=content.lecture_id,
+        access_type=TeachingAccess.PAID.value,
+    ))
+    db.flush()
+
+    assert has_academy_content_access(db, user_id=user.id, content_file_id=content.id) is True
