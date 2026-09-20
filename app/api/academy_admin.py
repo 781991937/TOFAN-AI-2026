@@ -32,6 +32,8 @@ class PeriodCreate(BaseModel):
     parent_id: str | None = None
     name: str = Field(min_length=1, max_length=100)
     kind: str = Field(min_length=1, max_length=30)
+    year_number: int | None = Field(default=None, ge=1)
+    term_number: int | None = Field(default=None, ge=1)
 
 
 class CourseCreate(BaseModel):
