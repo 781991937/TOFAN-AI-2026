@@ -10,3 +10,12 @@ def test_fastapi_application_imports():
         getattr(route, "path", None) == "/manager/students/{user_id}/snapshot"
         for route in main_manager_router.routes
     )
+
+
+def test_academy_content_routes_are_registered():
+    from app.main import app
+
+    paths = {getattr(route, "path", None) for route in app.routes}
+    assert "/admin/content" in paths
+    assert "/admin/content/lectures/{lecture_id}/files" in paths
+    assert "/admin/content/{file_id}/status" in paths
