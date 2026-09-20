@@ -4,3 +4,4 @@ uvicorn[standard]>=0.30,<1.0
 pydantic>=2.8,<3.0
 email-validator>=2.2,<3.0
 openai>=1.0,<3.0
+fido2>=2.0,<3.0
