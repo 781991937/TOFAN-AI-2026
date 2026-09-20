@@ -24,3 +24,7 @@ jobs:
         env:
           DATABASE_URL: ""
         run: python -c "from app.main import app; print(app.title)"
+      - name: Run tests
+        env:
+          DATABASE_URL: ""
+        run: python -m pytest -q
