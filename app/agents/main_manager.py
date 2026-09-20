@@ -307,6 +307,30 @@ class MainManagerService:
         return {"agent_id": agent.id, "slug": agent.slug, "status": agent.status}
 
     @staticmethod
+    def courses(db: Session) -> dict:
+        from app.db.curriculum_models import CurriculumCourse, Curriculum
+
+        rows = db.scalars(
+            select(CurriculumCourse)
+            .join(Curriculum, Curriculum.id == CurriculumCourse.curriculum_id)
+            .where(CurriculumCourse.is_active.is_(True))
+            .order_by(CurriculumCourse.position, CurriculumCourse.name)
+        ).all()
+        return {
+            "courses": [
+                {
+                    "course_id": c.id,
+                    "code": c.code,
+                    "name": c.name,
+                    "stage_id": c.stage_id,
+                    "curriculum_id": c.curriculum_id,
+                    "course_type": c.course_type,
+                }
+                for c in rows
+            ]
+        }
+
+    @staticmethod
     def teacher_overview(db: Session) -> list[dict]:
         teachers = db.scalars(select(Agent).where(Agent.kind == AgentKind.TEACHER).order_by(Agent.name)).all()
         return [{"agent_id": t.id, "slug": t.slug, "name": t.name, "status": t.status,
