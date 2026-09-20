@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.agents.models import Agent, AgentKind, AgentStatus
 from app.agents.teacher import create_teacher_agent, provision_teacher_agents_for_institution
+from app.agents.teaching_policy import grant_paid_global_access
 from app.auth.authorization import require_owner_or_admin
 from app.auth.dependencies import get_db
 
@@ -81,6 +82,27 @@ def provision_institution_teachers(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+
+@router.post("/{agent_id}/access/{user_id}/global/grant")
+def grant_global_paid_access(
+    agent_id: str,
+    user_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    agent = db.get(Agent, agent_id)
+    if agent is None or agent.kind != AgentKind.TEACHER:
+        raise HTTPException(status_code=404, detail="Teacher agent not found.")
+    usage = grant_paid_global_access(db, user_id=user_id, agent_id=agent_id)
+    db.commit()
+    return {
+        "agent_id": agent_id,
+        "user_id": user_id,
+        "paid_access": usage.paid_access,
+        "global_curriculum": "full",
+    }
 
 
 @router.get("")
