@@ -92,9 +92,38 @@ def migrate_academic_structure(engine: Engine) -> list[str]:
     return changes
 
 
+def migrate_teaching_limits(engine: Engine) -> list[str]:
+    changes: list[str] = []
+    for table, columns in {
+        "content_files": (
+            ("uploaded_by_user_id", "VARCHAR(36)"),
+            ("teaching_source", "VARCHAR(40) DEFAULT 'global_curriculum'"),
+        ),
+        "teaching_usage": (
+            ("files_used", "INTEGER DEFAULT 0"),
+            ("files_limit", "INTEGER DEFAULT 3"),
+            ("free_steps_used", "INTEGER DEFAULT 0"),
+            ("free_steps_limit", "INTEGER DEFAULT 5"),
+            ("paid_access", "BOOLEAN DEFAULT 0"),
+            ("updated_at", "DATETIME"),
+        ),
+        "teaching_steps": (
+            ("attempts", "INTEGER DEFAULT 0"),
+            ("understanding_verified", "BOOLEAN DEFAULT 0"),
+            ("student_confirmed", "BOOLEAN DEFAULT 0"),
+            ("completed_at", "DATETIME"),
+        ),
+    }.items():
+        for name, sql in columns:
+            if add_column_if_missing(engine, table, name, sql):
+                changes.append(f"{table}.{name}")
+    return changes
+
+
 def run_migrations(engine: Engine) -> list[str]:
     changes = migrate_agent_conversation_memory(engine)
     changes.extend(migrate_agent_memory_scopes(engine))
     changes.extend(migrate_teacher_agent_course(engine))
     changes.extend(migrate_academic_structure(engine))
+    changes.extend(migrate_teaching_limits(engine))
     return changes
