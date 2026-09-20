@@ -1,6 +1,7 @@
 """Student-facing conversational endpoint for AI teacher agents."""
 
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import select
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -16,9 +17,7 @@ from app.agents.service import AgentError, AgentService
 from app.agents.tools import build_default_registry
 from app.auth.dependencies import get_current_user, get_db
 from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumStage, CurriculumUnit, LearningOutcome, CoursePrerequisite
-from app.db.identity_models import StudentProfile
 from app.db.models import Entitlement, TeachingSource, User
-from app.agents.payment_tools import confirm_payment_transaction
 
 
 def teacher_tool_guard(db, agent, tool_name, payload):
@@ -71,7 +70,7 @@ def chat_with_teacher(
                 raise HTTPException(status_code=404, detail="TOFAN curriculum course is not available.")
             stage = db.get(CurriculumStage, course.stage_id)
             outcomes = db.scalars(
-                __import__("sqlalchemy", fromlist=["select"]).select(LearningOutcome)
+                select(LearningOutcome)
                 .where(LearningOutcome.course_id == course.id)
                 .order_by(LearningOutcome.position)
             ).all()
