@@ -119,6 +119,14 @@ def migrate_teaching_limits(engine: Engine) -> list[str]:
     return changes
 
 
+def migrate_specialty_localization(engine: Engine) -> list[str]:
+    changes: list[str] = []
+    for name, sql in (("name_ar", "VARCHAR(255)"), ("name_en", "VARCHAR(255)"), ("description_ar", "TEXT"), ("description_en", "TEXT")):
+        if add_column_if_missing(engine, "specialties", name, sql):
+            changes.append(f"specialties.{name}")
+    return changes
+
+
 def migrate_specialty_themes(engine: Engine) -> list[str]:
     changes: list[str] = []
     for name, sql in (("icon", "VARCHAR(100)"), ("theme_config_json", "TEXT")):
@@ -196,6 +204,7 @@ def run_migrations(engine: Engine) -> list[str]:
     changes.extend(migrate_academic_structure(engine))
     changes.extend(migrate_teaching_limits(engine))
     changes.extend(migrate_content_files(engine))
+    changes.extend(migrate_specialty_localization(engine))
     changes.extend(migrate_specialty_themes(engine))
     changes.extend(migrate_curriculum_lesson_content(engine))
     changes.extend(migrate_curriculum_assessments(engine))
