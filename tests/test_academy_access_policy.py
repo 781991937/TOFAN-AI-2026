@@ -37,12 +37,14 @@ def make_content(db: Session, *, year: int, term: int) -> ContentFile:
         year_number=year,
         term_number=term,
     )
+    db.add_all([institution, unit, period])
+    db.flush()
     course = Course(
-        academic_unit=unit,
+        academic_unit_id=unit.id,
         academic_period_id=period.id,
         name="AI Course",
     )
-    db.add_all([institution, unit, period, course])
+    db.add(course)
     db.flush()
 
     course_unit = Unit(course_id=course.id, title="Unit 1", position=1)
