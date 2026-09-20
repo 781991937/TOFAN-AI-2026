@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.models import Agent, AgentKind, AgentStatus
@@ -133,6 +134,80 @@ def submit_file_exam(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _curriculum_steps(db: Session, agent: Agent):
+    if not agent.curriculum_course_id:
+        return []
+    units = db.scalars(select(CurriculumUnit).where(
+        CurriculumUnit.course_id == agent.curriculum_course_id
+    ).order_by(CurriculumUnit.position)).all()
+    steps = []
+    position = 1
+    for unit in units:
+        lessons = db.scalars(select(CurriculumLesson).where(
+            CurriculumLesson.unit_id == unit.id
+        ).order_by(CurriculumLesson.position)).all()
+        for lesson in lessons:
+            steps.append({
+                "position": position,
+                "unit_id": unit.id,
+                "unit_position": unit.position,
+                "unit_title": unit.title,
+                "lesson_id": lesson.id,
+                "lesson_position": lesson.position,
+                "lesson_title": lesson.title,
+                "scope_key": f"course:{agent.curriculum_course_id}:unit:{unit.id}:lesson:{lesson.id}",
+            })
+            position += 1
+    return steps
+
+
+@router.get("/{slug}/progress")
+def curriculum_progress(
+    slug: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    agent = _teacher(db, slug)
+    course = db.get(CurriculumCourse, agent.curriculum_course_id) if agent.curriculum_course_id else None
+    if course is None:
+        raise HTTPException(status_code=409, detail="This teacher is not assigned to a TOFAN curriculum course.")
+    plan = _curriculum_steps(db, agent)
+    stored = db.scalars(select(TeachingStep).where(
+        TeachingStep.user_id == actor.id,
+        TeachingStep.agent_id == agent.id,
+        TeachingStep.source == TeachingSource.GLOBAL_CURRICULUM,
+    )).all()
+    by_position = {step.position: step for step in stored}
+    completed = sum(
+        1 for item in plan
+        if by_position.get(item["position"]) and by_position[item["position"]].status == TeachingStepStatus.COMPLETED
+    )
+    current = next(
+        (item for item in plan if not (
+            by_position.get(item["position"]) and
+            by_position[item["position"]].status == TeachingStepStatus.COMPLETED
+        )),
+        None,
+    )
+    if current and current["position"] in by_position:
+        step = by_position[current["position"]]
+        current = {
+            **current,
+            "status": step.status,
+            "attempts": step.attempts,
+            "understanding_verified": step.understanding_verified,
+            "student_confirmed": step.student_confirmed,
+        }
+    return {
+        "course": {"id": course.id, "code": course.code, "name": course.name},
+        "total_steps": len(plan),
+        "completed_steps": completed,
+        "progress_percentage": round((completed / len(plan)) * 100, 2) if plan else 0,
+        "current_step": current,
+        "course_completed": bool(plan) and completed == len(plan),
+    }
+
+
 @router.post("/{slug}/teaching-steps")
 def begin_step(
     slug: str,
@@ -142,13 +217,24 @@ def begin_step(
 ):
     agent = _teacher(db, slug)
     try:
+        if agent.curriculum_course_id and payload.source == TeachingSource.GLOBAL_CURRICULUM:
+            plan = _curriculum_steps(db, agent)
+            expected = next((item for item in plan if item["position"] == payload.position), None)
+            if expected is None or expected["scope_key"] != payload.scope_key:
+                raise HTTPException(status_code=409, detail="Invalid curriculum step. The teacher can only open a real TOFAN lesson step.")
+            completed_positions = {
+                s.position for s in db.scalars(select(TeachingStep).where(
+                    TeachingStep.user_id == actor.id,
+                    TeachingStep.agent_id == agent.id,
+                    TeachingStep.source == TeachingSource.GLOBAL_CURRICULUM,
+                    TeachingStep.status == TeachingStepStatus.COMPLETED,
+                )).all()
+            }
+            if payload.position > 1 and any(p not in completed_positions for p in range(1, payload.position)):
+                raise HTTPException(status_code=409, detail="You must complete the previous lesson step before advancing.")
         step = start_step(
-            db,
-            user_id=actor.id,
-            agent_id=agent.id,
-            source=payload.source,
-            scope_key=payload.scope_key,
-            position=payload.position,
+            db, user_id=actor.id, agent_id=agent.id, source=payload.source,
+            scope_key=payload.scope_key, position=payload.position,
         )
         db.commit()
         return {
