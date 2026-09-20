@@ -16,7 +16,7 @@ from app.agents.teaching_policy import (
     start_step,
 )
 from app.auth.dependencies import get_current_user, get_db
-from app.db.models import TeachingSource, User, TeachingStep, TeachingStepStatus
+from app.db.models import TeachingSource, User, TeachingStep, TeachingStepStatus, ContentFile
 from app.db.curriculum_models import CurriculumCourse, CurriculumUnit, CurriculumLesson, CourseAssessment
 from app.db.assessment_models import CurriculumAssessmentAttempt, AssessmentAttemptStatus, AssessmentResultReport
 from app.db.assessment_question_models import CurriculumAssessmentQuestion
@@ -223,12 +223,63 @@ def submit_curriculum_assessment(
     }
 
 
-class ExamResultRequest(BaseModel):
-    content_file_id: str
-    score: float
-    max_score: float
-    passed: bool
+class FileAssessmentSubmitRequest(BaseModel):
+    answers: dict[str, str] = {}
 
+
+@router.post("/{slug}/file-exams/{content_file_id}/generate")
+def generate_student_file_exam(slug: str, content_file_id: str, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    agent = _teacher(db, slug)
+    row = db.get(ContentFile, content_file_id)
+    if row is None or row.uploaded_by_user_id != actor.id or row.teaching_agent_id != agent.id or row.teaching_source != TeachingSource.STUDENT_FILES:
+        raise HTTPException(status_code=404, detail="Student teaching file not found.")
+    if not row.extracted_text:
+        raise HTTPException(status_code=422, detail="The file has no readable teaching text.")
+    if row.assessment_json:
+        questions = json.loads(row.assessment_json)
+    else:
+        system = "أنت مولد اختبار لأكاديمية طوفان الذكية. أنشئ الاختبار من محتوى الملف فقط. أخرج JSON صالحاً فقط بالمفتاح questions. استخدم true_false و mcq فقط، ولـ mcq أربعة خيارات."
+        user = "اسم الملف: " + row.original_name + "\nمحتوى الملف:\n" + row.extracted_text[:80000]
+        response = build_configured_provider().generate([AgentMessage(role="user", content=user)], system_prompt=system)
+        payload = json.loads(response.content[response.content.find("{"):response.content.rfind("}") + 1])
+        raw = payload.get("questions")
+        if not isinstance(raw, list) or len(raw) < 10:
+            raise HTTPException(status_code=502, detail="Assessment generation returned too few questions.")
+        questions = []
+        for pos, q in enumerate(raw[:10], 1):
+            qtype = str(q.get("type", "")).strip()
+            options = [str(x).strip() for x in q.get("options", [])]
+            if qtype == "true_false": options = ["صح", "خطأ"]
+            if qtype not in {"true_false", "mcq"} or len(options) not in {2, 4}:
+                raise HTTPException(status_code=502, detail="Assessment generation returned invalid question.")
+            answer = str(q.get("correct_answer", "")).strip()
+            if answer not in options: raise HTTPException(status_code=502, detail="Assessment generation returned invalid answer.")
+            questions.append({"position": pos, "question_type": qtype, "prompt": str(q["prompt"]).strip(), "options": options, "correct_answer": answer, "explanation": str(q.get("explanation", "")), "points": float(q.get("points", 1))})
+        row.assessment_json = json.dumps(questions, ensure_ascii=False)
+        row.assessment_generated_at = datetime.utcnow()
+        db.commit()
+    return {"content_file_id": row.id, "question_count": len(questions), "questions": [{"position": q["position"], "type": q["question_type"], "prompt": q["prompt"], "options": q["options"], "points": q["points"]} for q in questions], "next_step": "submit_file_exam"}
+
+
+@router.post("/{slug}/file-exams/{content_file_id}/submit")
+def submit_student_file_exam(slug: str, content_file_id: str, payload: FileAssessmentSubmitRequest, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
+    agent = _teacher(db, slug)
+    row = db.get(ContentFile, content_file_id)
+    if row is None or row.uploaded_by_user_id != actor.id or row.teaching_agent_id != agent.id or row.teaching_source != TeachingSource.STUDENT_FILES:
+        raise HTTPException(status_code=404, detail="Student teaching file not found.")
+    if not row.assessment_json: raise HTTPException(status_code=409, detail="Generate the file assessment first.")
+    questions = json.loads(row.assessment_json)
+    if set(payload.answers) - {str(q["position"]) for q in questions}: raise HTTPException(status_code=400, detail="Unknown assessment question position.")
+    score = sum(float(q["points"]) for q in questions if str(payload.answers.get(str(q["position"]), "")).strip() == q["correct_answer"])
+    max_score = sum(float(q["points"]) for q in questions)
+    percentage = (score / max_score) * 100 if max_score else 0
+    passed = percentage >= 60
+    try:
+        result = record_exam_result(db, user_id=actor.id, agent_id=agent.id, content_file_id=row.id, score=score, max_score=max_score, passed=passed)
+        db.commit()
+    except TeachingAccessError as exc:
+        db.rollback(); raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"assessment_id": result.id, "content_file_id": row.id, "score": result.score, "max_score": result.max_score, "percentage": round(result.percentage, 2), "passed": result.passed, "file_cycle_completed": True, "manager_report": "submitted_to_tofan_main"}
 
 @router.get("/{slug}/teaching-access")
 def teaching_access(
