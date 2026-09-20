@@ -17,6 +17,7 @@ from app.api.users import router as users_router
 from app.api.student_identity import router as student_identity_router
 from app.api.academic_catalog import router as academic_catalog_router
 from app.api.curriculum import router as curriculum_router
+from app.api.main_manager import router as main_manager_router
 
 app = FastAPI(title="TOFAN Smart Academy", version="0.1.0")
 app.include_router(auth_router)
@@ -33,12 +34,12 @@ app.include_router(agent_runtime_router)
 app.include_router(teacher_admin_router)
 app.include_router(teacher_chat_router)
 app.include_router(teacher_teaching_router)
+app.include_router(main_manager_router)
 
 
 def main() -> None:
     import uvicorn
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
-
 app.include_router(curriculum_router)
 
 
