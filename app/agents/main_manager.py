@@ -417,10 +417,22 @@ class MainManagerService:
         }
 
     @staticmethod
-    def students(db: Session, limit: int = 50, offset: int = 0) -> dict:
-        total = db.scalar(select(func.count(StudentProfile.id))) or 0
-        rows = db.scalars(select(StudentProfile).order_by(desc(StudentProfile.updated_at)).offset(offset).limit(limit)).all()
-        return {"total": total, "limit": limit, "offset": offset, "students": [{
+    def students(db: Session, limit: int = 50, offset: int = 0, query: str | None = None) -> dict:
+        stmt = select(StudentProfile)
+        count_stmt = select(func.count(StudentProfile.id))
+        if query:
+            pattern = f"%{query.strip()}%"
+            stmt = stmt.join(User, User.id == StudentProfile.user_id).where(
+                StudentProfile.full_name.ilike(pattern) | User.display_name.ilike(pattern) |
+                User.email.ilike(pattern) | User.phone.ilike(pattern)
+            )
+            count_stmt = count_stmt.join(User, User.id == StudentProfile.user_id).where(
+                StudentProfile.full_name.ilike(pattern) | User.display_name.ilike(pattern) |
+                User.email.ilike(pattern) | User.phone.ilike(pattern)
+            )
+        total = db.scalar(count_stmt) or 0
+        rows = db.scalars(stmt.order_by(desc(StudentProfile.updated_at)).offset(offset).limit(limit)).all()
+        return {"total": total, "limit": limit, "offset": offset, "query": query or "", "students": [{
             "profile_id": p.id, "user_id": p.user_id, "name": p.full_name, "user_type": p.user_type,
             "profile_status": p.profile_status, "biometric_verified": p.biometric_verified,
             "created_at": p.created_at.isoformat(), "updated_at": p.updated_at.isoformat()
