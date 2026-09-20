@@ -6,18 +6,71 @@ codes and are not duplicated.
 
 import json
 from pathlib import Path
+import re
 
 from sqlalchemy import select
 
 from app.db.curriculum_models import (
-    CoursePrerequisite, Curriculum, CurriculumCourse, CurriculumProject,
-    CurriculumStage, ElectiveTrack, LearningOutcome, Specialty,
+    CourseAssessment, CoursePrerequisite, Curriculum, CurriculumCourse, CurriculumProject,
+    CurriculumLesson, CurriculumStage, CurriculumUnit, ElectiveTrack, LearningOutcome, Specialty,
 )
 from app.db.session import SessionLocal
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs" / "curricula" / "ai_tofan_curriculum_v1.json"
+DELIVERY_SOURCE = ROOT / "docs" / "curricula" / "ai_tofan_delivery_map_v1.md"
 
+
+
+def seed_delivery_map(db, course_map: dict) -> None:
+    current_code = None
+    for raw in DELIVERY_SOURCE.read_text(encoding="utf-8").splitlines():
+        heading = re.match(r"^### (AI-[A-Z0-9-]+) — (.+)$", raw.strip())
+        if heading:
+            current_code = heading.group(1)
+            continue
+        if not current_code or current_code not in course_map:
+            continue
+        unit_match = re.match(r"^(\d+)\. (.+)$", raw.strip())
+        if unit_match:
+            position = int(unit_match.group(1))
+            text = unit_match.group(2).strip()
+            title, topics = (text.split(":", 1) + [""])[:2] if ":" in text else (text, "")
+            course = course_map[current_code]
+            unit = db.scalar(select(CurriculumUnit).where(
+                CurriculumUnit.course_id == course.id,
+                CurriculumUnit.position == position,
+            ))
+            if unit is None:
+                unit = CurriculumUnit(course_id=course.id, title=title.strip(), position=position)
+                db.add(unit)
+                db.flush()
+            lesson_title = topics.strip() or title.strip()
+            exists = db.scalar(select(CurriculumLesson).where(
+                CurriculumLesson.unit_id == unit.id,
+                CurriculumLesson.position == 1,
+            ))
+            if exists is None:
+                db.add(CurriculumLesson(
+                    unit_id=unit.id,
+                    title=lesson_title,
+                    position=1,
+                    description=lesson_title,
+                ))
+        assessment = re.match(r"^Assessment: (.+)$", raw.strip())
+        if assessment:
+            course = course_map[current_code]
+            exists = db.scalar(select(CourseAssessment).where(
+                CourseAssessment.course_id == course.id,
+                CourseAssessment.assessment_type == "course",
+            ))
+            if exists is None:
+                db.add(CourseAssessment(
+                    course_id=course.id,
+                    assessment_type="course",
+                    title="تقييم المادة",
+                    description=assessment.group(1),
+                ))
 
 def seed() -> None:
     data = json.loads(SOURCE.read_text(encoding="utf-8"))
@@ -123,6 +176,8 @@ def seed() -> None:
                             course_id=course.id,
                             prerequisite_course_id=prerequisite.id,
                         ))
+
+        seed_delivery_map(db, course_map)
 
         for project in data.get("capstone_projects", []):
             exists = db.scalar(
