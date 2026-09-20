@@ -1,7 +1,12 @@
 def test_fastapi_application_imports():
     from app.main import app
+    from app.api.main_manager import router as main_manager_router
+    from app.api.manager_dashboard import router as manager_dashboard_router
 
     assert app.title == "TOFAN Smart Academy"
-    paths = {getattr(route, "path", None) for route in app.routes}
-    assert "/manager/dashboard" in paths
-    assert "/manager/students/{user_id}/snapshot" in paths
+    assert any(getattr(route, "path", None) == "/dashboard" for route in main_manager_router.routes)
+    assert any(getattr(route, "path", None) == "/dashboard-ui" for route in manager_dashboard_router.routes)
+    assert any(
+        getattr(route, "path", None) == "/students/{user_id}/snapshot"
+        for route in main_manager_router.routes
+    )
