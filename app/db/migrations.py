@@ -163,6 +163,8 @@ def migrate_content_files(engine: Engine) -> list[str]:
         ("extracted_text", "TEXT"),
         ("size_bytes", "INTEGER"),
         ("page_count", "INTEGER"),
+        ("assessment_json", "TEXT"),
+        ("assessment_generated_at", "DATETIME"),
     ):
         if add_column_if_missing(engine, "content_files", name, sql):
             changes.append(f"content_files.{name}")
