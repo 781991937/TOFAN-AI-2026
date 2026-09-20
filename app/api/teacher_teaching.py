@@ -8,6 +8,7 @@ from app.agents.models import Agent, AgentKind, AgentStatus
 from app.agents.teaching_policy import (
     TeachingAccessError,
     confirm_student_understanding,
+    get_or_create_usage,
     global_free_access_remaining,
     record_understanding_check,
     start_step,
@@ -50,18 +51,26 @@ def teaching_access(
     actor: User = Depends(get_current_user),
 ):
     agent = _teacher(db, slug)
+    global_usage = get_or_create_usage(
+        db, user_id=actor.id, agent_id=agent.id, source=TeachingSource.GLOBAL_CURRICULUM
+    )
+    student_usage = get_or_create_usage(
+        db, user_id=actor.id, agent_id=agent.id, source=TeachingSource.STUDENT_FILES
+    )
     return {
         "teacher_agent_id": agent.id,
         "student_files": {
             "limit": 3,
             "policy": "three student-uploaded files; no step-based quota",
+            "used": student_usage.files_used,
+            "remaining": max(0, student_usage.files_limit - student_usage.files_used),
         },
         "global_curriculum": {
             "free_steps_limit": 5,
             "free_steps_remaining": global_free_access_remaining(
                 db, user_id=actor.id, agent_id=agent.id
             ),
-            "paid_access": False,
+            "paid_access": global_usage.paid_access,
         },
         "mastery_rule": (
             "A step is complete only after teacher verification of understanding "
