@@ -8,6 +8,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import AcademicUnit, Course, Institution, Lecture, Unit
+from .payment_tools import confirm_payment_tool
 
 
 class ToolExecutionError(RuntimeError):
