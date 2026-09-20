@@ -1,6 +1,6 @@
 """Main-manager administrative and observability endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.agents.main_manager import MainManagerService
@@ -78,3 +78,23 @@ def set_teacher_status(
         return MainManagerService.set_teacher_status(db, agent_id, status)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+@router.get("/dashboard")
+def manager_dashboard(db: Session = Depends(get_db), _: list = Depends(require_owner_or_admin)):
+    return MainManagerService.dashboard_summary(db)
+
+@router.get("/students")
+def manager_students(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db), _: list = Depends(require_owner_or_admin)):
+    return MainManagerService.students(db, limit=limit, offset=offset)
+
+@router.get("/assessments")
+def manager_assessments(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db), _: list = Depends(require_owner_or_admin)):
+    return MainManagerService.assessments(db, limit=limit, offset=offset)
+
+@router.get("/payments")
+def manager_payments(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db), _: list = Depends(require_owner_or_admin)):
+    return MainManagerService.payments(db, limit=limit, offset=offset)
+
+@router.get("/audit-log")
+def manager_audit_log(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db), _: list = Depends(require_owner_or_admin)):
+    return MainManagerService.audit_log(db, limit=limit, offset=offset)
