@@ -1,7 +1,9 @@
 """Server-rendered TOFAN manager dashboard."""
 
-from fastapi import APIRouter
-from fastapi.responses import HTMLResponse\n\nfrom app.auth.authorization import require_owner_or_admin
+from fastapi import APIRouter, Depends
+from fastapi.responses import HTMLResponse
+
+from app.auth.authorization import require_owner_or_admin
 
 router = APIRouter(prefix="/manager", tags=["main-manager-ui"])
 
@@ -22,7 +24,7 @@ header{padding:22px 5%;border-bottom:1px solid var(--line);display:flex;justify-
 main{padding:28px 5%;max-width:1500px;margin:auto}.sub{color:var(--muted);margin-top:5px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin:24px 0}
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}.label{color:var(--muted);font-size:13px}.num{font-size:30px;font-weight:800;margin-top:7px;color:var(--gold)}
 section{margin-top:25px}.section-title{font-size:18px;font-weight:800;margin-bottom:10px}
-.table-wrap{overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}
+.table-wrap{overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:12px}.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:20;padding:24px;overflow:auto}.modal.open{display:block}.modal-card{max-width:1100px;margin:30px auto;background:#111;border:1px solid var(--gold);border-radius:14px;padding:22px}.modal-head{display:flex;justify-content:space-between;align-items:center;gap:12px}.modal-close{background:#222;color:#fff}.detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:15px 0}.detail{background:#181818;border:1px solid var(--line);padding:12px;border-radius:9px}.detail b{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}
 table{width:100%;border-collapse:collapse;min-width:800px}th,td{padding:12px;border-bottom:1px solid var(--line);text-align:right;font-size:13px}th{color:var(--gold)}
 .badge{padding:4px 8px;border-radius:999px;background:#242424}.ok{color:var(--ok)}.fail{color:var(--danger)}
 #state{color:var(--muted);font-size:13px}
@@ -40,7 +42,7 @@ table{width:100%;border-collapse:collapse;min-width:800px}th,td{padding:12px;bor
 <button onclick="provisionTeacher()">إنشاء مدرس للمقرر</button></div>
 <div id="teachers"></div></div></section>
 
-<section><div class="section-title">الطلاب</div><div id="students" class="table-wrap"></div></section>
+<section><div class="section-title">الطلاب</div><div id="students" class="table-wrap"></div></section><div id="studentModal" class="modal" onclick="if(event.target===this)closeStudent()"><div class="modal-card"><div class="modal-head"><div><h2 id="studentTitle">تفاصيل الطالب</h2><div id="studentState" class="sub">—</div></div><button class="modal-close" onclick="closeStudent()">إغلاق</button></div><div id="studentDetails"></div></div></div>
 <section><div class="section-title">الاختبارات</div><div id="assessments" class="table-wrap"></div></section>
 <section><div class="section-title">المدفوعات</div><div id="payments" class="table-wrap"></div></section>
 <section><div class="section-title">آخر أحداث التدقيق</div><div id="audit" class="table-wrap"></div></section>
@@ -65,13 +67,32 @@ async function load(){
   document.getElementById("cards").innerHTML=cards.map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="num">'+x[1]+'</div></div>').join("");
   document.getElementById("courseSelect").innerHTML='<option value="">اختر مقررًا</option>'+c.courses.map(x=>'<option value="'+esc(x.course_id)+'">'+esc(x.code+" — "+x.name)+'</option>').join("");
   document.getElementById("teachers").innerHTML=table(["المدرس","المقرر","الحالة","إجراء"],t.teachers.map(x=>[x.name,x.curriculum_course_id||"-",x.status,`__HTML__<button onclick="changeStatus('${x.agent_id}','${x.status==="active"?"paused":"active"}')">${x.status==="active"?"إيقاف مؤقت":"تفعيل"}</button>`]));
-  document.getElementById("students").innerHTML=table(["الاسم","النوع","الحالة","التحقق","التاريخ"],s.students.map(x=>[x.name,x.user_type,x.profile_status,x.biometric_verified?"نعم":"لا",x.updated_at]));
+  document.getElementById("students").innerHTML=table(["الاسم","النوع","الحالة","التحقق","التاريخ","إجراء"],s.students.map(x=>[x.name,x.user_type,x.profile_status,x.biometric_verified?"نعم":"لا",x.updated_at,"__HTML__<button onclick="viewStudent('"+x.user_id+"')">عرض</button>"]));
   document.getElementById("assessments").innerHTML=table(["الطالب","النسبة","النتيجة","الحالة","التاريخ"],a.assessments.map(x=>[x.user_id,x.percentage??"-",x.passed===true?"ناجح":x.passed===false?"غير ناجح":"-",x.status,x.submitted_at||x.started_at]));
   document.getElementById("payments").innerHTML=table(["المعاملة","الطالب","المنتج","الحالة","المبلغ","إجراء"],p.payments.map(x=>[x.transaction_id,x.user_id,x.product_key,x.status,(x.amount??"-")+" "+(x.currency??""),x.status==="pending" ? `__HTML__<button onclick="confirmPayment('${x.transaction_id}')">تأكيد</button>` : "—"]));
   document.getElementById("audit").innerHTML=table(["الإجراء","المورد","المعرف","المستخدم","التاريخ"],l.events.map(x=>[x.action,x.resource_type||"-",x.resource_id||"-",x.user_id||"-",x.created_at]));
   document.getElementById("state").textContent="تم التحديث بنجاح";
  }catch(e){document.getElementById("state").textContent="تعذر تحميل البيانات: "+e.message}
 }
+async function viewStudent(id){
+ document.getElementById("studentModal").classList.add("open");
+ document.getElementById("studentState").textContent="جاري تحميل ملف الطالب...";
+ document.getElementById("studentDetails").innerHTML="";
+ try{
+  const x=await get("/manager/students/"+encodeURIComponent(id)+"/snapshot");
+  const s=x.student||{};
+  document.getElementById("studentTitle").textContent=s.full_name||s.display_name||"تفاصيل الطالب";
+  document.getElementById("studentState").textContent="تم تحميل الملف التشغيلي";
+  const usage=(x.teaching_usage||[]).map(u=>"<div class=\"detail\"><b>المصدر</b>"+esc(u.source)+"<br>الملفات: "+esc(u.files_used)+" / "+esc(u.files_limit)+"<br>الحروف: "+esc(u.response_chars_used)+" / "+esc(u.response_chars_limit)+"<br>المتبقي: "+esc(u.response_chars_remaining)+(u.paid_access?" · مدفوع":"")+"</div>").join("");
+  const progress=(x.progress?.steps||[]).map(p=>"<div class=\"detail\"><b>"+esc(p.course_name||p.scope_key||"خطوة")+"</b>الحالة: "+esc(p.status)+"<br>المحاولات: "+esc(p.attempts)+"<br>فهم موثق: "+(p.understanding_verified?"نعم":"لا")+"<br>مؤكد: "+(p.student_confirmed?"نعم":"لا")+"</div>").join("");
+  const teachers=(x.teacher_agents||[]).map(t=>"<div class=\"detail\"><b>المدرس</b>"+esc(t.name)+"<br>"+esc(t.course_code||"")+" — "+esc(t.course_name||"")+"<br>الحالة: "+esc(t.status)+"</div>").join("");
+  const assessments=(x.assessments||[]).map(a=>"<div class=\"detail\"><b>اختبار</b>"+esc(a.assessment_id)+"<br>النسبة: "+esc(a.percentage??"-")+"<br>النتيجة: "+(a.passed===true?"ناجح":a.passed===false?"غير ناجح":"غير مكتمل")+"<br>التاريخ: "+esc(a.submitted_at||a.started_at)+"</div>").join("");
+  const payments=(x.payments||[]).map(p=>"<div class=\"detail\"><b>دفع</b>"+esc(p.product_key)+"<br>الحالة: "+esc(p.status)+"<br>المبلغ: "+esc(p.amount??"-")+" "+esc(p.currency??"")+"</div>").join("");
+  document.getElementById("studentDetails").innerHTML="<div class=\"detail-grid\"><div class=\"detail\"><b>النوع</b>"+esc(s.user_type)+"</div><div class=\"detail\"><b>الحالة</b>"+esc(s.profile_status)+"</div><div class=\"detail\"><b>البريد</b>"+esc(s.email||"-")+"</div><div class=\"detail\"><b>الهاتف</b>"+esc(s.phone||"-")+"</div><div class=\"detail\"><b>العمر</b>"+esc(s.age??"-")+"</div><div class=\"detail\"><b>التحقق الحيوي</b>"+(s.biometric_verified?"نعم":"لا")+"</div><div class=\"detail\"><b>الخطوات</b>"+esc(x.progress?.steps_completed||0)+" / "+esc(x.progress?.steps_total||0)+"</div></div><h3>استخدام التدريس</h3><div class=\"detail-grid\">"+(usage||"<div class=\"detail\">لا توجد بيانات استخدام.</div>")+"</div><h3>تقدم الدراسة</h3><div class=\"detail-grid\">"+(progress||"<div class=\"detail\">لا توجد خطوات مسجلة.</div>")+"</div><h3>المدرسون</h3><div class=\"detail-grid\">"+(teachers||"<div class=\"detail\">لا يوجد مدرس مسند.</div>")+"</div><h3>الاختبارات</h3><div class=\"detail-grid\">"+(assessments||"<div class=\"detail\">لا توجد محاولات.</div>")+"</div><h3>المدفوعات</h3><div class=\"detail-grid\">"+(payments||"<div class=\"detail\">لا توجد معاملات.</div>")+"</div>";
+ }catch(e){document.getElementById("studentState").textContent="تعذر تحميل الملف: "+e.message}
+}
+function closeStudent(){document.getElementById("studentModal").classList.remove("open")}
+
 async function provisionTeacher(){
  const id=document.getElementById("courseSelect").value;
  if(!id)return alert("اختر مقررًا أولًا");
