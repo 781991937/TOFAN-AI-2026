@@ -242,6 +242,72 @@ class Entitlement(Base):
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+
+
+class TeachingUsage(Base):
+    __tablename__ = "teaching_usage"
+    __table_args__ = (
+        UniqueConstraint("user_id", "agent_id", "source", name="uq_teaching_usage_user_agent_source"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    source: Mapped[TeachingSource] = mapped_column(String(40), nullable=False)
+    files_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    files_limit: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
+    free_steps_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    free_steps_limit: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
+    response_chars_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    response_chars_limit: Mapped[int] = mapped_column(Integer, default=2000, nullable=False)
+    quota_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    paid_access: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class TeachingStep(Base):
+    __tablename__ = "teaching_steps"
+    __table_args__ = (
+        UniqueConstraint("user_id", "agent_id", "source", "scope_key", "position", name="uq_teaching_step"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    source: Mapped[TeachingSource] = mapped_column(String(40), nullable=False)
+    scope_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[TeachingStepStatus] = mapped_column(default=TeachingStepStatus.ACTIVE, nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    understanding_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    student_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TeachingAssessment(Base):
+    __tablename__ = "teaching_assessments"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False)
+    content_file_id: Mapped[str] = mapped_column(ForeignKey("content_files.id"), nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    max_score: Mapped[float] = mapped_column(Float, nullable=False)
+    percentage: Mapped[float] = mapped_column(Float, nullable=False)
+    passed: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+
+class TeachingAssessmentReport(Base):
+    __tablename__ = "teaching_assessment_reports"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    assessment_id: Mapped[str] = mapped_column(ForeignKey("teaching_assessments.id"), nullable=False, unique=True)
+    status: Mapped[str] = mapped_column(String(30), default="pending", nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
 
