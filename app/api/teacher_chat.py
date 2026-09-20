@@ -17,7 +17,7 @@ from app.agents.service import AgentError, AgentService
 from app.agents.tools import build_default_registry
 from app.auth.dependencies import get_current_user, get_db
 from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumStage, CurriculumUnit, LearningOutcome, CoursePrerequisite
-from app.db.models import Entitlement, TeachingSource, User
+from app.db.models import Entitlement, TeachingSource, TeachingAccess, User
 
 
 def teacher_tool_guard(db, agent, tool_name, payload):
@@ -111,7 +111,7 @@ def chat_with_teacher(
             entitlement = db.scalar(
                 __import__("sqlalchemy", fromlist=["select"]).select(Entitlement).where(
                     Entitlement.user_id == actor.id,
-                    Entitlement.access_type == TeachingSource.GLOBAL_CURRICULUM.value,
+                    Entitlement.access_type == TeachingAccess.PAID.value,\n                    Entitlement.content_file_id.is_(None),
                 )
             )
             if not usage.paid_access or entitlement is None:
