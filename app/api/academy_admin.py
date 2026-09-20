@@ -28,6 +28,7 @@ class AcademicUnitCreate(BaseModel):
 
 class PeriodCreate(BaseModel):
     institution_id: str
+    parent_id: str | None = None
     name: str = Field(min_length=1, max_length=100)
     kind: str = Field(min_length=1, max_length=30)
 
@@ -38,6 +39,11 @@ class CourseCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     code: str | None = Field(default=None, max_length=100)
     description: str | None = None
+    course_type: str = Field(default="required", max_length=30)
+    credit_hours: int | None = Field(default=None, ge=0)
+    theory_hours: int | None = Field(default=None, ge=0)
+    practical_hours: int | None = Field(default=None, ge=0)
+    prerequisites: str | None = None
 
 
 class UnitCreate(BaseModel):
@@ -132,6 +138,10 @@ def create_period(
 ):
     if db.get(Institution, payload.institution_id) is None:
         raise HTTPException(status_code=404, detail="Institution not found.")
+    if payload.parent_id:
+        parent = db.get(AcademicPeriod, payload.parent_id)
+        if parent is None or parent.institution_id != payload.institution_id:
+            raise HTTPException(status_code=400, detail="Invalid parent academic period.")
     item = AcademicPeriod(**payload.model_dump())
     db.add(item)
     try:
@@ -164,8 +174,10 @@ def create_course(
 ):
     if db.get(AcademicUnit, payload.academic_unit_id) is None:
         raise HTTPException(status_code=404, detail="Academic unit not found.")
-    if payload.academic_period_id and db.get(AcademicPeriod, payload.academic_period_id) is None:
-        raise HTTPException(status_code=404, detail="Academic period not found.")
+    if payload.academic_period_id:
+        period = db.get(AcademicPeriod, payload.academic_period_id)
+        if period is None or period.institution_id != db.get(AcademicUnit, payload.academic_unit_id).institution_id:
+            raise HTTPException(status_code=400, detail="Invalid academic period for this institution.")
     item = Course(**payload.model_dump())
     db.add(item)
     db.commit()
