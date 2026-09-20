@@ -15,7 +15,7 @@ from app.agents.teaching_policy import TeachingAccessError, consume_response_cha
 from app.agents.service import AgentError, AgentService
 from app.agents.tools import build_default_registry
 from app.auth.dependencies import get_current_user, get_db
-from app.db.models import User
+from app.db.models import TeachingSource, User
 
 
 def teacher_tool_guard(db, agent, tool_name, payload):
@@ -34,6 +34,7 @@ _orchestrator = MainAgentOrchestrator(_runtime, _service, registry=_registry, to
 
 class TeacherChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10000)
+    source: TeachingSource = TeachingSource.STUDENT_FILES
 
 
 @router.post("/{slug}/chat")
@@ -69,7 +70,7 @@ def chat_with_teacher(
 
         remaining = remaining_response_chars(
             db, user_id=actor.id, agent_id=agent.id,
-            source=__import__("app.db.models", fromlist=["TeachingSource"]).TeachingSource.STUDENT_FILES,
+            source=payload.source,
         )
         if remaining <= 0:
             raise HTTPException(
