@@ -7,6 +7,7 @@ from .models import (
     Institution, Lecture, OtpChallenge, Unit, User, UserCredential,
     TeachingUsage, TeachingStep, TeachingAssessment, TeachingAssessmentReport,
 )
+from .identity_models import StudentProfile, PaymentTransaction
 from .session import engine
 from .migrations import run_migrations
 from app.auth.models import UserRole
