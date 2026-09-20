@@ -138,6 +138,8 @@ def confirm_student_understanding(
     step = db.get(TeachingStep, step_id)
     if step is None:
         raise TeachingAccessError("Teaching step not found.")
+    if step.status == TeachingStepStatus.COMPLETED:
+        return step
     if not confirmed:
         step.student_confirmed = False
         db.flush()
