@@ -77,6 +77,12 @@ def migrate_academic_structure(engine: Engine) -> list[str]:
     changes: list[str] = []
     if add_column_if_missing(engine, "academic_periods", "parent_id", "VARCHAR(36)"):
         changes.append("academic_periods.parent_id")
+    for name, sql in ((
+        ("year_number", "INTEGER"),
+        ("term_number", "INTEGER"),
+    )):
+        if add_column_if_missing(engine, "academic_periods", name, sql):
+            changes.append(f"academic_periods.{name}")
     for name, sql in (
         ("course_type", "VARCHAR(30) DEFAULT 'required'"),
         ("learning_stage", "VARCHAR(30) DEFAULT 'foundation'"),
