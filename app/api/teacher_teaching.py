@@ -22,6 +22,7 @@ from app.db.assessment_models import CurriculumAssessmentAttempt, AssessmentAtte
 from app.db.assessment_question_models import CurriculumAssessmentQuestion
 from app.agents.assessment_generator import generate_assessment_questions, grade_answers
 from app.agents.llm import build_configured_provider
+from app.agents.providers import AgentMessage
 from datetime import datetime
 import json
 
@@ -227,6 +228,13 @@ class FileAssessmentSubmitRequest(BaseModel):
     answers: dict[str, str] = {}
 
 
+class ExamResultRequest(BaseModel):
+    content_file_id: str
+    score: float
+    max_score: float
+    passed: bool
+
+
 @router.post("/{slug}/file-exams/{content_file_id}/generate")
 def generate_student_file_exam(slug: str, content_file_id: str, db: Session = Depends(get_db), actor: User = Depends(get_current_user)):
     agent = _teacher(db, slug)
@@ -235,6 +243,15 @@ def generate_student_file_exam(slug: str, content_file_id: str, db: Session = De
         raise HTTPException(status_code=404, detail="Student teaching file not found.")
     if not row.extracted_text:
         raise HTTPException(status_code=422, detail="The file has no readable teaching text.")
+    file_step = db.scalar(select(TeachingStep).where(
+        TeachingStep.user_id == actor.id,
+        TeachingStep.agent_id == agent.id,
+        TeachingStep.source == TeachingSource.STUDENT_FILES,
+        TeachingStep.scope_key == f"file:{row.id}",
+        TeachingStep.position == 1,
+    ))
+    if file_step is None or file_step.status != TeachingStepStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="Complete the file teaching and confirm understanding before opening the exam.")
     if row.assessment_json:
         questions = json.loads(row.assessment_json)
     else:
@@ -268,8 +285,21 @@ def submit_student_file_exam(slug: str, content_file_id: str, payload: FileAsses
     if row is None or row.uploaded_by_user_id != actor.id or row.teaching_agent_id != agent.id or row.teaching_source != TeachingSource.STUDENT_FILES:
         raise HTTPException(status_code=404, detail="Student teaching file not found.")
     if not row.assessment_json: raise HTTPException(status_code=409, detail="Generate the file assessment first.")
+    file_step = db.scalar(select(TeachingStep).where(
+        TeachingStep.user_id == actor.id,
+        TeachingStep.agent_id == agent.id,
+        TeachingStep.source == TeachingSource.STUDENT_FILES,
+        TeachingStep.scope_key == f"file:{row.id}",
+        TeachingStep.position == 1,
+    ))
+    if file_step is None or file_step.status != TeachingStepStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="Complete the file teaching and confirm understanding before submitting the exam.")
     questions = json.loads(row.assessment_json)
-    if set(payload.answers) - {str(q["position"]) for q in questions}: raise HTTPException(status_code=400, detail="Unknown assessment question position.")
+    expected_answers = {str(q["position"]) for q in questions}
+    if set(payload.answers) - expected_answers:
+        raise HTTPException(status_code=400, detail="Unknown assessment question position.")
+    if set(payload.answers) != expected_answers:
+        raise HTTPException(status_code=400, detail="Answer all file assessment questions before submitting.")
     score = sum(float(q["points"]) for q in questions if str(payload.answers.get(str(q["position"]), "")).strip() == q["correct_answer"])
     max_score = sum(float(q["points"]) for q in questions)
     percentage = (score / max_score) * 100 if max_score else 0
