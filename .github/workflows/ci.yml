@@ -26,9 +26,9 @@ jobs:
         run: python -m compileall -q app
       - name: Import FastAPI application
         env:
-          DATABASE_URL: ""
+          DATABASE_URL: "sqlite:///./ci.db"
         run: python -c "from app.main import app; print(app.title)"
       - name: Run tests
         env:
-          DATABASE_URL: ""
+          DATABASE_URL: "sqlite:///./ci.db"
         run: python -m pytest -q
