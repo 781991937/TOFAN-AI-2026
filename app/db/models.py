@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
@@ -70,11 +70,14 @@ class AcademicPeriod(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     institution_id: Mapped[str] = mapped_column(ForeignKey("institutions.id"), nullable=False)
+    parent_id: Mapped[str | None] = mapped_column(ForeignKey("academic_periods.id"))
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     kind: Mapped[str] = mapped_column(String(30), nullable=False)
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    parent: Mapped["AcademicPeriod | None"] = relationship(remote_side=[id])
 
 
 class Course(Base):
@@ -86,6 +89,11 @@ class Course(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     code: Mapped[str | None] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text)
+    course_type: Mapped[str] = mapped_column(String(30), default="required", nullable=False)
+    credit_hours: Mapped[int | None] = mapped_column(Integer)
+    theory_hours: Mapped[int | None] = mapped_column(Integer)
+    practical_hours: Mapped[int | None] = mapped_column(Integer)
+    prerequisites: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
