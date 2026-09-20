@@ -2,7 +2,9 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI\nfrom fastapi.responses import RedirectResponse\nfrom fastapi.staticfiles import StaticFiles
+from fastapi import FastAPI
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 
 from app.api.admin import router as admin_router
@@ -39,7 +41,13 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="TOFAN Smart Academy", version="0.1.0", lifespan=lifespan)\napp.mount("/web", StaticFiles(directory="web", html=True), name="web")\n\n\n@app.get("/", include_in_schema=False)\ndef academy_home():\n    return RedirectResponse(url="/web/")
+app = FastAPI(title="TOFAN Smart Academy", version="0.1.0", lifespan=lifespan)
+app.mount("/web", StaticFiles(directory="web", html=True), name="web")
+
+
+@app.get("/", include_in_schema=False)
+def academy_home():
+    return RedirectResponse(url="/web/")
 
 
 @app.get("/health", tags=["system"])
