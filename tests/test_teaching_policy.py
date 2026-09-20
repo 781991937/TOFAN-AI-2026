@@ -91,29 +91,51 @@ def test_step_requires_verification_and_confirmation():
     assert step.student_confirmed is True
 
 
-def test_global_free_limit_counts_completed_steps_only():
+def test_daily_response_limit_is_2000_characters():
     db, user, agent = setup()
-    for position in range(1, 6):
-        step = start_step(
-            db,
-            user_id=user.id,
-            agent_id=agent.id,
-            source=TeachingSource.GLOBAL_CURRICULUM,
-            scope_key="lesson-1",
-            position=position,
-        )
-        record_understanding_check(db, step_id=step.id, verified=True)
-        confirm_student_understanding(db, step_id=step.id, confirmed=True)
-
+    from app.agents.teaching_policy import consume_response_chars, remaining_response_chars
+    assert remaining_response_chars(
+        db, user_id=user.id, agent_id=agent.id,
+        source=TeachingSource.GLOBAL_CURRICULUM
+    ) == 2000
+    consume_response_chars(
+        db, user_id=user.id, agent_id=agent.id,
+        source=TeachingSource.GLOBAL_CURRICULUM,
+        characters=2000,
+    )
+    assert remaining_response_chars(
+        db, user_id=user.id, agent_id=agent.id,
+        source=TeachingSource.GLOBAL_CURRICULUM
+    ) == 0
     try:
-        start_step(
-            db,
-            user_id=user.id,
-            agent_id=agent.id,
+        consume_response_chars(
+            db, user_id=user.id, agent_id=agent.id,
             source=TeachingSource.GLOBAL_CURRICULUM,
-            scope_key="lesson-1",
-            position=6,
+            characters=1,
         )
-        assert False, "sixth free global step must be rejected"
+        assert False, "response 2001 must be rejected"
     except TeachingAccessError:
         pass
+
+
+def test_exam_result_is_recorded_and_reported():
+    db, user, agent = setup()
+    from app.agents.teaching_policy import record_exam_result
+    from app.db.models import TeachingAssessmentReport
+    content = ContentFile(
+        original_name="lesson.pdf",
+        storage_key="student/lesson.pdf",
+        teaching_source=TeachingSource.STUDENT_FILES,
+    )
+    db.add(content)
+    db.flush()
+    result = record_exam_result(
+        db, user_id=user.id, agent_id=agent.id, content_file_id=content.id,
+        score=8, max_score=10, passed=True,
+    )
+    report = db.query(TeachingAssessmentReport).filter(
+        TeachingAssessmentReport.assessment_id == result.id
+    ).one()
+    assert result.percentage == 80
+    assert result.passed is True
+    assert report.status == "pending"
