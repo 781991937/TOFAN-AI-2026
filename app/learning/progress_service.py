@@ -110,8 +110,6 @@ def get_course_progress(db: Session, user_id: str, course_id: str) -> dict:
     rows = db.scalars(select(LearningProgress).where(
         LearningProgress.user_id == user_id, LearningProgress.course_id == course_id
     )).all()
-    total = db.scalar(select(CurriculumLesson.id).join(CurriculumUnit, CurriculumUnit.id == CurriculumLesson.unit_id)
-                      .where(CurriculumUnit.course_id == course_id).count()) if False else None
     completed = sum(r.status == "completed" for r in rows)
     next_step = db.scalar(select(LearningNextStep).where(
         LearningNextStep.user_id == user_id, LearningNextStep.course_id == course_id
