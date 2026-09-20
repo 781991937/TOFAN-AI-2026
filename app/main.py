@@ -1,6 +1,9 @@
 """FastAPI application entry point for TOFAN Smart Academy."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
+from sqlalchemy import text
 
 from app.api.admin import router as admin_router
 from app.api.admin_users import router as admin_users_router
@@ -19,8 +22,27 @@ from app.api.academic_catalog import router as academic_catalog_router
 from app.api.curriculum import router as curriculum_router
 from app.api.main_manager import router as main_manager_router
 from app.api.manager_dashboard import router as manager_dashboard_router
+from app.db.init_db import init_db
+from app.db.session import SessionLocal
 
-app = FastAPI(title="TOFAN Smart Academy", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    init_db()
+    yield
+
+
+app = FastAPI(title="TOFAN Smart Academy", version="0.1.0", lifespan=lifespan)
+
+
+@app.get("/health", tags=["system"])
+def health():
+    """Platform health endpoint used by deployment and uptime checks."""
+    with SessionLocal() as db:
+        db.execute(text("SELECT 1"))
+    return {"status": "ok", "service": "TOFAN Smart Academy"}
+
+
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(student_identity_router)
@@ -37,8 +59,6 @@ app.include_router(teacher_chat_router)
 app.include_router(teacher_teaching_router)
 app.include_router(main_manager_router)
 app.include_router(manager_dashboard_router)
-
-
 app.include_router(curriculum_router)
 
 
