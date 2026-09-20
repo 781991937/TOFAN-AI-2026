@@ -34,6 +34,8 @@ class Specialty(Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     code: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
+    icon: Mapped[str | None] = mapped_column(String(100))
+    theme_config_json: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 class CurriculumStage(Base):
