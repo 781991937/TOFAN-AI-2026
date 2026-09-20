@@ -160,6 +160,7 @@ class ContentFile(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     lecture_id: Mapped[str | None] = mapped_column(ForeignKey("lectures.id"))
     uploaded_by_user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    teaching_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"))
     teaching_source: Mapped[TeachingSource | None] = mapped_column(String(40))
     original_name: Mapped[str] = mapped_column(String(500), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(1000), nullable=False, unique=True)
