@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.agents.models import Agent, AgentKind
+from app.agents.models import Agent, AgentKind, AgentStatus
 from app.agents.teaching_policy import grant_paid_global_access
 from app.db.identity_models import PaymentStatus, PaymentTransaction
 from app.db.models import AuditLog, Entitlement, TeachingAccess
@@ -20,7 +20,7 @@ def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
     main_agent = db.scalar(
         select(Agent).where(
             Agent.slug == "tofan-main",
-            Agent.kind == AgentKind.ORCHESTRATOR,
+            Agent.kind == AgentKind.ORCHESTRATOR,\n            Agent.status == AgentStatus.ACTIVE,
         )
     )
     if main_agent is None:
