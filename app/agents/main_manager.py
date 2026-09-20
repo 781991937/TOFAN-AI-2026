@@ -17,6 +17,7 @@ from app.db.assessment_models import CurriculumAssessmentAttempt
 from app.db.identity_models import PaymentTransaction, PaymentStatus, StudentProfile, UserType
 from app.db.models import AuditLog, TeachingStep, TeachingStepStatus, TeachingSource, User
 from app.agents.teacher import create_curriculum_teacher_agent
+from app.notifications.service import create_notification
 
 
 class MainManagerService:
@@ -69,6 +70,16 @@ class MainManagerService:
                 "payload": payload,
             }, ensure_ascii=False),
         ))
+        if actor_user_id:
+            create_notification(
+                db,
+                user_id=actor_user_id,
+                event_type=event_name,
+                title="تحديث من TOFAN Main Manager",
+                message=f"تم تسجيل الحدث: {event_name} — القرار: {decision}.",
+                resource_type=resource_type,
+                resource_id=resource_id,
+            )
         return run
 
     @staticmethod
