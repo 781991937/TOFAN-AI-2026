@@ -5,7 +5,7 @@ from .models import (
     AcademicPeriod, AcademicUnit, AuditLog, AuthSession,
     BiometricCredentialRecord, ContentFile, Course, Entitlement,
     Institution, Lecture, OtpChallenge, Unit, User, UserCredential,
-    TeachingUsage, TeachingStep,
+    TeachingUsage, TeachingStep, TeachingAssessment, TeachingAssessmentReport,
 )
 from .session import engine
 from .migrations import run_migrations
