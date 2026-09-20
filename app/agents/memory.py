@@ -152,3 +152,39 @@ def upsert_memory_item(
     )
     db.add(item)
     return item
+
+
+def deactivate_memory_item(db: Session, item_id: str, user_id: str) -> bool:
+    item = db.query(AgentMemoryItem).filter(
+        AgentMemoryItem.id == item_id,
+        AgentMemoryItem.user_id == user_id,
+        AgentMemoryItem.active.is_(True),
+    ).first()
+    if not item:
+        return False
+    item.active = False
+    item.updated_at = datetime.utcnow()
+    db.add(item)
+    return True
+
+
+def update_memory_item(
+    db: Session,
+    item_id: str,
+    user_id: str,
+    content: str,
+    confidence: float | None = None,
+) -> AgentMemoryItem | None:
+    item = db.query(AgentMemoryItem).filter(
+        AgentMemoryItem.id == item_id,
+        AgentMemoryItem.user_id == user_id,
+        AgentMemoryItem.active.is_(True),
+    ).first()
+    if not item:
+        return None
+    item.content = content.strip()
+    if confidence is not None:
+        item.confidence = min(max(confidence, 0.0), 1.0)
+    item.updated_at = datetime.utcnow()
+    db.add(item)
+    return item
