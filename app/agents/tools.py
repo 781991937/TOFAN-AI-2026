@@ -4,8 +4,14 @@ Tools are registered explicitly in application code. An agent may execute only
 tools that are both registered here and enabled for that agent in the database.
 """
 
+import json
 from dataclasses import dataclass
 from typing import Callable
+
+from sqlalchemy import or_, select
+from sqlalchemy.orm import Session
+
+from app.db.models import AcademicUnit, Course, Institution, Lecture, Unit
 
 
 class ToolExecutionError(RuntimeError):
@@ -16,7 +22,7 @@ class ToolExecutionError(RuntimeError):
 class ToolDefinition:
     name: str
     description: str
-    handler: Callable[[str], str]
+    handler: Callable[[Session, str], str]
     sensitive: bool = False
 
 
@@ -39,8 +45,97 @@ class ToolRegistry:
         return sorted(self._tools)
 
 
-def echo_tool(input_text: str) -> str:
+def echo_tool(_: Session, input_text: str) -> str:
     return input_text
+
+
+def health_tool(_: Session, _: str) -> str:
+    return "ok"
+
+
+def academy_structure_tool(db: Session, _: str) -> str:
+    institutions = db.scalars(
+        select(Institution).where(Institution.is_active.is_(True)).order_by(Institution.name)
+    ).all()
+
+    result = []
+    for institution in institutions:
+        units = db.scalars(
+            select(AcademicUnit)
+            .where(
+                AcademicUnit.institution_id == institution.id,
+                AcademicUnit.is_active.is_(True),
+            )
+            .order_by(AcademicUnit.name)
+        ).all()
+        result.append(
+            {
+                "institution": {
+                    "id": institution.id,
+                    "name": institution.name,
+                    "code": institution.code,
+                },
+                "units": [
+                    {
+                        "id": unit.id,
+                        "parent_id": unit.parent_id,
+                        "name": unit.name,
+                        "unit_type": unit.unit_type,
+                    }
+                    for unit in units
+                ],
+            }
+        )
+
+    return json.dumps({"institutions": result}, ensure_ascii=False)
+
+
+def academy_search_tool(db: Session, input_text: str) -> str:
+    try:
+        payload = json.loads(input_text or "{}")
+    except json.JSONDecodeError as exc:
+        raise ToolExecutionError("Input must be valid JSON.") from exc
+
+    query = str(payload.get("query", "")).strip()
+    limit = min(max(int(payload.get("limit", 10)), 1), 50)
+    if not query:
+        raise ToolExecutionError("Search query is required.")
+
+    pattern = f"%{query}%"
+    courses = db.scalars(
+        select(Course)
+        .where(
+            Course.is_active.is_(True),
+            or_(Course.name.ilike(pattern), Course.code.ilike(pattern)),
+        )
+        .order_by(Course.name)
+        .limit(limit)
+    ).all()
+    units = db.scalars(
+        select(Unit)
+        .where(Unit.title.ilike(pattern))
+        .order_by(Unit.position)
+        .limit(limit)
+    ).all()
+    lectures = db.scalars(
+        select(Lecture)
+        .where(
+            Lecture.title.ilike(pattern),
+            Lecture.status != "draft",
+        )
+        .order_by(Lecture.title)
+        .limit(limit)
+    ).all()
+
+    return json.dumps(
+        {
+            "query": query,
+            "courses": [{"id": x.id, "name": x.name, "code": x.code} for x in courses],
+            "units": [{"id": x.id, "course_id": x.course_id, "title": x.title} for x in units],
+            "lectures": [{"id": x.id, "unit_id": x.unit_id, "title": x.title, "position": x.position} for x in lectures],
+        },
+        ensure_ascii=False,
+    )
 
 
 def build_default_registry() -> ToolRegistry:
@@ -49,7 +144,7 @@ def build_default_registry() -> ToolRegistry:
         ToolDefinition(
             name="academy.health",
             description="Return a simple runtime health result.",
-            handler=lambda _: "ok",
+            handler=health_tool,
         )
     )
     registry.register(
@@ -57,6 +152,20 @@ def build_default_registry() -> ToolRegistry:
             name="academy.echo",
             description="Development-only echo tool.",
             handler=echo_tool,
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="academy.structure",
+            description="Read the active academy institutional and academic-unit structure.",
+            handler=academy_structure_tool,
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="academy.search",
+            description="Search active courses, course units, and non-draft lectures by name or code. Input JSON: {query, limit}.",
+            handler=academy_search_tool,
         )
     )
     return registry
