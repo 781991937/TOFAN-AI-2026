@@ -7,6 +7,7 @@ from app.api.admin_users import router as admin_users_router
 from app.api.academy_admin import router as academy_admin_router
 from app.api.agent_admin import router as agent_admin_router
 from app.api.agent_chat import router as agent_chat_router
+from app.api.agent_memory import router as agent_memory_router
 from app.api.agent_runtime import router as agent_runtime_router
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
@@ -19,12 +20,12 @@ app.include_router(academy_admin_router)
 app.include_router(admin_users_router)
 app.include_router(agent_admin_router)
 app.include_router(agent_chat_router)
+app.include_router(agent_memory_router)
 app.include_router(agent_runtime_router)
 
 
 def main() -> None:
     import uvicorn
-
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
 
 
