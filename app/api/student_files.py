@@ -90,6 +90,7 @@ async def upload_student_file(
         size_bytes=len(data),
         page_count=page_count,
         uploaded_by_user_id=actor.id,
+        teaching_agent_id=teacher.id,
         teaching_source=TeachingSource.STUDENT_FILES,
     )
     db.add(content_file)
