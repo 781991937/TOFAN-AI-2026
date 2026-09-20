@@ -57,7 +57,7 @@ async function load(){
  try{
   const studentQuery=encodeURIComponent(document.getElementById("studentSearch")?.value||"");\n  const [d,a,p,l,t,s,c]=await Promise.all([
    get("/manager/dashboard"),get("/manager/assessments?limit=10"),get("/manager/payments?limit=10"),
-   get("/manager/audit-log?limit=10"),get("/manager/teachers"),get("/manager/students?limit=10&q="+studentQuery),get("/manager/courses")
+   get("/manager/audit-log?limit=10"),get("/manager/teachers"),get("/manager/students?limit=10&query="+studentQuery),get("/manager/courses")
   ]);
   const cards=[
    ["المستخدمون",d.users.total],["طلاب الجامعات",d.users.university_students],["المتعلمون المستقلون",d.users.independent_learners],
@@ -77,7 +77,7 @@ async function load(){
 async function loadStudents(){
  const q=encodeURIComponent(document.getElementById("studentSearch")?.value||"");
  try{
-  const s=await get("/manager/students?limit=10&q="+q);
+  const s=await get("/manager/students?limit=10&query="+q);
   document.getElementById("students").innerHTML=table(["الاسم","النوع","الحالة","التحقق","التاريخ","إجراء"],s.students.map(x=>[x.name,x.user_type,x.profile_status,x.biometric_verified?"نعم":"لا",x.updated_at,"__HTML__<button onclick="viewStudent('"+x.user_id+"')">عرض</button>"]));
  }catch(e){document.getElementById("state").textContent="تعذر البحث: "+e.message}
 }
