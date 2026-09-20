@@ -17,8 +17,11 @@ from .models import (  # noqa: F401
     Unit,
     User,
     UserCredential,
+    AuthSession,
+    OtpChallenge,
 )
 from .session import engine
+from app.auth.models import UserRole  # noqa: F401
 
 
 def init_db() -> None:
