@@ -37,3 +37,7 @@ Flow:
 
 Biometric login is an additional authentication method. Users retain a
 registered Google account, phone OTP, or email/password recovery path.
+
+
+## Session security
+Sessions use random opaque bearer tokens; only SHA-256 token digests are persisted. OTP codes are HMAC-protected with `AUTH_OTP_PEPPER` and are rate-limited by challenge attempt count.
