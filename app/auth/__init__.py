@@ -1,4 +1,4 @@
-"""Authentication boundaries for TOFAN Smart Academy."""
+"""Authentication and authorization boundaries for TOFAN Smart Academy."""
 
 from .biometric import (
     BiometricAuthError,
@@ -6,10 +6,17 @@ from .biometric import (
     BiometricService,
     BiometricType,
 )
+from .models import RoleName, UserRole
+from .service import AuthorizationError, has_role, require_role
 
 __all__ = [
+    "AuthorizationError",
     "BiometricAuthError",
     "BiometricCredential",
     "BiometricService",
     "BiometricType",
+    "RoleName",
+    "UserRole",
+    "has_role",
+    "require_role",
 ]
