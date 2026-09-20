@@ -141,6 +141,7 @@ class UserCredential(Base):
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
     provider: Mapped[str] = mapped_column(String(50), nullable=False)
     provider_subject: Mapped[str] = mapped_column(String(500), nullable=False)
+    secret_hash: Mapped[str | None] = mapped_column(Text)
 
 
 class BiometricCredentialRecord(Base):
@@ -155,6 +156,34 @@ class BiometricCredentialRecord(Base):
     enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AuthSession(Base):
+    __tablename__ = "auth_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    token_hash: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    device_id: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OtpChallenge(Base):
+    __tablename__ = "otp_challenges"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    destination: Mapped[str] = mapped_column(String(320), nullable=False)
+    code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    attempts: Mapped[int] = mapped_column(default=0, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 
 
 class Entitlement(Base):
