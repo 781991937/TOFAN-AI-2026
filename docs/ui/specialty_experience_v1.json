@@ -5,35 +5,98 @@
   "shared": {
     "rtl": true,
     "dark_default": true,
-    "navigation": ["home", "learning_path", "specialties", "courses", "teacher", "assessments", "progress", "certificates", "files"],
-    "core_services": ["auth", "authorization", "progress", "assessments", "teacher_agents", "notifications", "main_manager"]
+    "navigation": [
+      "home",
+      "learning_path",
+      "specialties",
+      "courses",
+      "teacher",
+      "assessments",
+      "progress",
+      "certificates",
+      "files"
+    ],
+    "core_services": [
+      "auth",
+      "authorization",
+      "progress",
+      "assessments",
+      "teacher_agents",
+      "notifications",
+      "main_manager"
+    ]
   },
   "specialties": {
     "AI": {
       "identity": "Artificial Intelligence",
       "visual_motif": "neural-network",
-      "modules": ["learning_path", "ai_teacher", "models", "projects", "weak_points"]
+      "modules": [
+        "learning_path",
+        "ai_teacher",
+        "models",
+        "projects",
+        "weak_points"
+      ]
     },
     "CS": {
       "identity": "Computer Science",
       "visual_motif": "code-grid",
-      "modules": ["learning_path", "algorithms", "code_lab", "projects", "weak_points"]
+      "modules": [
+        "learning_path",
+        "algorithms",
+        "code_lab",
+        "projects",
+        "weak_points"
+      ]
     },
     "CYBER": {
       "identity": "Cybersecurity",
       "visual_motif": "security-grid",
-      "modules": ["learning_path", "security_lab", "threats", "projects", "weak_points"]
+      "modules": [
+        "learning_path",
+        "security_lab",
+        "threats",
+        "projects",
+        "weak_points"
+      ]
     },
     "SE": {
       "identity": "Software Engineering",
       "visual_motif": "architecture",
-      "modules": ["learning_path", "architecture", "testing", "devops", "projects"]
+      "modules": [
+        "learning_path",
+        "architecture",
+        "testing",
+        "devops",
+        "projects"
+      ]
     },
     "DS": {
       "identity": "Data Science",
       "visual_motif": "data-network",
-      "modules": ["learning_path", "datasets", "analytics", "models", "projects"]
+      "modules": [
+        "learning_path",
+        "datasets",
+        "analytics",
+        "models",
+        "projects"
+      ]
     }
   },
-  "rule": "Adding a specialty must not require a new application; the specialty record supplies its identity and module configuration."
+  "rule": "Adding a specialty must not require a new application; the specialty record supplies its identity and module configuration.",
+  "i18n": {
+    "supported_locales": [
+      "ar",
+      "en"
+    ],
+    "default_locale": "ar",
+    "direction_by_locale": {
+      "ar": "rtl",
+      "en": "ltr"
+    },
+    "fallback_locale": "en",
+    "user_selectable": true,
+    "persist_selection": true,
+    "principle": "All student-facing UI labels, navigation, curriculum metadata, teacher-agent UI, assessments, notifications, accessibility labels, and specialty identity text must support Arabic and English."
+  }
 }
