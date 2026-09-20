@@ -167,7 +167,7 @@ class MainManagerService:
     def student_snapshot(db: Session, user_id: str) -> dict:
         """Return a complete manager-facing student operational snapshot."""
         from app.db.curriculum_models import CurriculumCourse
-        from app.db.models import Entitlement, TeachingUsage
+        from app.db.models import AuditLog, Entitlement, TeachingAssessment, TeachingUsage
 
         user = db.get(User, user_id)
         if user is None:
@@ -191,6 +191,17 @@ class MainManagerService:
             select(PaymentTransaction)
             .where(PaymentTransaction.user_id == user_id)
             .order_by(desc(PaymentTransaction.created_at))
+        ).all()
+        file_exams = db.scalars(
+            select(TeachingAssessment)
+            .where(TeachingAssessment.user_id == user_id)
+            .order_by(desc(TeachingAssessment.created_at))
+        ).all()
+        activity = db.scalars(
+            select(AuditLog)
+            .where(AuditLog.user_id == user_id)
+            .order_by(desc(AuditLog.created_at))
+            .limit(20)
         ).all()
         usages = db.scalars(
             select(TeachingUsage)
@@ -238,7 +249,7 @@ class MainManagerService:
 
         progress = []
         for step in steps:
-            course = course_map.get(getattr(step, "curriculum_course_id", None))
+            scope_key = step.scope_key or ""\n            course_id = scope_key.split("course:", 1)[1].split(":unit:", 1)[0] if "course:" in scope_key else None\n            course = course_map.get(course_id)
             progress.append({
                 "step_id": step.id,
                 "source": step.source,
@@ -305,6 +316,29 @@ class MainManagerService:
                     "course_name": course_map.get(t.curriculum_course_id).name if t.curriculum_course_id in course_map else None,
                 }
                 for t in teachers if t.curriculum_course_id in course_map
+            ],
+            "file_exams": [
+                {
+                    "assessment_id": e.id,
+                    "content_file_id": e.content_file_id,
+                    "score": e.score,
+                    "max_score": e.max_score,
+                    "percentage": e.percentage,
+                    "passed": e.passed,
+                    "created_at": e.created_at.isoformat(),
+                }
+                for e in file_exams
+            ],
+            "activity": [
+                {
+                    "id": a.id,
+                    "action": a.action,
+                    "resource_type": a.resource_type,
+                    "resource_id": a.resource_id,
+                    "created_at": a.created_at.isoformat(),
+                    "details": a.details,
+                }
+                for a in activity
             ],
             "assessments": [
                 {
