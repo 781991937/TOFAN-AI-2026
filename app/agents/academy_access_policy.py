@@ -14,6 +14,8 @@ from app.db.models import (
     ContentFile,
     TeachingSource,
     ContentStatus,
+    Entitlement,
+    TeachingAccess,
     Course,
     Lecture,
     Unit,
@@ -65,3 +67,20 @@ def validate_content_status(
         raise ValueError(
             f"Academy content for this academic period must be published as '{expected}'."
         )
+
+
+def has_academy_content_access(db: Session, *, user_id: str, content_file_id: str) -> bool:
+    row = db.get(ContentFile, content_file_id)
+    if row is None or row.lecture_id is None:
+        return False
+    if row.teaching_source != TeachingSource.GLOBAL_CURRICULUM:
+        return False
+    if content_access_tier(db, content_file_id) == AcademyAccessTier.FREE:
+        return True
+    return db.scalar(
+        select(Entitlement.id).where(
+            Entitlement.user_id == user_id,
+            Entitlement.lecture_id == row.lecture_id,
+            Entitlement.access_type == TeachingAccess.PAID.value,
+        )
+    ) is not None
