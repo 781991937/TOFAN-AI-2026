@@ -37,3 +37,18 @@ jobs:
         env:
           DATABASE_URL: "sqlite:///./smoke.db"
         run: python -m pytest -q
+      - name: Start application and verify health
+        env:
+          DATABASE_URL: "sqlite:///./smoke.db"
+        run: |
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 > smoke-server.log 2>&1 &
+          server_pid=$!
+          trap 'kill $server_pid || true' EXIT
+          for i in $(seq 1 20); do
+            if curl -fsS http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat smoke-server.log
+          exit 1
