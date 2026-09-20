@@ -17,7 +17,7 @@ router = APIRouter(prefix="/admin/agent", tags=["admin-agent"])
 _registry = build_default_registry()
 _runtime = AgentRuntime(_registry)
 _service = AgentService()
-_orchestrator = MainAgentOrchestrator(_runtime, _service)
+_orchestrator = MainAgentOrchestrator(_runtime, _service, registry=_registry)
 
 
 class AgentChatRequest(BaseModel):
