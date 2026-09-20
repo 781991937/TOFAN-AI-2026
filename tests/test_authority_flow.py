@@ -63,6 +63,7 @@ def test_payment_confirmation_grants_global_access_and_is_idempotent():
     first = confirm_payment_transaction(db, payment.id)
     db.commit()
     assert first["global_access"] == "active"
+    assert first["user_id"] == user.id
     assert payment.status == PaymentStatus.CONFIRMED
     assert payment.confirmed_by_agent_id == manager.id
 
@@ -142,3 +143,33 @@ def test_native_teacher_is_bound_to_tofan_course():
     assert teacher.kind == AgentKind.TEACHER
     assert teacher.curriculum_course_id == course.id
     assert teacher.teacher_course_id is None
+
+
+def test_payment_confirmation_rejects_inactive_main_manager():
+    db = setup_db()
+    manager = Agent(
+        name="Main Manager",
+        slug="tofan-main",
+        kind=AgentKind.ORCHESTRATOR,
+        status=AgentStatus.PAUSED,
+        system_prompt="manager",
+    )
+    user = User(display_name="Student", email="paused@example.com")
+    db.add_all([manager, user])
+    db.flush()
+    payment = PaymentTransaction(
+        user_id=user.id,
+        product_key="global_curriculum",
+        status=PaymentStatus.PENDING,
+        amount=100,
+        currency="USD",
+    )
+    db.add(payment)
+    db.commit()
+
+    try:
+        confirm_payment_transaction(db, payment.id)
+    except ValueError as exc:
+        assert "not configured" in str(exc) or "active" in str(exc)
+    else:
+        raise AssertionError("inactive main manager must not confirm payments")
