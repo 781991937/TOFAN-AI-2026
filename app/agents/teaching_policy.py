@@ -170,9 +170,8 @@ def record_exam_result(
             }),
             completed_at=datetime.utcnow(),
         ))
-    # Completing an exam consumes the student's file-teaching free cycle.
-    usage = get_or_create_usage(db, user_id, agent_id, TeachingSource.STUDENT_FILES)
-    usage.files_used = max(usage.files_used, usage.files_limit)
+    # The exam is free. It closes the current file's teaching cycle,
+    # while the student may still use the remaining daily file slots.
     db.flush()
     return result
 
