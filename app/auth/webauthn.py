@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 from fido2.cbor import decode as cbor_decode
@@ -79,7 +79,7 @@ def _save_challenge(
         purpose=purpose,
         state_json=json.dumps(state, ensure_ascii=False, default=_json_default),
         device_id=device_id,
-        expires_at=datetime.now(timezone.utc) + timedelta(seconds=CHALLENGE_TTL_SECONDS),
+        expires_at=datetime.utcnow() + timedelta(seconds=CHALLENGE_TTL_SECONDS),
     )
     db.add(challenge)
     db.flush()
