@@ -10,6 +10,8 @@ from sqlalchemy.orm import Session
 from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumUnit
 from app.db.models import AcademicUnit, Course, Institution, Lecture, Unit
 from .payment_tools import confirm_payment_tool
+from .main_manager import MainManagerService
+from .models import AgentStatus
 
 
 class ToolExecutionError(RuntimeError):
@@ -193,6 +195,50 @@ def academy_search_tool(db: Session, input_text: str) -> str:
     )
 
 
+def manager_assessment_result_tool(db: Session, input_text: str) -> str:
+    try:
+        payload = json.loads(input_text or "{}")
+        attempt_id = str(payload["attempt_id"])
+    except (json.JSONDecodeError, KeyError) as exc:
+        raise ToolExecutionError("attempt_id is required.") from exc
+    try:
+        result = MainManagerService.receive_assessment_result(db, attempt_id)
+    except ValueError as exc:
+        raise ToolExecutionError(str(exc)) from exc
+    return json.dumps(result, ensure_ascii=False)
+
+
+def manager_provision_teacher_tool(db: Session, input_text: str) -> str:
+    try:
+        payload = json.loads(input_text or "{}")
+        course_id = str(payload["curriculum_course_id"])
+    except (json.JSONDecodeError, KeyError) as exc:
+        raise ToolExecutionError("curriculum_course_id is required.") from exc
+    try:
+        result = MainManagerService.provision_teacher(db, course_id)
+    except ValueError as exc:
+        raise ToolExecutionError(str(exc)) from exc
+    return json.dumps(result, ensure_ascii=False)
+
+
+def manager_set_teacher_status_tool(db: Session, input_text: str) -> str:
+    try:
+        payload = json.loads(input_text or "{}")
+        agent_id = str(payload["agent_id"])
+        status = AgentStatus(str(payload["status"]))
+    except (json.JSONDecodeError, KeyError, ValueError) as exc:
+        raise ToolExecutionError("Valid agent_id and status are required.") from exc
+    try:
+        result = MainManagerService.set_teacher_status(db, agent_id, status)
+    except ValueError as exc:
+        raise ToolExecutionError(str(exc)) from exc
+    return json.dumps(result, ensure_ascii=False)
+
+
+def manager_teacher_overview_tool(db: Session, _: str) -> str:
+    return json.dumps({"teachers": MainManagerService.teacher_overview(db)}, ensure_ascii=False)
+
+
 def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(
@@ -232,6 +278,46 @@ def build_default_registry() -> ToolRegistry:
                 "required": ["query", "limit"],
                 "additionalProperties": False,
             },
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="education.assessment_result",
+            description="Privileged manager action: receive and record a curriculum assessment result.",
+            handler=manager_assessment_result_tool,
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={"type":"object","properties":{"attempt_id":{"type":"string"}},"required":["attempt_id"],"additionalProperties":False},
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.provision_teacher",
+            description="Privileged manager action: create the TOFAN-native AI teacher assigned to a curriculum course.",
+            handler=manager_provision_teacher_tool,
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={"type":"object","properties":{"curriculum_course_id":{"type":"string"}},"required":["curriculum_course_id"],"additionalProperties":False},
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.set_teacher_status",
+            description="Privileged manager action: change an AI teacher status.",
+            handler=manager_set_teacher_status_tool,
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={"type":"object","properties":{"agent_id":{"type":"string"},"status":{"type":"string","enum":["draft","active","paused","archived"]}},"required":["agent_id","status"],"additionalProperties":False},
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.teacher_overview",
+            description="Privileged manager action: inspect all AI teacher agents and their TOFAN course assignments.",
+            handler=manager_teacher_overview_tool,
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={"type":"object","properties":{},"additionalProperties":False},
         )
     )
     registry.register(
