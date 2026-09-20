@@ -13,6 +13,8 @@ from app.agents.payment_tools import confirm_payment_transaction
 from app.agents.main_manager import MainManagerService
 from app.auth.dependencies import get_current_user, get_db
 from app.auth.authorization import require_owner_or_admin
+from app.auth.webauthn import begin_authentication, begin_registration, finish_authentication, finish_registration
+from app.auth.biometric import BiometricAuthError
 from app.db.identity_models import (
     PaymentStatus,
     PaymentTransaction,
@@ -43,6 +45,16 @@ class PaymentRequest(BaseModel):
 
 class PaymentConfirmation(BaseModel):
     transaction_id: str
+
+
+class PasskeyRegistrationRequest(BaseModel):
+    device_id: str = Field(min_length=1, max_length=255)
+    response: dict
+
+
+class PasskeyAuthenticationRequest(BaseModel):
+    challenge_id: str
+    response: dict
 
 
 def _academic_unit(
@@ -187,8 +199,63 @@ def create_or_update_profile(
     }
 
 
-@router.post("/profile/verify-biometric")
-def verify_profile_biometric(
+@router.post("/profile/passkey/register/options")
+def passkey_register_options(
+    device_id: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == actor.id))
+    if profile is None:
+        raise HTTPException(status_code=400, detail="Complete the profile questionnaire first.")
+    try:
+        result = begin_registration(db, actor, device_id)
+        db.commit()
+        return result
+    except BiometricAuthError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/profile/passkey/register/complete")
+def passkey_register_complete(
+    payload: PasskeyRegistrationRequest,
+    challenge_id: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    try:
+        credential = finish_registration(
+            db, actor, payload.device_id, challenge_id, payload.response
+        )
+        db.commit()
+        return {
+            "registered": True,
+            "credential_id": credential.credential_id,
+            "next_step": "passkey_authentication",
+        }
+    except BiometricAuthError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/profile/passkey/authenticate/options")
+def passkey_authenticate_options(
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    try:
+        result = begin_authentication(db, actor)
+        db.commit()
+        return result
+    except BiometricAuthError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/profile/passkey/authenticate/complete")
+def passkey_authenticate_complete(
+    payload: PasskeyAuthenticationRequest,
     db: Session = Depends(get_db),
     actor: User = Depends(get_current_user),
 ):
@@ -196,27 +263,35 @@ def verify_profile_biometric(
     if profile is None:
         raise HTTPException(status_code=400, detail="Complete the profile questionnaire first.")
 
-    credential = db.scalar(
-        select(BiometricCredentialRecord).where(
-            BiometricCredentialRecord.user_id == actor.id,
-            BiometricCredentialRecord.enabled.is_(True),
+    try:
+        credential = finish_authentication(
+            db, actor, payload.challenge_id, payload.response
         )
-    )
-    if credential is None:
-        raise HTTPException(
-            status_code=409,
-            detail="No registered biometric/passkey credential was found for this account.",
-        )
+        profile.biometric_verified = True
+        profile.profile_status = ProfileStatus.VERIFIED
+        profile.verified_at = datetime.utcnow()
+        db.commit()
+        return {
+            "verified": True,
+            "profile_id": profile.id,
+            "status": profile.profile_status,
+            "biometric_verified": True,
+            "credential_id": credential.credential_id,
+        }
+    except BiometricAuthError as exc:
+        db.rollback()
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
 
-    profile.biometric_verified = True
-    profile.profile_status = ProfileStatus.VERIFIED
-    profile.verified_at = datetime.utcnow()
-    db.commit()
-    return {
-        "profile_id": profile.id,
-        "status": profile.profile_status,
-        "biometric_verified": True,
-    }
+
+@router.post("/profile/verify-biometric")
+def verify_profile_biometric_legacy(
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    raise HTTPException(
+        status_code=409,
+        detail="Biometric verification now requires a verified WebAuthn/passkey assertion.",
+    )
 
 
 @router.post("/payments/request", status_code=201)
