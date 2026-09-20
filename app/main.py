@@ -24,6 +24,7 @@ from app.api.student_files import router as student_files_router
 from app.api.academic_catalog import router as academic_catalog_router
 from app.api.curriculum import router as curriculum_router
 from app.api.main_manager import router as main_manager_router
+from app.api.notifications import router as notifications_router
 from app.api.manager_dashboard import router as manager_dashboard_router
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
@@ -64,6 +65,7 @@ app.include_router(teacher_admin_router)
 app.include_router(teacher_chat_router)
 app.include_router(teacher_teaching_router)
 app.include_router(main_manager_router)
+app.include_router(notifications_router)
 app.include_router(manager_dashboard_router)
 app.include_router(curriculum_router)
 
