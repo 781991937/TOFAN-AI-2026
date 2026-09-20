@@ -8,6 +8,7 @@ from sqlalchemy import text
 from app.api.admin import router as admin_router
 from app.api.admin_users import router as admin_users_router
 from app.api.academy_admin import router as academy_admin_router
+from app.api.content_admin import router as content_admin_router
 from app.api.agent_admin import router as agent_admin_router
 from app.api.agent_chat import router as agent_chat_router
 from app.api.agent_memory import router as agent_memory_router
@@ -53,6 +54,7 @@ app.include_router(student_files_router)
 app.include_router(academic_catalog_router)
 app.include_router(admin_router)
 app.include_router(academy_admin_router)
+app.include_router(content_admin_router)
 app.include_router(admin_users_router)
 app.include_router(agent_admin_router)
 app.include_router(agent_chat_router)
