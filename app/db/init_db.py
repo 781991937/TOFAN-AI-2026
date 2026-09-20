@@ -1,28 +1,15 @@
-"""Create the initial database schema.
-
-Migrations will replace this bootstrap helper as the project matures.
-"""
+"""Create the initial database schema."""
 
 from .base import Base
-from .models import (  # noqa: F401
-    AcademicPeriod,
-    AcademicUnit,
-    AuditLog,
-    BiometricCredentialRecord,
-    ContentFile,
-    Course,
-    Entitlement,
-    Institution,
-    Lecture,
-    Unit,
-    User,
-    UserCredential,
-    AuthSession,
-    OtpChallenge,
+from .models import (
+    AcademicPeriod, AcademicUnit, AuditLog, AuthSession,
+    BiometricCredentialRecord, ContentFile, Course, Entitlement,
+    Institution, Lecture, OtpChallenge, Unit, User, UserCredential,
 )
 from .session import engine
 from app.auth.models import UserRole  # noqa: F401
 from app.agents.models import Agent, AgentRun, AgentTool  # noqa: F401
+from app.agents.memory import AgentConversation, AgentMessageRecord  # noqa: F401
 
 
 def init_db() -> None:
