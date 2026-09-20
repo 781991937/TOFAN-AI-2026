@@ -46,9 +46,9 @@ table{width:100%;border-collapse:collapse;min-width:800px}th,td{padding:12px;bor
 <section><div class="section-title">آخر أحداث التدقيق</div><div id="audit" class="table-wrap"></div></section>
 </main>
 <script>
-const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",""":"&quot;"}[c]));
-const cell=v=>'<td>'+esc(v)+'</td>';
-function table(headers,rows){return '<table><thead><tr>'+headers.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(cell).join('')+'</tr>').join('')+'</tbody></table>'}
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+const cell=v=>String(v??"").startsWith("__HTML__") ? "<td>"+String(v).slice(8)+"</td>" : "<td>"+esc(v)+"</td>";
+function table(headers,rows){return '<table><thead><tr>'+headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(cell).join('')+'</tr>').join('')+'</tbody></table>'}
 async function get(path){const r=await fetch(path,{credentials:"same-origin"});if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
 async function load(){
  document.getElementById("state").textContent="جاري التحديث...";
@@ -64,10 +64,10 @@ async function load(){
   ];
   document.getElementById("cards").innerHTML=cards.map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="num">'+x[1]+'</div></div>').join("");
   document.getElementById("courseSelect").innerHTML='<option value="">اختر مقررًا</option>'+c.courses.map(x=>'<option value="'+esc(x.course_id)+'">'+esc(x.code+" — "+x.name)+'</option>').join("");
-  document.getElementById("teachers").innerHTML=table(["المدرس","المقرر","الحالة","إجراء"],t.teachers.map(x=>[x.name,x.curriculum_course_id||"-",x.status,'<button onclick="changeStatus(\\''+x.agent_id+'\\',\\''+(x.status==="active"?"paused":"active")+'\\')">'+(x.status==="active"?"إيقاف مؤقت":"تفعيل")+'</button>']));
+  document.getElementById("teachers").innerHTML=table(["المدرس","المقرر","الحالة","إجراء"],t.teachers.map(x=>[x.name,x.curriculum_course_id||"-",x.status,'__HTML__<button onclick="changeStatus(\\''+x.agent_id+'\\',\\''+(x.status==="active"?"paused":"active")+'\\')">'+(x.status==="active"?"إيقاف مؤقت":"تفعيل")+'</button>']));
   document.getElementById("students").innerHTML=table(["الاسم","النوع","الحالة","التحقق","التاريخ"],s.students.map(x=>[x.name,x.user_type,x.profile_status,x.biometric_verified?"نعم":"لا",x.updated_at]));
   document.getElementById("assessments").innerHTML=table(["الطالب","النسبة","النتيجة","الحالة","التاريخ"],a.assessments.map(x=>[x.user_id,x.percentage??"-",x.passed===true?"ناجح":x.passed===false?"غير ناجح":"-",x.status,x.submitted_at||x.started_at]));
-  document.getElementById("payments").innerHTML=table(["المعاملة","الطالب","المنتج","الحالة","المبلغ","إجراء"],p.payments.map(x=>[x.transaction_id,x.user_id,x.product_key,x.status,(x.amount??"-")+" "+(x.currency??""),x.status==="pending" ? '<button onclick="confirmPayment(\\''+x.transaction_id+'\\')">تأكيد</button>' : "—"]));
+  document.getElementById("payments").innerHTML=table(["المعاملة","الطالب","المنتج","الحالة","المبلغ","إجراء"],p.payments.map(x=>[x.transaction_id,x.user_id,x.product_key,x.status,(x.amount??"-")+" "+(x.currency??""),x.status==="pending" ? '__HTML__<button onclick="confirmPayment(\\''+x.transaction_id+'\\')">تأكيد</button>' : "—"]));
   document.getElementById("audit").innerHTML=table(["الإجراء","المورد","المعرف","المستخدم","التاريخ"],l.events.map(x=>[x.action,x.resource_type||"-",x.resource_id||"-",x.user_id||"-",x.created_at]));
   document.getElementById("state").textContent="تم التحديث بنجاح";
  }catch(e){document.getElementById("state").textContent="تعذر تحميل البيانات: "+e.message}
