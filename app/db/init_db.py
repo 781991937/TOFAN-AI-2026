@@ -22,6 +22,7 @@ from .models import (  # noqa: F401
 )
 from .session import engine
 from app.auth.models import UserRole  # noqa: F401
+from app.agents.models import Agent, AgentRun, AgentTool  # noqa: F401
 
 
 def init_db() -> None:
