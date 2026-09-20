@@ -8,13 +8,14 @@ from .models import (
 )
 from .session import engine
 from .migrations import run_migrations
-from app.auth.models import UserRole  # noqa: F401
-from app.agents.models import Agent, AgentRun, AgentTool  # noqa: F401
-from app.agents.memory import AgentConversation, AgentMemoryItem, AgentMessageRecord  # noqa: F401
+from app.auth.models import UserRole
+from app.agents.models import Agent, AgentRun, AgentTool
+from app.agents.memory import AgentConversation, AgentMemoryItem, AgentMemoryPermission, AgentMessageRecord
 
 
 def init_db() -> None:
-    Base.metadata.create_all(bind=engine)\n    run_migrations(engine)
+    Base.metadata.create_all(bind=engine)
+    run_migrations(engine)
 
 
 if __name__ == "__main__":
