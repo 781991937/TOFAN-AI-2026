@@ -39,6 +39,8 @@ class AgentRuntime:
             raise AgentRuntimeError("Tool is not enabled for this agent.")
 
         tool = self.registry.get(tool_name)
+        if tool.allowed_agent_slug and agent.slug != tool.allowed_agent_slug:
+            raise AgentRuntimeError("This tool is restricted to its authorized agent.")
         run = AgentRun(
             agent_id=agent.id,
             actor_user_id=actor_user_id,
