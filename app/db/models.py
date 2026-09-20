@@ -36,6 +36,11 @@ class TeachingAccess(StrEnum):
     PAID = "paid"
 
 
+class AcademyAccessTier(StrEnum):
+    FREE = "free"
+    PAID = "paid"
+
+
 class TeachingStepStatus(StrEnum):
     ACTIVE = "active"
     COMPLETED = "completed"
@@ -108,6 +113,8 @@ class AcademicPeriod(Base):
     parent_id: Mapped[str | None] = mapped_column(ForeignKey("academic_periods.id"))
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     kind: Mapped[str] = mapped_column(String(30), nullable=False)
+    year_number: Mapped[int | None] = mapped_column(Integer)
+    term_number: Mapped[int | None] = mapped_column(Integer)
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
