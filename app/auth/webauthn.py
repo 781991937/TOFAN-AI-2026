@@ -61,7 +61,7 @@ def _credential_from_record(record: BiometricCredentialRecord) -> AttestedCreden
         public_key = cbor_decode(websafe_decode(record.public_key))
         from fido2.cose import CoseKey
         cose_key = CoseKey.parse(public_key)
-        return AttestedCredentialData.create(b"\\x00" * 16, credential_id, cose_key)
+        return AttestedCredentialData.create(b"\x00" * 16, credential_id, cose_key)
     except Exception as exc:
         raise BiometricAuthError("Stored passkey credential is invalid.") from exc
 
@@ -127,7 +127,7 @@ def finish_registration(
         or challenge.user_id != user.id
         or challenge.purpose != "registration"
         or challenge.consumed_at is not None
-        or challenge.expires_at < datetime.now(timezone.utc)
+        or challenge.expires_at < datetime.utcnow()
     ):
         raise BiometricAuthError("Registration challenge is invalid or expired.")
 
