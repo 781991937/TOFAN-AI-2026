@@ -8,7 +8,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.models import Agent, AgentKind
-from app.agents.teaching_policy import grant_paid_global_access\nfrom app.agents.payment_tools import confirm_payment_transaction
+from app.agents.teaching_policy import grant_paid_global_access
+from app.agents.payment_tools import confirm_payment_transaction
+from app.agents.main_manager import MainManagerService
 from app.auth.dependencies import get_current_user, get_db
 from app.auth.authorization import require_owner_or_admin
 from app.db.identity_models import (
@@ -251,5 +253,10 @@ def confirm_payment(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    MainManagerService.receive_payment_confirmation(db, transaction_id)
+    MainManagerService.process_event(
+        db,
+        "payments.confirmed",
+        result.get("user_id") if isinstance(result, dict) else None,
+        {"resource_type": "payment_transaction", "resource_id": transaction_id, "transaction_id": transaction_id},
+    )
     return result
