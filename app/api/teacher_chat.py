@@ -91,6 +91,35 @@ def chat_with_teacher(
                 f"المتطلبات السابقة: {len(prerequisites)} مقرر"
             )
             memory_context = (memory_context + "\n\n" if memory_context else "") + native_context
+            # Inject the server-side mastery state so the teacher always knows exactly where the student is.
+            from app.agents.teaching_policy import start_step
+            from app.db.models import TeachingStep, TeachingStepStatus
+            lesson_rows = db.scalars(select(CurriculumLesson).join(CurriculumUnit, CurriculumLesson.unit_id == CurriculumUnit.id).where(CurriculumUnit.course_id == course.id).order_by(CurriculumUnit.position, CurriculumLesson.position)).all()
+            step_plan = []
+            for index, lesson in enumerate(lesson_rows, start=1):
+                unit = db.get(CurriculumUnit, lesson.unit_id)
+                step_plan.append((index, unit, lesson))
+            completed_positions = {s.position for s in db.scalars(select(TeachingStep).where(
+                TeachingStep.user_id == actor.id,
+                TeachingStep.agent_id == agent.id,
+                TeachingStep.source == TeachingSource.GLOBAL_CURRICULUM,
+                TeachingStep.status == TeachingStepStatus.COMPLETED,
+            )).all()}
+            current_plan = next((item for item in step_plan if item[0] not in completed_positions), None)
+            if current_plan:
+                position, current_unit, current_lesson = current_plan
+                scope_key = f"course:{course.id}:unit:{current_unit.id}:lesson:{current_lesson.id}"
+                current_step = start_step(db, user_id=actor.id, agent_id=agent.id, source=TeachingSource.GLOBAL_CURRICULUM, scope_key=scope_key, position=position)
+                mastery_context = (
+                    f"\n\nحالة تقدم الطالب الحالية: الخطوة {position} — الوحدة: {current_unit.title} — الدرس: {current_lesson.title}\n"
+                    f"محاولات فهم هذه الخطوة: {current_step.attempts}\n"
+                    f"تحقق المعلم من الفهم: {'نعم' if current_step.understanding_verified else 'لا'}\n"
+                    f"تأكيد الطالب: {'نعم' if current_step.student_confirmed else 'لا'}\n"
+                    "قاعدة إلزامية: لا تنتقل إلى الدرس التالي حتى يتحقق الفهم ويؤكد الطالب فهمه."
+                )
+                memory_context += mastery_context
+            else:
+                memory_context += "\n\nالطالب أكمل جميع خطوات هذا المقرر. لا تنشئ خطوات جديدة خارج المنهج."
         elif agent.teacher_course_id:
             memory_context = (memory_context + "\n\n" if memory_context else "") + "Assigned legacy course ID: " + agent.teacher_course_id
 
@@ -111,7 +140,8 @@ def chat_with_teacher(
             entitlement = db.scalar(
                 __import__("sqlalchemy", fromlist=["select"]).select(Entitlement).where(
                     Entitlement.user_id == actor.id,
-                    Entitlement.access_type == TeachingAccess.PAID.value,\n                    Entitlement.content_file_id.is_(None),
+                    Entitlement.access_type == TeachingAccess.PAID.value,
+                    Entitlement.content_file_id.is_(None),
                 )
             )
             if not usage.paid_access or entitlement is None:
