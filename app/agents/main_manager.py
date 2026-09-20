@@ -202,19 +202,26 @@ class MainManagerService:
             .where(Entitlement.user_id == user_id)
             .order_by(desc(Entitlement.granted_at))
         ).all()
+        step_teacher_ids = {s.agent_id for s in steps if s.agent_id}
         teachers = db.scalars(
             select(Agent)
             .where(
+                Agent.id.in_(step_teacher_ids),
                 Agent.kind == AgentKind.TEACHER,
-                Agent.curriculum_course_id.is_not(None),
             )
             .order_by(Agent.name)
-        ).all()
+        ).all() if step_teacher_ids else []
 
-        course_ids = {t.curriculum_course_id for t in steps if getattr(t, "curriculum_course_id", None)}
+        course_ids = set()
+        for step in steps:
+            scope_key = step.scope_key or ""
+            marker = "course:"
+            if marker in scope_key:
+                course_id = scope_key.split(marker, 1)[1].split(":unit:", 1)[0]
+                if course_id:
+                    course_ids.add(course_id)
+        course_ids.update(t.curriculum_course_id for t in teachers if t.curriculum_course_id)
         course_ids.update(a.assessment_id for a in attempts if a.assessment_id)
-        assigned_course_ids = {t.curriculum_course_id for t in teachers}
-        course_ids.update(assigned_course_ids)
         courses = db.scalars(
             select(CurriculumCourse).where(CurriculumCourse.id.in_(course_ids))
         ).all() if course_ids else []
