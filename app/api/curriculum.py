@@ -21,6 +21,75 @@ def list_specialties(db: Session = Depends(get_db)):
     return [{"id": x.id, "code": x.code, "name": x.name} for x in rows]
 
 
+@router.get("/courses/{course_id}")
+def get_curriculum_course(course_id: str, db: Session = Depends(get_db)):
+    """Return one TOFAN course with its ordered units and lessons.
+
+    Lesson teaching content is intentionally not exposed by this catalog endpoint;
+    the teacher runtime controls lesson delivery and mastery gating.
+    """
+    course = db.get(CurriculumCourse, course_id)
+    if course is None or not course.is_active:
+        raise HTTPException(status_code=404, detail="TOFAN curriculum course not found.")
+
+    stage = db.get(CurriculumStage, course.stage_id)
+    outcomes = db.scalars(
+        select(LearningOutcome)
+        .where(LearningOutcome.course_id == course.id)
+        .order_by(LearningOutcome.position)
+    ).all()
+    prerequisites = db.scalars(
+        select(CoursePrerequisite)
+        .where(CoursePrerequisite.course_id == course.id)
+    ).all()
+    units = db.scalars(
+        select(CurriculumUnit)
+        .where(CurriculumUnit.course_id == course.id)
+        .order_by(CurriculumUnit.position)
+    ).all()
+
+    result_units = []
+    for unit in units:
+        lessons = db.scalars(
+            select(CurriculumLesson)
+            .where(CurriculumLesson.unit_id == unit.id)
+            .order_by(CurriculumLesson.position)
+        ).all()
+        result_units.append({
+            "id": unit.id,
+            "title": unit.title,
+            "position": unit.position,
+            "lessons": [
+                {
+                    "id": lesson.id,
+                    "title": lesson.title,
+                    "position": lesson.position,
+                    "description": lesson.description,
+                    "has_content": bool((lesson.content_markdown or "").strip()),
+                }
+                for lesson in lessons
+            ],
+        })
+
+    return {
+        "id": course.id,
+        "code": course.code,
+        "name": course.name,
+        "description": course.description,
+        "course_type": course.course_type,
+        "position": course.position,
+        "stage": {
+            "id": stage.id,
+            "code": stage.code,
+            "name": stage.name,
+            "position": stage.position,
+        } if stage else None,
+        "outcomes": [x.statement for x in outcomes],
+        "prerequisite_course_ids": [x.prerequisite_course_id for x in prerequisites],
+        "units": result_units,
+    }
+
+
 @router.get("/{curriculum_slug}")
 def get_curriculum(curriculum_slug: str, db: Session = Depends(get_db)):
     curriculum = db.scalar(
