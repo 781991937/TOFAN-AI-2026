@@ -131,6 +131,13 @@ def migrate_teaching_limits(engine: Engine) -> list[str]:
     return changes
 
 
+def migrate_notifications(engine: Engine) -> list[str]:
+    from app.db.models import Notification
+    from app.db.base import Base
+    Base.metadata.create_all(bind=engine, tables=[Notification.__table__])
+    return []
+
+
 def run_migrations(engine: Engine) -> list[str]:
     changes = migrate_agent_conversation_memory(engine)
     changes.extend(migrate_agent_memory_scopes(engine))
@@ -139,6 +146,7 @@ def run_migrations(engine: Engine) -> list[str]:
     changes.extend(migrate_teaching_limits(engine))
     changes.extend(migrate_content_files(engine))
     changes.extend(migrate_curriculum_assessments(engine))
+    changes.extend(migrate_notifications(engine))
     return changes
 
 
