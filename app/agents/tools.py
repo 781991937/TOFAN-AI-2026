@@ -116,6 +116,7 @@ def academy_search_tool(db: Session, input_text: str) -> str:
         raise ToolExecutionError("Search query is required.")
 
     course_id = str(payload.get("course_id", "")).strip() or None
+    curriculum_course_id = str(payload.get("curriculum_course_id", "")).strip() or None
     pattern = f"%{query}%"
     course_filters = [Course.is_active.is_(True), or_(Course.name.ilike(pattern), Course.code.ilike(pattern))]
     if course_id:
@@ -126,9 +127,12 @@ def academy_search_tool(db: Session, input_text: str) -> str:
         .order_by(Course.name)
         .limit(limit)
     ).all()
-    units = db.scalars(
-        select(Unit).where(Unit.title.ilike(pattern)).order_by(Unit.position).limit(limit)
-    ).all()
+    units_query = select(Unit).where(Unit.title.ilike(pattern))
+    if curriculum_course_id:
+        # Native TOFAN teachers are scoped by curriculum_course_id. Legacy
+        # Unit rows are returned only when the legacy course scope is used.
+        units_query = units_query.where(False)
+    units = db.scalars(units_query.order_by(Unit.position).limit(limit)).all()
     lectures = db.scalars(
         select(Lecture)
         .where(Lecture.title.ilike(pattern), Lecture.status != "draft")
@@ -180,7 +184,8 @@ def build_default_registry() -> ToolRegistry:
                 "properties": {
                     "query": {"type": "string", "description": "The academy search query."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 50},
-                    "course_id": {"type": "string", "description": "Course ID. Required for teacher agents and must be their assigned course."},
+                    "course_id": {"type": "string", "description": "Legacy course ID. Used only by legacy teacher agents."},
+                    "curriculum_course_id": {"type": "string", "description": "Canonical TOFAN curriculum course ID. Required for TOFAN-native teacher agents."},
                 },
                 "required": ["query", "limit"],
                 "additionalProperties": False,
