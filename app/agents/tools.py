@@ -1,8 +1,4 @@
-"""Tool registry for the TOFAN agent runtime.
-
-Tools are registered explicitly in application code. An agent may execute only
-tools that are both registered here and enabled for that agent in the database.
-"""
+"""Tool registry for the TOFAN agent runtime."""
 
 import json
 from dataclasses import dataclass
@@ -24,6 +20,7 @@ class ToolDefinition:
     description: str
     handler: Callable[[Session, str], str]
     sensitive: bool = False
+    parameters: dict | None = None
 
 
 class ToolRegistry:
@@ -44,6 +41,27 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return sorted(self._tools)
 
+    def openai_definitions(self, names: list[str] | None = None) -> list[dict]:
+        selected = names if names is not None else self.names()
+        definitions = []
+        for name in selected:
+            tool = self.get(name)
+            definitions.append(
+                {
+                    "type": "function",
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.parameters
+                    or {
+                        "type": "object",
+                        "properties": {},
+                        "additionalProperties": False,
+                    },
+                    "strict": True,
+                }
+            )
+        return definitions
+
 
 def echo_tool(_: Session, input_text: str) -> str:
     return input_text
@@ -57,15 +75,11 @@ def academy_structure_tool(db: Session, _: str) -> str:
     institutions = db.scalars(
         select(Institution).where(Institution.is_active.is_(True)).order_by(Institution.name)
     ).all()
-
     result = []
     for institution in institutions:
         units = db.scalars(
             select(AcademicUnit)
-            .where(
-                AcademicUnit.institution_id == institution.id,
-                AcademicUnit.is_active.is_(True),
-            )
+            .where(AcademicUnit.institution_id == institution.id, AcademicUnit.is_active.is_(True))
             .order_by(AcademicUnit.name)
         ).all()
         result.append(
@@ -86,7 +100,6 @@ def academy_structure_tool(db: Session, _: str) -> str:
                 ],
             }
         )
-
     return json.dumps({"institutions": result}, ensure_ascii=False)
 
 
@@ -104,25 +117,16 @@ def academy_search_tool(db: Session, input_text: str) -> str:
     pattern = f"%{query}%"
     courses = db.scalars(
         select(Course)
-        .where(
-            Course.is_active.is_(True),
-            or_(Course.name.ilike(pattern), Course.code.ilike(pattern)),
-        )
+        .where(Course.is_active.is_(True), or_(Course.name.ilike(pattern), Course.code.ilike(pattern)))
         .order_by(Course.name)
         .limit(limit)
     ).all()
     units = db.scalars(
-        select(Unit)
-        .where(Unit.title.ilike(pattern))
-        .order_by(Unit.position)
-        .limit(limit)
+        select(Unit).where(Unit.title.ilike(pattern)).order_by(Unit.position).limit(limit)
     ).all()
     lectures = db.scalars(
         select(Lecture)
-        .where(
-            Lecture.title.ilike(pattern),
-            Lecture.status != "draft",
-        )
+        .where(Lecture.title.ilike(pattern), Lecture.status != "draft")
         .order_by(Lecture.title)
         .limit(limit)
     ).all()
@@ -164,8 +168,17 @@ def build_default_registry() -> ToolRegistry:
     registry.register(
         ToolDefinition(
             name="academy.search",
-            description="Search active courses, course units, and non-draft lectures by name or code. Input JSON: {query, limit}.",
+            description="Search active courses, course units, and non-draft lectures by name or code.",
             handler=academy_search_tool,
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "The academy search query."},
+                    "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                },
+                "required": ["query", "limit"],
+                "additionalProperties": False,
+            },
         )
     )
     return registry
