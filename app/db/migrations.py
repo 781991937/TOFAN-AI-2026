@@ -39,6 +39,27 @@ def migrate_agent_memory_scopes(engine: Engine) -> list[str]:
     ):
         if add_column_if_missing(engine, "agent_memory_items", name, sql):
             changes.append(f"agent_memory_items.{name}")
+
+    # Preserve access to memories created before scoped-memory support.
+    inspector = inspect(engine)
+    if "agent_memory_items" in inspector.get_table_names():
+        with engine.begin() as connection:
+            result = connection.execute(text(
+                "UPDATE agent_memory_items "
+                "SET owner_agent_id = ("
+                "SELECT agent_id FROM agent_conversations "
+                "WHERE agent_conversations.id = agent_memory_items.conversation_id"
+                ") "
+                "WHERE owner_agent_id IS NULL"
+            ))
+            if result.rowcount:
+                changes.append("agent_memory_items.owner_agent_id backfill")
+            result = connection.execute(text(
+                "UPDATE agent_memory_items SET memory_scope = 'conversation' "
+                "WHERE memory_scope IS NULL"
+            ))
+            if result.rowcount:
+                changes.append("agent_memory_items.memory_scope backfill")
     return changes
 
 
