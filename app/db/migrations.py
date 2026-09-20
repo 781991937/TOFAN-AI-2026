@@ -67,6 +67,8 @@ def migrate_teacher_agent_course(engine: Engine) -> list[str]:
     changes: list[str] = []
     if add_column_if_missing(engine, "agents", "teacher_course_id", "VARCHAR(36)"):
         changes.append("agents.teacher_course_id")
+    if add_column_if_missing(engine, "agents", "teacher_institution_id", "VARCHAR(36)"):
+        changes.append("agents.teacher_institution_id")
     return changes
 
 
