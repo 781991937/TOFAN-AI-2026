@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TOFAN Smart Academy</title>
+  <link rel="stylesheet" href="/web/app.css">
+</head>
+<body>
+  <div id="app">
+    <header class="topbar">
+      <div class="brand"><div class="brand-mark">T</div><div><strong>TOFAN</strong><span data-i18n="academy">Smart Academy</span></div></div>
+      <div class="top-actions"><button id="langBtn" class="ghost">EN</button><button id="logoutBtn" class="ghost hidden" data-i18n="logout">تسجيل الخروج</button></div>
+    </header>
+    <main>
+      <section id="authView" class="auth-grid">
+        <div class="hero-panel">
+          <div class="eyebrow">TOFAN CORE</div>
+          <h1 data-i18n="heroTitle">أكاديميتك الذكية للتعلّم المتدرّج</h1>
+          <p data-i18n="heroText">منهج عالمي، معلّمون بالذكاء الاصطناعي، تقدّم محفوظ، واختبارات مرتبطة بمخرجات التعلّم.</p>
+          <div class="hero-pills"><span>AI</span><span>CS</span><span>Cyber</span><span>Data</span></div>
+        </div>
+        <div class="card auth-card">
+          <div class="tabs"><button class="tab active" data-mode="login" data-i18n="login">تسجيل الدخول</button><button class="tab" data-mode="register" data-i18n="register">إنشاء حساب</button></div>
+          <form id="authForm">
+            <label data-i18n="email">البريد الإلكتروني</label><input id="email" type="email" required autocomplete="email">
+            <label data-i18n="password">كلمة المرور</label><input id="password" type="password" required minlength="8" autocomplete="current-password">
+            <div id="nameWrap" class="hidden"><label data-i18n="name">الاسم</label><input id="displayName" autocomplete="name"></div>
+            <button class="primary" type="submit" id="authSubmit" data-i18n="login">تسجيل الدخول</button>
+            <p id="authError" class="error"></p>
+          </form>
+        </div>
+      </section>
+
+      <section id="dashboardView" class="hidden">
+        <div class="dashboard-head"><div><div class="eyebrow" id="welcomeEyebrow">TOFAN CORE</div><h1 id="welcomeTitle">لوحة الطالب</h1><p id="onboardingText"></p></div><div class="status-chip" id="statusChip">●</div></div>
+        <div class="stats"><div class="stat card"><span data-i18n="learning">التعلّم</span><b id="statLearning">—</b></div><div class="stat card"><span data-i18n="specialties">التخصصات</span><b id="statSpecialties">—</b></div><div class="stat card"><span data-i18n="access">الوصول</span><b id="statAccess">—</b></div></div>
+        <div class="section-head"><h2 data-i18n="specialtyTitle">مسارات التخصص</h2><span data-i18n="dynamic">واجهة تتكيّف مع تخصصك</span></div>
+        <div id="specialties" class="specialty-grid"></div>
+        <div id="curriculumPanel" class="card curriculum hidden"><div class="section-head"><h2 id="curriculumTitle">Curriculum</h2><button id="closeCurriculum" class="ghost">×</button></div><div id="curriculumBody"></div></div>
+      </section>
+    </main>
+    <div id="toast" class="toast"></div>
+  </div>
+  <script src="/web/app.js"></script>
+</body>
+</html>
