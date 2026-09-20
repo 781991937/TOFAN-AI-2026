@@ -1,13 +1,13 @@
 """Server-rendered TOFAN manager dashboard."""
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse\n\nfrom app.auth.authorization import require_owner_or_admin
 
 router = APIRouter(prefix="/manager", tags=["main-manager-ui"])
 
 
 @router.get("/dashboard-ui", response_class=HTMLResponse, include_in_schema=False)
-def dashboard_ui() -> str:
+def dashboard_ui(_: list = Depends(require_owner_or_admin)) -> str:
     return r"""<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -31,10 +31,18 @@ table{width:100%;border-collapse:collapse;min-width:800px}th,td{padding:12px;bor
 <body>
 <header><div class="brand">TOFAN <span>SMART ACADEMY</span> · Manager</div><button onclick="load()">تحديث</button></header>
 <main>
-<h1>لوحة المدير العام</h1><div class="sub">مركز المراقبة التشغيلية للأكاديمية</div><div id="state">جاري تحميل البيانات...</div>
+<h1>لوحة المدير العام</h1><div class="sub">مركز التحكم التشغيلي للأكاديمية</div><div id="state">جاري تحميل البيانات...</div>
 <div id="cards" class="grid"></div>
-<section><div class="section-title">آخر الاختبارات</div><div id="assessments" class="table-wrap"></div></section>
-<section><div class="section-title">آخر المدفوعات</div><div id="payments" class="table-wrap"></div></section>
+
+<section><div class="section-title">إدارة المدرسين</div>
+<div class="table-wrap"><div style="padding:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+<select id="courseSelect" style="padding:10px;border-radius:8px;background:#181818;color:#fff;border:1px solid #333;min-width:280px"></select>
+<button onclick="provisionTeacher()">إنشاء مدرس للمقرر</button></div>
+<div id="teachers"></div></div></section>
+
+<section><div class="section-title">الطلاب</div><div id="students" class="table-wrap"></div></section>
+<section><div class="section-title">الاختبارات</div><div id="assessments" class="table-wrap"></div></section>
+<section><div class="section-title">المدفوعات</div><div id="payments" class="table-wrap"></div></section>
 <section><div class="section-title">آخر أحداث التدقيق</div><div id="audit" class="table-wrap"></div></section>
 </main>
 <script>
@@ -45,18 +53,44 @@ async function get(path){const r=await fetch(path,{credentials:"same-origin"});i
 async function load(){
  document.getElementById("state").textContent="جاري التحديث...";
  try{
-  const [d,a,p,l]=await Promise.all([get("/manager/dashboard"),get("/manager/assessments?limit=10"),get("/manager/payments?limit=10"),get("/manager/audit-log?limit=10")]);
+  const [d,a,p,l,t,s,c]=await Promise.all([
+   get("/manager/dashboard"),get("/manager/assessments?limit=10"),get("/manager/payments?limit=10"),
+   get("/manager/audit-log?limit=10"),get("/manager/teachers"),get("/manager/students?limit=10"),get("/manager/courses")
+  ]);
   const cards=[
    ["المستخدمون",d.users.total],["طلاب الجامعات",d.users.university_students],["المتعلمون المستقلون",d.users.independent_learners],
    ["المدرسون النشطون",d.teachers.active],["المقررات",d.curriculum.active_courses],["الدروس",d.curriculum.lessons],
    ["محاولات الاختبار",d.assessments.attempts],["ناجح",d.assessments.passed],["مدفوعات معلقة",d.payments.pending],["مدفوعات مؤكدة",d.payments.confirmed]
   ];
   document.getElementById("cards").innerHTML=cards.map(x=>'<div class="card"><div class="label">'+x[0]+'</div><div class="num">'+x[1]+'</div></div>').join("");
+  document.getElementById("courseSelect").innerHTML='<option value="">اختر مقررًا</option>'+c.courses.map(x=>'<option value="'+esc(x.course_id)+'">'+esc(x.code+" — "+x.name)+'</option>').join("");
+  document.getElementById("teachers").innerHTML=table(["المدرس","المقرر","الحالة","إجراء"],t.teachers.map(x=>[x.name,x.curriculum_course_id||"-",x.status,'<button onclick="changeStatus(\\''+x.agent_id+'\\',\\''+(x.status==="active"?"paused":"active")+'\\')">'+(x.status==="active"?"إيقاف مؤقت":"تفعيل")+'</button>']));
+  document.getElementById("students").innerHTML=table(["الاسم","النوع","الحالة","التحقق","التاريخ"],s.students.map(x=>[x.name,x.user_type,x.profile_status,x.biometric_verified?"نعم":"لا",x.updated_at]));
   document.getElementById("assessments").innerHTML=table(["الطالب","النسبة","النتيجة","الحالة","التاريخ"],a.assessments.map(x=>[x.user_id,x.percentage??"-",x.passed===true?"ناجح":x.passed===false?"غير ناجح":"-",x.status,x.submitted_at||x.started_at]));
-  document.getElementById("payments").innerHTML=table(["المعاملة","الطالب","المنتج","الحالة","المبلغ","التاريخ"],p.payments.map(x=>[x.transaction_id,x.user_id,x.product_key,x.status,(x.amount??"-")+" "+(x.currency??""),x.created_at]));
+  document.getElementById("payments").innerHTML=table(["المعاملة","الطالب","المنتج","الحالة","المبلغ","إجراء"],p.payments.map(x=>[x.transaction_id,x.user_id,x.product_key,x.status,(x.amount??"-")+" "+(x.currency??""),x.status==="pending" ? '<button onclick="confirmPayment(\\''+x.transaction_id+'\\')">تأكيد</button>' : "—"]));
   document.getElementById("audit").innerHTML=table(["الإجراء","المورد","المعرف","المستخدم","التاريخ"],l.events.map(x=>[x.action,x.resource_type||"-",x.resource_id||"-",x.user_id||"-",x.created_at]));
   document.getElementById("state").textContent="تم التحديث بنجاح";
  }catch(e){document.getElementById("state").textContent="تعذر تحميل البيانات: "+e.message}
+}
+async function provisionTeacher(){
+ const id=document.getElementById("courseSelect").value;
+ if(!id)return alert("اختر مقررًا أولًا");
+ await post("/manager/teachers/"+encodeURIComponent(id)+"/provision",{});
+ await load();
+}
+async function changeStatus(id,status){
+ await post("/manager/teachers/"+encodeURIComponent(id)+"/status?status="+encodeURIComponent(status),{});
+ await load();
+}
+async function confirmPayment(id){
+ if(!confirm("تأكيد هذه المعاملة؟"))return;
+ await post("/manager/payments/"+encodeURIComponent(id)+"/confirm",{});
+ await load();
+}
+async function post(path,body){
+ const r=await fetch(path,{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify(body||{})});
+ if(!r.ok){const t=await r.text();throw new Error(t||("HTTP "+r.status));}
+ return r.json();
 }
 load();
 </script>
