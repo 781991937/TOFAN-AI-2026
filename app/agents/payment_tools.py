@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.agents.models import Agent, AgentKind
 from app.agents.teaching_policy import grant_paid_global_access
 from app.db.identity_models import PaymentStatus, PaymentTransaction
-from app.db.models import AuditLog, Entitlement, TeachingSource
+from app.db.models import AuditLog, Entitlement, TeachingAccess
 
 
 def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
@@ -44,14 +44,14 @@ def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
     existing = db.scalar(
         select(Entitlement).where(
             Entitlement.user_id == transaction.user_id,
-            Entitlement.access_type == TeachingSource.GLOBAL_CURRICULUM.value,
+            Entitlement.access_type == TeachingAccess.PAID.value,\n            Entitlement.content_file_id.is_(None),
         )
     )
     if existing is None:
         db.add(
             Entitlement(
                 user_id=transaction.user_id,
-                access_type=TeachingSource.GLOBAL_CURRICULUM.value,
+                access_type=TeachingAccess.PAID.value,
             )
         )
 
