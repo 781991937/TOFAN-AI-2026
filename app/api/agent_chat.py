@@ -39,9 +39,9 @@ def chat_with_main_agent(payload: AgentChatRequest, db: Session = Depends(get_db
         try:
             memory_provider = _orchestrator.provider or build_configured_provider()
             memory_service = ConversationMemoryService(memory_provider)
-            structured_context = memory_service.context_for_agent(db, conversation)
+            structured_context = memory_service.context_for_agent(db, conversation, agent)
             if structured_context:
-                memory_context = structured_context + "\\n\\n" + memory_context
+                memory_context = structured_context + "\n\n" + memory_context
         except RuntimeError:
             pass
         append_message(db, conversation.id, "user", payload.message)
@@ -57,7 +57,7 @@ def chat_with_main_agent(payload: AgentChatRequest, db: Session = Depends(get_db
             memory_provider = _orchestrator.provider or build_configured_provider()
             memory_service = ConversationMemoryService(memory_provider)
             all_messages = recent_messages(db, conversation.id, limit=1000)
-            memory_service.extract_structured_memory(db, conversation, all_messages)
+            memory_service.extract_structured_memory(db, conversation, agent, all_messages)
             memory_service.compact(db, conversation, all_messages)
         except RuntimeError:
             pass
