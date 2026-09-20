@@ -56,7 +56,7 @@ def test_academy_structure_and_search():
     registry = build_default_registry()
 
     structure = json.loads(registry.get("academy.structure").handler(db, ""))
-    assert structure["institutions"][0]["name"] == "جامعة صنعاء"
+    assert structure["institutions"][0]["institution"]["name"] == "جامعة صنعاء"
 
     result = json.loads(
         registry.get("academy.search").handler(
