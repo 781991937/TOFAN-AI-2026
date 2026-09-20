@@ -15,7 +15,9 @@ from app.auth.dependencies import get_current_user, get_db
 from app.db.models import User
 
 router = APIRouter(prefix="/admin/agent", tags=["admin-agent"])
-_registry, _runtime, _service = build_default_registry(), AgentRuntime(build_default_registry()), AgentService()
+_registry = build_default_registry()
+_runtime = AgentRuntime(_registry)
+_service = AgentService()
 _orchestrator = MainAgentOrchestrator(_runtime, _service, registry=_registry)
 
 
@@ -33,7 +35,10 @@ def chat_with_main_agent(payload: AgentChatRequest, db: Session = Depends(get_db
         history = [AgentMessage(role=m.role, content=m.content) for m in previous]
         memory_context = build_memory_context(conversation, previous)
         append_message(db, conversation.id, "user", payload.message)
-        result = _orchestrator.run(db, agent, actor.id, payload.message, history=history, memory_context=memory_context)
+        result = _orchestrator.run(
+            db, agent, actor.id, payload.message,
+            history=history, memory_context=memory_context,
+        )
         assistant_content = result.get("content") or result.get("output") or ""
         if assistant_content:
             append_message(db, conversation.id, "assistant", assistant_content)
