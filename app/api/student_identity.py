@@ -18,7 +18,7 @@ from app.db.identity_models import (
     StudentProfile,
     UserType,
 )
-from app.db.models import AcademicUnit, BiometricCredentialRecord, Institution, User, Entitlement
+from app.db.models import AcademicUnit, BiometricCredentialRecord, Institution, User, Entitlement, TeachingAccess
 
 router = APIRouter(prefix="/student", tags=["student-identity"])
 
@@ -87,6 +87,47 @@ def get_profile(
             "status": profile.profile_status,
             "biometric_verified": profile.biometric_verified,
         },
+    }
+
+
+@router.get("/access")
+def get_student_access(
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == actor.id))
+    payment = db.scalar(
+        select(PaymentTransaction)
+        .where(PaymentTransaction.user_id == actor.id)
+        .order_by(PaymentTransaction.created_at.desc())
+    )
+    entitlement = db.scalar(
+        select(Entitlement).where(
+            Entitlement.user_id == actor.id,
+            Entitlement.content_file_id.is_(None),
+            Entitlement.access_type == TeachingAccess.PAID.value,
+        )
+    )
+    return {
+        "user_id": actor.id,
+        "profile": None if profile is None else {
+            "user_type": profile.user_type,
+            "full_name": profile.full_name,
+            "status": profile.profile_status,
+            "biometric_verified": profile.biometric_verified,
+        },
+        "payment": None if payment is None else {
+            "transaction_id": payment.id,
+            "product_key": payment.product_key,
+            "status": payment.status,
+            "confirmed_at": payment.confirmed_at,
+        },
+        "global_curriculum": {
+            "entitled": entitlement is not None,
+            "access_type": TeachingAccess.PAID.value if entitlement is not None else None,
+            "expires_at": entitlement.expires_at if entitlement is not None else None,
+        },
+        "security_rule": "Access is granted only from server-side confirmed payment state.",
     }
 
 
