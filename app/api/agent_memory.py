@@ -3,7 +3,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.agents.memory import AgentConversation, AgentMessageRecord
+from app.agents.memory import (
+    AgentConversation, AgentMemoryItem, AgentMessageRecord,
+    active_memory_items, deactivate_memory_item, update_memory_item,
+)
 from app.auth.authorization import require_owner_or_admin
 from app.auth.dependencies import get_current_user, get_db
 from app.db.models import User
@@ -87,3 +90,58 @@ def delete_conversation(
     db.commit()
 
     return {"deleted": True, "conversation_id": conversation_id, "actor_user_id": actor.id}
+
+
+@router.get("/conversations/{conversation_id}/memory")
+def list_memory_items(
+    conversation_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    conversation = db.get(AgentConversation, conversation_id)
+    if not conversation:
+        raise HTTPException(status_code=404, detail="Conversation not found.")
+    return {
+        "memory_items": [
+            {
+                "id": item.id,
+                "memory_type": item.memory_type,
+                "content": item.content,
+                "confidence": item.confidence,
+                "source_message_sequence": item.source_message_sequence,
+                "active": item.active,
+                "created_at": item.created_at,
+                "updated_at": item.updated_at,
+            }
+            for item in active_memory_items(db, conversation_id)
+        ]
+    }
+
+
+@router.patch("/memory/{item_id}")
+def edit_memory_item(
+    item_id: str,
+    content: str,
+    confidence: float | None = None,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+    _: list = Depends(require_owner_or_admin),
+):
+    item = update_memory_item(db, item_id, actor.id, content, confidence)
+    if not item:
+        raise HTTPException(status_code=404, detail="Memory item not found.")
+    db.commit()
+    return {"updated": True, "memory_item_id": item.id}
+
+
+@router.delete("/memory/{item_id}")
+def remove_memory_item(
+    item_id: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+    _: list = Depends(require_owner_or_admin),
+):
+    if not deactivate_memory_item(db, item_id, actor.id):
+        raise HTTPException(status_code=404, detail="Memory item not found.")
+    db.commit()
+    return {"deleted": True, "memory_item_id": item_id}
