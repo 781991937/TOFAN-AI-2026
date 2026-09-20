@@ -23,7 +23,8 @@ import json
 from app.agents.tools import build_default_registry
 from app.auth.dependencies import get_current_user, get_db
 from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumStage, CurriculumUnit, LearningOutcome, CoursePrerequisite
-from app.db.models import ContentFile, Entitlement, TeachingSource, TeachingAccess, User, TeachingStep, TeachingStepStatus
+from app.db.models import ContentFile, Entitlement, TeachingSource, TeachingAccess, ContentStatus, User, TeachingStep, TeachingStepStatus
+from app.agents.academy_access_policy import has_academy_content_access
 
 
 def teacher_tool_guard(db, agent, tool_name, payload):
@@ -203,7 +204,18 @@ def chat_with_teacher(
         except RuntimeError:
             pass
 
-        if payload.source == TeachingSource.GLOBAL_CURRICULUM:
+        academy_file = None
+        if payload.source == TeachingSource.GLOBAL_CURRICULUM and payload.content_file_id:
+            academy_file = db.get(ContentFile, payload.content_file_id)
+            if (
+                academy_file is None
+                or academy_file.lecture_id is None
+                or academy_file.teaching_source != TeachingSource.GLOBAL_CURRICULUM
+                or academy_file.status == ContentStatus.DRAFT
+                or not has_academy_content_access(db, user_id=actor.id, content_file_id=payload.content_file_id)
+            ):
+                raise HTTPException(status_code=403, detail="Academy content is not available for this student.")
+        elif payload.source == TeachingSource.GLOBAL_CURRICULUM:
             usage = get_or_create_usage(
                 db, user_id=actor.id, agent_id=agent.id,
                 source=TeachingSource.GLOBAL_CURRICULUM,
@@ -246,6 +258,18 @@ def chat_with_teacher(
                 db, user_id=actor.id, agent_id=agent.id,
                 source=TeachingSource.STUDENT_FILES,
                 scope_key=f"file:{content_file.id}", position=1,
+            )
+        elif academy_file is not None:
+            extracted = (academy_file.extracted_text or "").strip()
+            if not extracted:
+                raise HTTPException(status_code=422, detail="The selected academy content has no extracted teaching text.")
+            file_course_name = academy_file.original_name
+            file_lesson_title = academy_file.original_name
+            memory_context += "\n\nمحتوى مقرر الأكاديمية المعتمد (المصدر المعتمد للشرح):\n" + extracted[:60000]
+            file_step = start_step(
+                db, user_id=actor.id, agent_id=agent.id,
+                source=TeachingSource.GLOBAL_CURRICULUM,
+                scope_key=f"academy-file:{academy_file.id}", position=1,
             )
 
         remaining = remaining_response_chars(
