@@ -246,7 +246,9 @@ class MainManagerService:
 
         progress = []
         for step in steps:
-            scope_key = step.scope_key or ""\n            course_id = scope_key.split("course:", 1)[1].split(":unit:", 1)[0] if "course:" in scope_key else None\n            course = course_map.get(course_id)
+            scope_key = step.scope_key or ""
+            course_id = scope_key.split("course:", 1)[1].split(":unit:", 1)[0] if "course:" in scope_key else None
+            course = course_map.get(course_id)
             progress.append({
                 "step_id": step.id,
                 "source": step.source,
