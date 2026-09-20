@@ -7,6 +7,7 @@ from typing import Callable
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumUnit
 from app.db.models import AcademicUnit, Course, Institution, Lecture, Unit
 from .payment_tools import confirm_payment_tool
 
@@ -127,12 +128,52 @@ def academy_search_tool(db: Session, input_text: str) -> str:
         .order_by(Course.name)
         .limit(limit)
     ).all()
-    units_query = select(Unit).where(Unit.title.ilike(pattern))
     if curriculum_course_id:
-        # Native TOFAN teachers are scoped by curriculum_course_id. Legacy
-        # Unit rows are returned only when the legacy course scope is used.
-        units_query = units_query.where(False)
-    units = db.scalars(units_query.order_by(Unit.position).limit(limit)).all()
+        native_course = db.get(CurriculumCourse, curriculum_course_id)
+        if native_course is None or not native_course.is_active:
+            raise ToolExecutionError("TOFAN curriculum course not found.")
+        native_units = db.scalars(
+            select(CurriculumUnit)
+            .where(
+                CurriculumUnit.course_id == curriculum_course_id,
+                CurriculumUnit.title.ilike(pattern),
+            )
+            .order_by(CurriculumUnit.position)
+            .limit(limit)
+        ).all()
+        native_lessons = db.scalars(
+            select(CurriculumLesson)
+            .join(CurriculumUnit, CurriculumLesson.unit_id == CurriculumUnit.id)
+            .where(
+                CurriculumUnit.course_id == curriculum_course_id,
+                CurriculumLesson.title.ilike(pattern),
+            )
+            .order_by(CurriculumLesson.position)
+            .limit(limit)
+        ).all()
+        return json.dumps(
+            {
+                "query": query,
+                "curriculum_course": {
+                    "id": native_course.id,
+                    "name": native_course.name,
+                    "code": native_course.code,
+                },
+                "units": [
+                    {"id": x.id, "course_id": x.course_id, "title": x.title}
+                    for x in native_units
+                ],
+                "lessons": [
+                    {"id": x.id, "unit_id": x.unit_id, "title": x.title, "position": x.position}
+                    for x in native_lessons
+                ],
+            },
+            ensure_ascii=False,
+        )
+
+    units = db.scalars(
+        select(Unit).where(Unit.title.ilike(pattern)).order_by(Unit.position).limit(limit)
+    ).all()
     lectures = db.scalars(
         select(Lecture)
         .where(Lecture.title.ilike(pattern), Lecture.status != "draft")
