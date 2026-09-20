@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.agents.main_manager import MainManagerService
+from app.agents.models import AgentStatus
 from app.auth.authorization import require_owner_or_admin
 from app.auth.dependencies import get_db
 from app.db.models import User
@@ -44,3 +45,36 @@ def student_snapshot(
         return MainManagerService.student_snapshot(db, user_id)
     except ValueError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/teachers")
+def teacher_overview(
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    return {"teachers": MainManagerService.teacher_overview(db)}
+
+
+@router.post("/teachers/{curriculum_course_id}/provision")
+def provision_teacher(
+    curriculum_course_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    try:
+        return MainManagerService.provision_teacher(db, curriculum_course_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/teachers/{agent_id}/status")
+def set_teacher_status(
+    agent_id: str,
+    status: AgentStatus,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    try:
+        return MainManagerService.set_teacher_status(db, agent_id, status)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
