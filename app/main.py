@@ -18,6 +18,7 @@ from app.api.teacher_teaching import router as teacher_teaching_router
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
 from app.api.student_identity import router as student_identity_router
+from app.api.student_onboarding import router as student_onboarding_router
 from app.api.student_files import router as student_files_router
 from app.api.academic_catalog import router as academic_catalog_router
 from app.api.curriculum import router as curriculum_router
@@ -47,6 +48,7 @@ def health():
 app.include_router(auth_router)
 app.include_router(users_router)
 app.include_router(student_identity_router)
+app.include_router(student_onboarding_router)
 app.include_router(student_files_router)
 app.include_router(academic_catalog_router)
 app.include_router(admin_router)
