@@ -26,6 +26,21 @@ class ContentStatus(StrEnum):
     DRAFT = "draft"
 
 
+class TeachingSource(StrEnum):
+    STUDENT_FILES = "student_files"
+    GLOBAL_CURRICULUM = "global_curriculum"
+
+
+class TeachingAccess(StrEnum):
+    FREE = "free"
+    PAID = "paid"
+
+
+class TeachingStepStatus(StrEnum):
+    ACTIVE = "active"
+    COMPLETED = "completed"
+
+
 class OrganizationType(StrEnum):
     ACADEMY = "academy"
     UNIVERSITY = "university"
