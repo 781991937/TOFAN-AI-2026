@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import Course
-from .models import Agent, AgentKind, AgentStatus
+from .models import Agent, AgentKind, AgentStatus, AgentTool
 
 
 DEFAULT_TEACHER_PROMPT = """أنت مدرس ذكاء اصطناعي داخل أكاديمية طوفان الذكية.
@@ -56,8 +56,11 @@ def create_teacher_agent(
         model_provider="openai",
         model_name=None,
         memory_enabled=True,
+        teacher_course_id=course_id,
     )
     db.add(agent)
+    db.flush()
+    db.add(AgentTool(agent_id=agent.id, tool_name="academy.search", enabled=True))
     db.flush()
     return agent
 
