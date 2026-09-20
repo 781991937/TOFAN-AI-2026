@@ -1,11 +1,14 @@
 """TOFAN teaching quotas, exams, and mastery policy."""
 
 from datetime import datetime, timedelta
+import json
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     Agent,
+    AgentKind,
+    AgentRun,
     ContentFile,
     TeachingAssessment,
     TeachingAssessmentReport,
@@ -144,6 +147,29 @@ def record_exam_result(
     db.add(result)
     db.flush()
     db.add(TeachingAssessmentReport(assessment_id=result.id, status="pending"))
+    main_agent = db.scalar(select(Agent).where(
+        Agent.slug == "tofan-main",
+        Agent.kind == AgentKind.ORCHESTRATOR,
+    ))
+    if main_agent is not None:
+        db.add(AgentRun(
+            agent_id=main_agent.id,
+            actor_user_id=user_id,
+            tool_name="education.exam_result",
+            status="completed",
+            input_text=f"exam_result:{result.id}",
+            output_text=json.dumps({
+                "assessment_id": result.id,
+                "student_id": user_id,
+                "teacher_agent_id": agent_id,
+                "content_file_id": content_file_id,
+                "score": score,
+                "max_score": max_score,
+                "percentage": result.percentage,
+                "passed": passed,
+            }),
+            completed_at=datetime.utcnow(),
+        ))
     # Completing an exam consumes the student's file-teaching free cycle.
     usage = get_or_create_usage(db, user_id, agent_id, TeachingSource.STUDENT_FILES)
     usage.files_used = max(usage.files_used, usage.files_limit)
