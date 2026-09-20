@@ -199,7 +199,7 @@ def finish_authentication(
         or challenge.user_id != user.id
         or challenge.purpose != "authentication"
         or challenge.consumed_at is not None
-        or challenge.expires_at < datetime.now(timezone.utc)
+        or challenge.expires_at < datetime.utcnow()
     ):
         raise BiometricAuthError("Authentication challenge is invalid or expired.")
 
