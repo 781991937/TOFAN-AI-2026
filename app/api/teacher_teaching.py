@@ -19,6 +19,9 @@ from app.auth.dependencies import get_current_user, get_db
 from app.db.models import TeachingSource, User, TeachingStep, TeachingStepStatus
 from app.db.curriculum_models import CurriculumCourse, CurriculumUnit, CurriculumLesson, CourseAssessment
 from app.db.assessment_models import CurriculumAssessmentAttempt, AssessmentAttemptStatus, AssessmentResultReport
+from app.db.assessment_question_models import CurriculumAssessmentQuestion
+from app.agents.assessment_generator import generate_assessment_questions, grade_answers
+from app.agents.llm import build_configured_provider
 from datetime import datetime
 import json
 
@@ -51,27 +54,103 @@ class ConfirmationRequest(BaseModel):
 
 
 class CurriculumAssessmentSubmitRequest(BaseModel):
-    score: float
-    max_score: float
     answers: dict[str, str] = {}
 
 
-@router.get("/{slug}/assessments")
-def list_curriculum_assessments(
+@router.post("/{slug}/assessments/{assessment_id}/generate")
+def generate_curriculum_assessment(
     slug: str,
+    assessment_id: str,
     db: Session = Depends(get_db),
     actor: User = Depends(get_current_user),
 ):
     agent = _teacher(db, slug)
-    if not agent.curriculum_course_id:
-        raise HTTPException(status_code=409, detail="This teacher is not assigned to a TOFAN curriculum course.")
-    rows = db.scalars(select(CourseAssessment).where(
-        CourseAssessment.course_id == agent.curriculum_course_id
-    ).order_by(CourseAssessment.id)).all()
-    return [{
-        "id": x.id, "type": x.assessment_type, "title": x.title,
-        "description": x.description, "pass_percentage": x.pass_percentage,
-    } for x in rows]
+    assessment = db.get(CourseAssessment, assessment_id)
+    if assessment is None or assessment.course_id != agent.curriculum_course_id:
+        raise HTTPException(status_code=404, detail="Assessment not found for this teacher course.")
+    existing = db.scalars(select(CurriculumAssessmentQuestion).where(
+        CurriculumAssessmentQuestion.assessment_id == assessment.id
+    ).order_by(CurriculumAssessmentQuestion.position)).all()
+    if not existing:
+        course = db.get(CurriculumCourse, agent.curriculum_course_id)
+        if course is None:
+            raise HTTPException(status_code=409, detail="Teacher course is unavailable.")
+        try:
+            questions = generate_assessment_questions(
+                db=db,
+                course=course,
+                provider=build_configured_provider(),
+                question_count=20,
+            )
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail="Assessment generation failed.") from exc
+        for q in questions:
+            db.add(CurriculumAssessmentQuestion(
+                assessment_id=assessment.id,
+                position=q.position,
+                question_type=q.question_type,
+                prompt=q.prompt,
+                options_json=json.dumps(q.options, ensure_ascii=False),
+                correct_answer=q.correct_answer,
+                explanation=q.explanation,
+                points=q.points,
+            ))
+        db.commit()
+        existing = db.scalars(select(CurriculumAssessmentQuestion).where(
+            CurriculumAssessmentQuestion.assessment_id == assessment.id
+        ).order_by(CurriculumAssessmentQuestion.position)).all()
+    return {
+        "assessment_id": assessment.id,
+        "title": assessment.title,
+        "pass_percentage": assessment.pass_percentage,
+        "question_count": len(existing),
+        "questions": [
+            {
+                "id": q.id,
+                "position": q.position,
+                "type": q.question_type,
+                "prompt": q.prompt,
+                "options": json.loads(q.options_json),
+                "points": q.points,
+            }
+            for q in existing
+        ],
+    }
+
+
+@router.get("/{slug}/assessments/{assessment_id}/questions")
+def get_curriculum_assessment_questions(
+    slug: str,
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    agent = _teacher(db, slug)
+    assessment = db.get(CourseAssessment, assessment_id)
+    if assessment is None or assessment.course_id != agent.curriculum_course_id:
+        raise HTTPException(status_code=404, detail="Assessment not found for this teacher course.")
+    rows = db.scalars(select(CurriculumAssessmentQuestion).where(
+        CurriculumAssessmentQuestion.assessment_id == assessment.id
+    ).order_by(CurriculumAssessmentQuestion.position)).all()
+    if not rows:
+        raise HTTPException(status_code=409, detail="Assessment has not been generated yet.")
+    return {
+        "assessment_id": assessment.id,
+        "title": assessment.title,
+        "pass_percentage": assessment.pass_percentage,
+        "question_count": len(rows),
+        "questions": [
+            {
+                "id": q.id,
+                "position": q.position,
+                "type": q.question_type,
+                "prompt": q.prompt,
+                "options": json.loads(q.options_json),
+                "points": q.points,
+            }
+            for q in rows
+        ],
+    }
 
 
 @router.post("/{slug}/assessments/{assessment_id}/submit")
@@ -86,16 +165,28 @@ def submit_curriculum_assessment(
     assessment = db.get(CourseAssessment, assessment_id)
     if assessment is None or assessment.course_id != agent.curriculum_course_id:
         raise HTTPException(status_code=404, detail="Assessment not found for this teacher course.")
-    if payload.max_score <= 0 or payload.score < 0 or payload.score > payload.max_score:
-        raise HTTPException(status_code=400, detail="Invalid assessment score.")
-    percentage = (payload.score / payload.max_score) * 100
+    questions = db.scalars(select(CurriculumAssessmentQuestion).where(
+        CurriculumAssessmentQuestion.assessment_id == assessment.id
+    ).order_by(CurriculumAssessmentQuestion.position)).all()
+    if not questions:
+        raise HTTPException(status_code=409, detail="Generate the assessment before submitting answers.")
+    if set(payload.answers) - {str(q.position) for q in questions}:
+        raise HTTPException(status_code=400, detail="Unknown assessment question position.")
+    score, max_score, details = grade_answers(questions, payload.answers)
+    percentage = (score / max_score) * 100 if max_score else 0
     passed = assessment.pass_percentage is None or percentage >= assessment.pass_percentage
     attempt = CurriculumAssessmentAttempt(
-        user_id=actor.id, agent_id=agent.id, assessment_id=assessment.id,
-        status=AssessmentAttemptStatus.GRADED, score=payload.score,
-        max_score=payload.max_score, percentage=percentage, passed=passed,
+        user_id=actor.id,
+        agent_id=agent.id,
+        assessment_id=assessment.id,
+        status=AssessmentAttemptStatus.GRADED,
+        score=score,
+        max_score=max_score,
+        percentage=percentage,
+        passed=passed,
         answers_json=json.dumps(payload.answers, ensure_ascii=False),
-        submitted_at=datetime.utcnow(), graded_at=datetime.utcnow(),
+        submitted_at=datetime.utcnow(),
+        graded_at=datetime.utcnow(),
     )
     db.add(attempt)
     db.flush()
@@ -107,21 +198,32 @@ def submit_curriculum_assessment(
     if main_agent is not None:
         from app.db.models import AgentRun
         db.add(AgentRun(
-            agent_id=main_agent.id, actor_user_id=actor.id,
-            tool_name="education.curriculum_assessment_result", status="completed",
+            agent_id=main_agent.id,
+            actor_user_id=actor.id,
+            tool_name="education.curriculum_assessment_result",
+            status="completed",
             input_text=f"curriculum_assessment:{attempt.id}",
             output_text=json.dumps({
-                "attempt_id": attempt.id, "assessment_id": assessment.id,
-                "student_id": actor.id, "teacher_agent_id": agent.id,
-                "score": payload.score, "max_score": payload.max_score,
-                "percentage": percentage, "passed": passed,
-            }, ensure_ascii=False), completed_at=datetime.utcnow(),
+                "attempt_id": attempt.id,
+                "assessment_id": assessment.id,
+                "student_id": actor.id,
+                "teacher_agent_id": agent.id,
+                "score": score,
+                "max_score": max_score,
+                "percentage": percentage,
+                "passed": passed,
+            }, ensure_ascii=False),
+            completed_at=datetime.utcnow(),
         ))
     db.commit()
     return {
-        "attempt_id": attempt.id, "assessment_id": assessment.id,
-        "score": attempt.score, "max_score": attempt.max_score,
-        "percentage": attempt.percentage, "passed": attempt.passed,
+        "attempt_id": attempt.id,
+        "assessment_id": assessment.id,
+        "score": score,
+        "max_score": max_score,
+        "percentage": round(percentage, 2),
+        "passed": passed,
+        "details": details,
         "manager_report": "submitted_to_tofan_main",
     }
 
