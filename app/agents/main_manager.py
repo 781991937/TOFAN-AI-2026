@@ -179,6 +179,7 @@ class MainManagerService:
         """Return a complete manager-facing student operational snapshot."""
         from app.db.curriculum_models import CourseAssessment, CurriculumCourse
         from app.db.models import AuditLog, Entitlement, TeachingAssessment, TeachingUsage
+        from app.db.progress_models import LearningProgress, LearningWeakPoint, LearningNextStep
 
         user = db.get(User, user_id)
         if user is None:
@@ -275,6 +276,19 @@ class MainManagerService:
                 "course_name": course.name if course else None,
             })
 
+        persistent_progress = db.scalars(
+            select(LearningProgress).where(LearningProgress.user_id == user_id)
+        ).all()
+        weak_points = db.scalars(
+            select(LearningWeakPoint).where(
+                LearningWeakPoint.user_id == user_id,
+                LearningWeakPoint.resolved.is_(False),
+            ).order_by(desc(LearningWeakPoint.occurrences))
+        ).all()
+        next_steps = db.scalars(
+            select(LearningNextStep).where(LearningNextStep.user_id == user_id)
+        ).all()
+
         return {
             "student": {
                 "student_id": user_id,
@@ -314,6 +328,42 @@ class MainManagerService:
                 "steps_completed": sum(s.status == TeachingStepStatus.COMPLETED for s in steps),
                 "steps_active": sum(s.status == TeachingStepStatus.ACTIVE for s in steps),
                 "steps": progress,
+            },
+            "learning_progress": {
+                "lessons": [
+                    {
+                        "course_id": p.course_id,
+                        "lesson_id": p.lesson_id,
+                        "status": p.status,
+                        "attempts": p.attempts,
+                        "understanding_verified": p.understanding_verified,
+                        "assessment_percentage": p.assessment_percentage,
+                        "last_score": p.last_score,
+                        "completed_at": p.completed_at.isoformat() if p.completed_at else None,
+                    }
+                    for p in persistent_progress
+                ],
+                "weak_points": [
+                    {
+                        "course_id": w.course_id,
+                        "lesson_id": w.lesson_id,
+                        "topic": w.topic,
+                        "reason": w.reason,
+                        "severity": w.severity,
+                        "occurrences": w.occurrences,
+                    }
+                    for w in weak_points
+                ],
+                "next_steps": [
+                    {
+                        "course_id": n.course_id,
+                        "lesson_id": n.lesson_id,
+                        "action": n.action,
+                        "reason": n.reason,
+                        "priority": n.priority,
+                    }
+                    for n in next_steps
+                ],
             },
             "teacher_agents": [
                 {
