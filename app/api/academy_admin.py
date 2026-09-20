@@ -241,3 +241,69 @@ def create_lecture(
     db.commit()
     db.refresh(item)
     return item
+
+
+@router.get("/curriculum")
+def get_curriculum(
+    academic_unit_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    """Return the curriculum tree: academic year -> semester -> courses."""
+    unit = db.get(AcademicUnit, academic_unit_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Academic unit not found.")
+
+    periods = db.scalars(
+        select(AcademicPeriod)
+        .where(
+            AcademicPeriod.institution_id == unit.institution_id,
+            AcademicPeriod.is_active.is_(True),
+        )
+        .order_by(AcademicPeriod.name)
+    ).all()
+
+    period_ids = {period.id for period in periods}
+    courses = db.scalars(
+        select(Course)
+        .where(
+            Course.academic_unit_id == academic_unit_id,
+            Course.is_active.is_(True),
+        )
+        .order_by(Course.name)
+    ).all()
+
+    courses_by_period: dict[str, list[Course]] = {}
+    for course in courses:
+        if course.academic_period_id in period_ids:
+            courses_by_period.setdefault(course.academic_period_id, []).append(course)
+
+    return {
+        "academic_unit": {
+            "id": unit.id,
+            "name": unit.name,
+            "unit_type": unit.unit_type,
+        },
+        "periods": [
+            {
+                "id": period.id,
+                "name": period.name,
+                "kind": period.kind,
+                "parent_id": period.parent_id,
+                "courses": [
+                    {
+                        "id": course.id,
+                        "name": course.name,
+                        "code": course.code,
+                        "course_type": course.course_type,
+                        "credit_hours": course.credit_hours,
+                        "theory_hours": course.theory_hours,
+                        "practical_hours": course.practical_hours,
+                        "prerequisites": course.prerequisites,
+                    }
+                    for course in courses_by_period.get(period.id, [])
+                ],
+            }
+            for period in periods
+        ],
+    }
