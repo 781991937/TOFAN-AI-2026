@@ -16,6 +16,7 @@ from app.agents.models import Agent, AgentKind, AgentStatus, AgentRun
 from app.db.assessment_models import CurriculumAssessmentAttempt
 from app.db.identity_models import PaymentTransaction, PaymentStatus
 from app.db.models import TeachingStep, TeachingStepStatus, TeachingSource, User
+from app.agents.teacher import create_curriculum_teacher_agent
 
 
 class MainManagerService:
@@ -131,3 +132,39 @@ class MainManagerService:
                 for a in attempts
             ],
         }
+
+
+    @staticmethod
+    def provision_teacher(db: Session, curriculum_course_id: str) -> dict:
+        from app.db.curriculum_models import CurriculumCourse
+        course = db.get(CurriculumCourse, curriculum_course_id)
+        if course is None or not course.is_active:
+            raise ValueError("Active TOFAN curriculum course not found.")
+        slug = f"teacher-tofan-{course.code.lower()}"
+        existing = db.scalar(select(Agent).where(Agent.slug == slug))
+        if existing is not None:
+            return {"agent_id": existing.id, "slug": existing.slug, "status": existing.status, "created": False}
+        agent = create_curriculum_teacher_agent(
+            db, name=f"مدرس {course.name}", slug=slug,
+            curriculum_course_id=course.id,
+            description=f"وكيل مدرس لمقرر TOFAN {course.code}: {course.name}.",
+        )
+        db.commit()
+        return {"agent_id": agent.id, "slug": agent.slug, "status": agent.status, "created": True}
+
+    @staticmethod
+    def set_teacher_status(db: Session, agent_id: str, status: AgentStatus) -> dict:
+        agent = db.get(Agent, agent_id)
+        if agent is None or agent.kind != AgentKind.TEACHER:
+            raise ValueError("Teacher agent not found.")
+        if agent.status == AgentStatus.ARCHIVED:
+            raise ValueError("Archived teacher agents cannot be reactivated.")
+        agent.status = status
+        db.commit()
+        return {"agent_id": agent.id, "slug": agent.slug, "status": agent.status}
+
+    @staticmethod
+    def teacher_overview(db: Session) -> list[dict]:
+        teachers = db.scalars(select(Agent).where(Agent.kind == AgentKind.TEACHER).order_by(Agent.name)).all()
+        return [{"agent_id": t.id, "slug": t.slug, "name": t.name, "status": t.status,
+                 "curriculum_course_id": t.curriculum_course_id} for t in teachers]
