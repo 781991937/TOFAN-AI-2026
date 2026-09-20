@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authorization import require_owner_or_admin
 from app.auth.dependencies import get_db
+from app.agents.academy_access_policy import validate_content_status
 from app.db.models import ContentFile, ContentStatus, Lecture, TeachingSource
 from app.files.extractor import FileExtractionError, extract_teaching_text
 
@@ -133,6 +134,11 @@ def update_content_status(
     row = db.get(ContentFile, file_id)
     if row is None or row.lecture_id is None:
         raise HTTPException(status_code=404, detail="Academy content file not found.")
+
+    try:
+        validate_content_status(db, content_file=row, requested_status=payload.status.value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     row.status = payload.status
     db.commit()
