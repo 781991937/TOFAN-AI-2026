@@ -192,29 +192,24 @@ def submit_curriculum_assessment(
     db.flush()
     report = AssessmentResultReport(attempt_id=attempt.id, status="pending")
     db.add(report)
-    main_agent = db.scalar(select(Agent).where(
-        Agent.slug == "tofan-main", Agent.kind == AgentKind.ORCHESTRATOR,
-    ))
-    if main_agent is not None:
-        from app.db.models import AgentRun
-        db.add(AgentRun(
-            agent_id=main_agent.id,
-            actor_user_id=actor.id,
-            tool_name="education.curriculum_assessment_result",
-            status="completed",
-            input_text=f"curriculum_assessment:{attempt.id}",
-            output_text=json.dumps({
-                "attempt_id": attempt.id,
-                "assessment_id": assessment.id,
-                "student_id": actor.id,
-                "teacher_agent_id": agent.id,
-                "score": score,
-                "max_score": max_score,
-                "percentage": percentage,
-                "passed": passed,
-            }, ensure_ascii=False),
-            completed_at=datetime.utcnow(),
-        ))
+    from app.agents.main_manager import MainManagerService
+    MainManagerService.process_event(
+        db,
+        "education.curriculum_assessment_result",
+        actor.id,
+        {
+            "resource_type": "curriculum_assessment_attempt",
+            "resource_id": attempt.id,
+            "attempt_id": attempt.id,
+            "assessment_id": assessment.id,
+            "student_id": actor.id,
+            "teacher_agent_id": agent.id,
+            "score": score,
+            "max_score": max_score,
+            "percentage": percentage,
+            "passed": passed,
+        },
+    )
     db.commit()
     return {
         "attempt_id": attempt.id,
