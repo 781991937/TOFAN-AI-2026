@@ -16,11 +16,19 @@ from app.agents.tools import build_default_registry
 from app.auth.dependencies import get_current_user, get_db
 from app.db.models import User
 
+
+def teacher_tool_guard(db, agent, tool_name, payload):
+    if tool_name == "academy.search":
+        assigned = agent.teacher_course_id
+        requested = str(payload.get("course_id", "")).strip()
+        if not assigned or requested != assigned:
+            raise RuntimeError("Teacher agent may search only its assigned course.")
+
 router = APIRouter(prefix="/agent/teacher", tags=["teacher-agent"])
 _registry = build_default_registry()
 _runtime = AgentRuntime(_registry)
 _service = AgentService()
-_orchestrator = MainAgentOrchestrator(_runtime, _service, registry=_registry)
+_orchestrator = MainAgentOrchestrator(_runtime, _service, registry=_registry, tool_input_guard=teacher_tool_guard)
 
 
 class TeacherChatRequest(BaseModel):
@@ -46,6 +54,8 @@ def chat_with_teacher(
         previous = recent_messages(db, conversation.id)
         history = [AgentMessage(role=m.role, content=m.content) for m in previous]
         memory_context = build_memory_context(conversation, previous)
+        if agent.teacher_course_id:
+            memory_context = (memory_context + "\n\n" if memory_context else "") + "Assigned course ID: " + agent.teacher_course_id
 
         try:
             provider = _orchestrator.provider or build_configured_provider()
