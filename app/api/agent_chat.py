@@ -36,6 +36,14 @@ def chat_with_main_agent(payload: AgentChatRequest, db: Session = Depends(get_db
         previous = recent_messages(db, conversation.id)
         history = [AgentMessage(role=m.role, content=m.content) for m in previous]
         memory_context = build_memory_context(conversation, previous)
+        try:
+            memory_provider = _orchestrator.provider or build_configured_provider()
+            memory_service = ConversationMemoryService(memory_provider)
+            structured_context = memory_service.context_for_agent(db, conversation)
+            if structured_context:
+                memory_context = structured_context + "\\n\\n" + memory_context
+        except RuntimeError:
+            pass
         append_message(db, conversation.id, "user", payload.message)
         result = _orchestrator.run(
             db, agent, actor.id, payload.message,
@@ -44,6 +52,16 @@ def chat_with_main_agent(payload: AgentChatRequest, db: Session = Depends(get_db
         assistant_content = result.get("content") or result.get("output") or ""
         if assistant_content:
             append_message(db, conversation.id, "assistant", assistant_content)
+
+        try:
+            memory_provider = _orchestrator.provider or build_configured_provider()
+            memory_service = ConversationMemoryService(memory_provider)
+            all_messages = recent_messages(db, conversation.id, limit=1000)
+            memory_service.extract_structured_memory(db, conversation, all_messages)
+            memory_service.compact(db, conversation, all_messages)
+        except RuntimeError:
+            pass
+
         db.commit()
         result["conversation_id"] = conversation.id
         return result
