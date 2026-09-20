@@ -11,6 +11,7 @@ from app.agents.teaching_policy import (
     get_or_create_usage,
     global_free_access_remaining,
     record_understanding_check,
+    record_exam_result,
     start_step,
 )
 from app.auth.dependencies import get_current_user, get_db
@@ -42,6 +43,13 @@ class UnderstandingRequest(BaseModel):
 
 class ConfirmationRequest(BaseModel):
     confirmed: bool
+
+
+class ExamResultRequest(BaseModel):
+    content_file_id: str
+    score: float
+    max_score: float
+    passed: bool
 
 
 @router.get("/{slug}/teaching-access")
@@ -77,6 +85,40 @@ def teaching_access(
             "and explicit student confirmation."
         ),
     }
+
+
+
+@router.post("/{slug}/file-exams")
+def submit_file_exam(
+    slug: str,
+    payload: ExamResultRequest,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    agent = _teacher(db, slug)
+    try:
+        result = record_exam_result(
+            db,
+            user_id=actor.id,
+            agent_id=agent.id,
+            content_file_id=payload.content_file_id,
+            score=payload.score,
+            max_score=payload.max_score,
+            passed=payload.passed,
+        )
+        db.commit()
+        return {
+            "assessment_id": result.id,
+            "score": result.score,
+            "max_score": result.max_score,
+            "percentage": result.percentage,
+            "passed": result.passed,
+            "free_file_teaching_closed": True,
+            "manager_report": "submitted_to_tofan_main",
+        }
+    except TeachingAccessError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{slug}/teaching-steps")
