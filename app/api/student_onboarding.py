@@ -61,6 +61,10 @@ def get_onboarding_state(
             "register_passkey" if credentials_count is None else "authenticate_passkey"
         )
         allowed_actions = [next_action]
+    elif profile.user_type.value == "university_student" and profile.biometric_verified:
+        step = "academy_catalog"
+        next_action = "open_academy_catalog"
+        allowed_actions = ["open_academy_catalog"]
     elif entitlement is not None:
         step = "curriculum"
         next_action = "open_global_curriculum"
