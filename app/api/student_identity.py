@@ -18,7 +18,7 @@ from app.db.identity_models import (
     StudentProfile,
     UserType,
 )
-from app.db.models import AcademicUnit, BiometricCredentialRecord, Institution, User
+from app.db.models import AcademicUnit, BiometricCredentialRecord, Institution, User, Entitlement
 
 router = APIRouter(prefix="/student", tags=["student-identity"])
 
@@ -221,6 +221,20 @@ def confirm_payment(
     transaction.status = PaymentStatus.CONFIRMED
     transaction.confirmed_by_agent_id = main_agent.id
     transaction.confirmed_at = datetime.utcnow()
+
+    existing_entitlement = db.scalar(
+        select(Entitlement).where(
+            Entitlement.user_id == transaction.user_id,
+            Entitlement.access_type == transaction.product_key,
+        )
+    )
+    if existing_entitlement is None:
+        db.add(
+            Entitlement(
+                user_id=transaction.user_id,
+                access_type=transaction.product_key,
+            )
+        )
 
     # Payment confirmation creates the global entitlement at the teacher-agent level.
     from app.agents.models import Agent as AgentModel
