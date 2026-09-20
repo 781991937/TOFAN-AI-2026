@@ -34,6 +34,7 @@ PROGRAMS = {
         ("نظم المعلومات", "specialization"),
         ("الذكاء الاصطناعي", "specialization"),
         ("علم البيانات", "specialization"),
+        ("التصميم الجرافيكي والملتيميديا", "specialization"),
     ),
 }
 
