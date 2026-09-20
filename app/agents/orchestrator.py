@@ -1,15 +1,13 @@
-"""Main Agent orchestration layer.
-
-This layer owns intent routing and keeps model/provider details separate from
-academy tools. The first version uses deterministic routing so the academy is
-usable before a paid/external model provider is configured.
-"""
+"""Main Agent orchestration layer with live-provider fallback."""
 
 from dataclasses import dataclass
+import json
 
 from sqlalchemy.orm import Session
 
+from .llm import build_configured_provider
 from .models import Agent
+from .providers import AgentMessage, AgentProviderError, AIProvider
 from .runtime import AgentRuntime
 from .service import AgentService
 
@@ -23,63 +21,64 @@ class AgentDecision:
 
 
 class MainAgentOrchestrator:
-    def __init__(self, runtime: AgentRuntime, service: AgentService) -> None:
+    def __init__(self, runtime: AgentRuntime, service: AgentService, provider: AIProvider | None = None) -> None:
         self.runtime = runtime
         self.service = service
+        self.provider = provider
 
     def decide(self, db: Session, agent: Agent, user_text: str) -> AgentDecision:
         text = user_text.strip()
         lowered = text.casefold()
 
         if any(word in lowered for word in ("هيكل", "الهيكل", "الأقسام", "التخصصات", "الكليات", "الجامعة")):
-            return AgentDecision(
-                kind="tool",
-                tool_name="academy.structure",
-                tool_input="",
-                reason="The request asks about academy structure.",
-            )
+            return AgentDecision("tool", "academy.structure", "", "The request asks about academy structure.")
 
         if any(word in lowered for word in ("ابحث", "بحث", "مادة", "محاضرة", "محاضرات", "مقرر", "دورة", "وحدة")):
-            import json
-
             return AgentDecision(
-                kind="tool",
-                tool_name="academy.search",
-                tool_input=json.dumps({"query": text, "limit": 10}, ensure_ascii=False),
-                reason="The request looks like an academy content search.",
+                "tool",
+                "academy.search",
+                json.dumps({"query": text, "limit": 10}, ensure_ascii=False),
+                "The request looks like an academy content search.",
             )
 
-        return AgentDecision(
-            kind="message",
-            tool_name=None,
-            tool_input="",
-            reason="No safe deterministic tool route matched the request.",
+        return AgentDecision("message", None, "", "No safe deterministic tool route matched the request.")
+
+    def _live_response(self, agent: Agent, user_text: str) -> dict:
+        provider = self.provider or build_configured_provider()
+        response = provider.generate(
+            [AgentMessage(role="user", content=user_text)],
+            system_prompt=agent.system_prompt,
         )
+        return {
+            "kind": "model",
+            "provider": response.provider,
+            "model": response.model,
+            "content": response.content,
+        }
 
     def run(self, db: Session, agent: Agent, actor_user_id: str | None, user_text: str):
         decision = self.decide(db, agent, user_text)
 
         if decision.kind == "message":
-            return {
-                "kind": "message",
-                "content": (
-                    "لم أجد أداة آمنة ومناسبة لهذا الطلب بعد. "
-                    "سيتم ربط نموذج الذكاء الاصطناعي لاحقًا ليحلل الطلب ويختار الأداة المناسبة."
-                ),
-                "reason": decision.reason,
-            }
+            try:
+                return self._live_response(agent, user_text)
+            except AgentProviderError:
+                return {
+                    "kind": "message",
+                    "content": (
+                        "لم أجد أداة آمنة ومناسبة لهذا الطلب، ومزود الذكاء الاصطناعي "
+                        "غير مهيأ حاليًا. اضبط OPENAI_API_KEY لتفعيل الوكيل الرئيسي."
+                    ),
+                    "reason": decision.reason,
+                }
 
-        run = self.runtime.execute_tool(
-            db,
-            agent,
-            decision.tool_name,
-            decision.tool_input,
-            actor_user_id=actor_user_id,
+        tool_run = self.runtime.execute_tool(
+            db, agent, decision.tool_name, decision.tool_input, actor_user_id=actor_user_id
         )
         return {
             "kind": "tool",
             "tool_name": decision.tool_name,
-            "output": run.output_text,
-            "run_id": run.id,
+            "output": tool_run.output_text,
+            "run_id": tool_run.id,
             "reason": decision.reason,
         }
