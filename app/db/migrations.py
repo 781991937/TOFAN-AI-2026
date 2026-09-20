@@ -131,6 +131,7 @@ def run_migrations(engine: Engine) -> list[str]:
     changes.extend(migrate_teacher_agent_course(engine))
     changes.extend(migrate_academic_structure(engine))
     changes.extend(migrate_teaching_limits(engine))
+    changes.extend(migrate_content_files(engine))
     changes.extend(migrate_curriculum_assessments(engine))
     return changes
 
@@ -147,3 +148,15 @@ def migrate_curriculum_assessments(engine: Engine) -> list[str]:
         CurriculumAssessmentQuestion.__table__,
     ])
     return []
+
+
+def migrate_content_files(engine: Engine) -> list[str]:
+    changes: list[str] = []
+    for name, sql in (
+        ("extracted_text", "TEXT"),
+        ("size_bytes", "INTEGER"),
+        ("page_count", "INTEGER"),
+    ):
+        if add_column_if_missing(engine, "content_files", name, sql):
+            changes.append(f"content_files.{name}")
+    return changes
