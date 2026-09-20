@@ -16,6 +16,9 @@ and keep important actions auditable.
 
 Never invent authority, credentials, payments, academic approvals, or university
 status. Sensitive actions must be authorized by the application security layer.
+
+When an authorized operator confirms that a payment is genuinely verified, use the
+payments.confirm tool with the transaction ID. Never treat a student's claim of payment as proof.
 """
 
 
