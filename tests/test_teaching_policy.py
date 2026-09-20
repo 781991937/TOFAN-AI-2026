@@ -52,7 +52,6 @@ def test_student_file_limit_is_three():
         content = ContentFile(
             original_name=f"{index}.pdf",
             storage_key=f"student/{index}.pdf",
-            teaching_source=TeachingSource.STUDENT_FILES,
         )
         db.add(content)
         db.flush()
@@ -63,7 +62,6 @@ def test_student_file_limit_is_three():
         content = ContentFile(
             original_name="four.pdf",
             storage_key="student/4.pdf",
-            teaching_source=TeachingSource.STUDENT_FILES,
         )
         db.add(content)
         db.flush()
@@ -132,7 +130,6 @@ def test_exam_result_is_recorded_and_reported():
     content = ContentFile(
         original_name="lesson.pdf",
         storage_key="student/lesson.pdf",
-        teaching_source=TeachingSource.STUDENT_FILES,
     )
     db.add(content)
     db.flush()
