@@ -193,6 +193,11 @@ def submit_curriculum_assessment(
     db.flush()
     report = AssessmentResultReport(attempt_id=attempt.id, status="pending")
     db.add(report)
+    from app.learning.progress_service import record_assessment_progress
+    record_assessment_progress(
+        db, user_id=actor.id, course_id=agent.curriculum_course_id,
+        percentage=percentage, passed=passed,
+    )
     from app.agents.main_manager import MainManagerService
     MainManagerService.process_event(
         db,
