@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.models import Agent, AgentKind
-from app.agents.teaching_policy import grant_paid_global_access
+from app.agents.teaching_policy import grant_paid_global_access\nfrom app.agents.payment_tools import confirm_payment_transaction
 from app.auth.dependencies import get_current_user, get_db
 from app.auth.authorization import require_owner_or_admin
 from app.db.identity_models import (
