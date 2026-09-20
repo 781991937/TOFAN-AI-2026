@@ -11,6 +11,7 @@ from app.api.agent_memory import router as agent_memory_router
 from app.api.agent_runtime import router as agent_runtime_router
 from app.api.teacher_admin import router as teacher_admin_router
 from app.api.teacher_chat import router as teacher_chat_router
+from app.api.teacher_teaching import router as teacher_teaching_router
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
 
@@ -26,6 +27,7 @@ app.include_router(agent_memory_router)
 app.include_router(agent_runtime_router)
 app.include_router(teacher_admin_router)
 app.include_router(teacher_chat_router)
+app.include_router(teacher_teaching_router)
 
 
 def main() -> None:
