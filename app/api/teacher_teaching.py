@@ -9,7 +9,7 @@ from app.agents.teaching_policy import (
     TeachingAccessError,
     confirm_student_understanding,
     get_or_create_usage,
-    global_free_access_remaining,
+    remaining_response_chars,
     record_understanding_check,
     record_exam_result,
     start_step,
@@ -73,10 +73,20 @@ def teaching_access(
             "used": student_usage.files_used,
             "remaining": max(0, student_usage.files_limit - student_usage.files_used),
         },
+        "student_file_responses": {
+            "limit": student_usage.response_chars_limit,
+            "used": student_usage.response_chars_used,
+            "remaining": remaining_response_chars(
+                db, user_id=actor.id, agent_id=agent.id,
+                source=TeachingSource.STUDENT_FILES,
+            ),
+        },
         "global_curriculum": {
-            "free_steps_limit": 5,
-            "free_steps_remaining": global_free_access_remaining(
-                db, user_id=actor.id, agent_id=agent.id
+            "response_chars_limit": global_usage.response_chars_limit,
+            "response_chars_used": global_usage.response_chars_used,
+            "response_chars_remaining": remaining_response_chars(
+                db, user_id=actor.id, agent_id=agent.id,
+                source=TeachingSource.GLOBAL_CURRICULUM,
             ),
             "paid_access": global_usage.paid_access,
         },
@@ -113,7 +123,7 @@ def submit_file_exam(
             "max_score": result.max_score,
             "percentage": result.percentage,
             "passed": result.passed,
-            "free_file_teaching_closed": True,
+            "file_cycle_completed": True,
             "manager_report": "submitted_to_tofan_main",
         }
     except TeachingAccessError as exc:
