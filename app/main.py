@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api.admin import router as admin_router
 from app.api.admin_users import router as admin_users_router
 from app.api.academy_admin import router as academy_admin_router
+from app.api.agent_admin import router as agent_admin_router
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
 
@@ -14,6 +15,7 @@ app.include_router(users_router)
 app.include_router(admin_router)
 app.include_router(academy_admin_router)
 app.include_router(admin_users_router)
+app.include_router(agent_admin_router)
 
 
 def main() -> None:
