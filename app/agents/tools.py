@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from typing import Callable
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumUnit
@@ -122,7 +122,12 @@ def academy_search_tool(db: Session, input_text: str) -> str:
     course_id = str(payload.get("course_id", "")).strip() or None
     curriculum_course_id = str(payload.get("curriculum_course_id", "")).strip() or None
     pattern = f"%{query}%"
-    course_filters = [Course.is_active.is_(True), or_(Course.name.ilike(pattern), Course.code.ilike(pattern))]
+    tokens = [token for token in query.split() if token]
+    token_filters = []
+    for token in tokens:
+        token_pattern = f"%{token}%"
+        token_filters.append(or_(Course.name.ilike(token_pattern), Course.code.ilike(token_pattern)))
+    course_filters = [Course.is_active.is_(True), and_(*token_filters)] if token_filters else [Course.is_active.is_(True)]
     if course_id:
         course_filters.append(Course.id == course_id)
     courses = db.scalars(
@@ -139,7 +144,7 @@ def academy_search_tool(db: Session, input_text: str) -> str:
             select(CurriculumUnit)
             .where(
                 CurriculumUnit.course_id == curriculum_course_id,
-                CurriculumUnit.title.ilike(pattern),
+                and_(*[CurriculumUnit.title.ilike(f"%{token}%") for token in tokens]) if tokens else CurriculumUnit.title.ilike(pattern),
             )
             .order_by(CurriculumUnit.position)
             .limit(limit)
@@ -149,7 +154,7 @@ def academy_search_tool(db: Session, input_text: str) -> str:
             .join(CurriculumUnit, CurriculumLesson.unit_id == CurriculumUnit.id)
             .where(
                 CurriculumUnit.course_id == curriculum_course_id,
-                CurriculumLesson.title.ilike(pattern),
+                and_(*[CurriculumLesson.title.ilike(f"%{token}%") for token in tokens]) if tokens else CurriculumLesson.title.ilike(pattern),
             )
             .order_by(CurriculumLesson.position)
             .limit(limit)
