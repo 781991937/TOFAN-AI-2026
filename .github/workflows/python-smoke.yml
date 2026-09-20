@@ -32,7 +32,7 @@ jobs:
           DATABASE_URL: "sqlite:///./smoke.db"
         run: |
           python -c "from app.main import app; print(app.title); print(len(app.routes))"
-          python -c "from app.auth.webauthn import WebAuthnService; from app.agents.main_manager import MainManagerService; from app.agents.teacher import create_curriculum_teacher_agent; print('critical imports OK')"
+          python -c "from app.auth.webauthn import begin_registration, finish_registration, begin_authentication, finish_authentication; from app.agents.main_manager import MainManagerService; from app.agents.teacher import create_curriculum_teacher_agent; print('critical imports OK')"
       - name: Run smoke tests
         env:
           DATABASE_URL: "sqlite:///./smoke.db"
