@@ -40,7 +40,6 @@ def migrate_agent_memory_scopes(engine: Engine) -> list[str]:
         if add_column_if_missing(engine, "agent_memory_items", name, sql):
             changes.append(f"agent_memory_items.{name}")
 
-    # Preserve access to memories created before scoped-memory support.
     inspector = inspect(engine)
     if "agent_memory_items" in inspector.get_table_names():
         with engine.begin() as connection:
@@ -78,6 +77,7 @@ def migrate_academic_structure(engine: Engine) -> list[str]:
         changes.append("academic_periods.parent_id")
     for name, sql in (
         ("course_type", "VARCHAR(30) DEFAULT 'required'"),
+        ("learning_stage", "VARCHAR(30) DEFAULT 'foundation'"),
         ("credit_hours", "INTEGER"),
         ("theory_hours", "INTEGER"),
         ("practical_hours", "INTEGER"),
@@ -85,6 +85,10 @@ def migrate_academic_structure(engine: Engine) -> list[str]:
     ):
         if add_column_if_missing(engine, "courses", name, sql):
             changes.append(f"courses.{name}")
+    if add_column_if_missing(
+        engine, "institutions", "organization_type", "VARCHAR(30) DEFAULT 'university'"
+    ):
+        changes.append("institutions.organization_type")
     return changes
 
 
