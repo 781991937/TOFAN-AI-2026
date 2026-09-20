@@ -55,7 +55,8 @@ async function get(path){const r=await fetch(path,{credentials:"same-origin"});i
 async function load(){
  document.getElementById("state").textContent="جاري التحديث...";
  try{
-  const studentQuery=encodeURIComponent(document.getElementById("studentSearch")?.value||"");\n  const [d,a,p,l,t,s,c]=await Promise.all([
+  const studentQuery=encodeURIComponent(document.getElementById("studentSearch")?.value||"");
+  const [d,a,p,l,t,s,c]=await Promise.all([
    get("/manager/dashboard"),get("/manager/assessments?limit=10"),get("/manager/payments?limit=10"),
    get("/manager/audit-log?limit=10"),get("/manager/teachers"),get("/manager/students?limit=10&query="+studentQuery),get("/manager/courses")
   ]);
