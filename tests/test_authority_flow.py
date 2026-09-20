@@ -15,7 +15,6 @@ from app.db.models import Entitlement, User, TeachingAccess
 
 def setup_db():
     engine = create_engine("sqlite:///:memory:")
-    # Import all model modules so their tables are registered before create_all.
     import app.agents.models  # noqa: F401
     import app.db.assessment_models  # noqa: F401
     import app.db.assessment_question_models  # noqa: F401
@@ -41,12 +40,14 @@ def test_payment_confirmation_grants_global_access_and_is_idempotent():
     db = setup_db()
     manager = seed_authority(db)
     user = User(display_name="Student", email="student@example.com")
+    db.add(user)
+    db.flush()
     profile = StudentProfile(
         user_id=user.id,
         user_type=UserType.INDEPENDENT_LEARNER,
         full_name="Student",
     )
-    db.add_all([user, profile])
+    db.add(profile)
     db.flush()
 
     payment = PaymentTransaction(
