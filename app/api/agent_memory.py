@@ -113,7 +113,7 @@ def list_memory_items(
                 "created_at": item.created_at,
                 "updated_at": item.updated_at,
             }
-            for item in active_memory_items(db, conversation_id)
+            for item in active_memory_items(db, conversation_id, conversation.agent_id)
         ]
     }
 
