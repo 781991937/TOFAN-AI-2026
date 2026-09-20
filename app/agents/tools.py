@@ -114,10 +114,14 @@ def academy_search_tool(db: Session, input_text: str) -> str:
     if not query:
         raise ToolExecutionError("Search query is required.")
 
+    course_id = str(payload.get("course_id", "")).strip() or None
     pattern = f"%{query}%"
+    course_filters = [Course.is_active.is_(True), or_(Course.name.ilike(pattern), Course.code.ilike(pattern))]
+    if course_id:
+        course_filters.append(Course.id == course_id)
     courses = db.scalars(
         select(Course)
-        .where(Course.is_active.is_(True), or_(Course.name.ilike(pattern), Course.code.ilike(pattern)))
+        .where(*course_filters)
         .order_by(Course.name)
         .limit(limit)
     ).all()
@@ -175,6 +179,7 @@ def build_default_registry() -> ToolRegistry:
                 "properties": {
                     "query": {"type": "string", "description": "The academy search query."},
                     "limit": {"type": "integer", "minimum": 1, "maximum": 50},
+                    "course_id": {"type": "string", "description": "Course ID. Required for teacher agents and must be their assigned course."},
                 },
                 "required": ["query", "limit"],
                 "additionalProperties": False,
