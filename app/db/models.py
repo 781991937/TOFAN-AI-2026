@@ -1,7 +1,8 @@
-"""Core dynamic academic and access models.
+"""Core dynamic academy, reference, and access models.
 
-The hierarchy is intentionally data-driven: no fixed number of universities,
-programs, specializations, courses, units, or lectures is encoded in Python.
+TOFAN-native curricula are independent from university curricula. University
+structures can be stored as references without becoming the academy's required
+learning model.
 """
 
 from datetime import datetime
@@ -25,12 +26,31 @@ class ContentStatus(StrEnum):
     DRAFT = "draft"
 
 
+class OrganizationType(StrEnum):
+    ACADEMY = "academy"
+    UNIVERSITY = "university"
+    COLLEGE = "college"
+    CENTER = "center"
+    REFERENCE = "reference"
+
+
+class LearningStage(StrEnum):
+    FOUNDATION = "foundation"
+    LEVEL = "level"
+    TRACK = "track"
+    PROJECT = "project"
+    ELECTIVE = "elective"
+
+
 class Institution(Base):
     __tablename__ = "institutions"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     code: Mapped[str | None] = mapped_column(String(100), unique=True)
+    organization_type: Mapped[str] = mapped_column(
+        String(30), default=OrganizationType.UNIVERSITY, nullable=False
+    )
     description: Mapped[str | None] = mapped_column(Text)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -90,6 +110,9 @@ class Course(Base):
     code: Mapped[str | None] = mapped_column(String(100))
     description: Mapped[str | None] = mapped_column(Text)
     course_type: Mapped[str] = mapped_column(String(30), default="required", nullable=False)
+    learning_stage: Mapped[str] = mapped_column(
+        String(30), default=LearningStage.FOUNDATION, nullable=False
+    )
     credit_hours: Mapped[int | None] = mapped_column(Integer)
     theory_hours: Mapped[int | None] = mapped_column(Integer)
     practical_hours: Mapped[int | None] = mapped_column(Integer)
@@ -190,8 +213,6 @@ class OtpChallenge(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-
 
 
 class Entitlement(Base):
