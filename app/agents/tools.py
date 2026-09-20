@@ -235,6 +235,20 @@ def manager_set_teacher_status_tool(db: Session, input_text: str) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def manager_event_decision_tool(db: Session, input_text: str) -> str:
+    try:
+        payload = json.loads(input_text or "{}")
+        event_name = str(payload["event_name"])
+        actor_user_id = payload.get("actor_user_id")
+        event_payload = dict(payload.get("payload") or {})
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise ToolExecutionError("event_name and payload are required.") from exc
+    try:
+        result = MainManagerService.process_event(db, event_name, actor_user_id, event_payload)
+    except ValueError as exc:
+        raise ToolExecutionError(str(exc)) from exc
+    return json.dumps(result, ensure_ascii=False)
+
 def manager_teacher_overview_tool(db: Session, _: str) -> str:
     return json.dumps({"teachers": MainManagerService.teacher_overview(db)}, ensure_ascii=False)
 
@@ -308,6 +322,25 @@ def build_default_registry() -> ToolRegistry:
             sensitive=True,
             allowed_agent_slug="tofan-main",
             parameters={"type":"object","properties":{"agent_id":{"type":"string"},"status":{"type":"string","enum":["draft","active","paused","archived"]}},"required":["agent_id","status"],"additionalProperties":False},
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.event_decision",
+            description="Privileged manager action: evaluate a trusted system event, choose the appropriate operational decision, and persist the decision.",
+            handler=manager_event_decision_tool,
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "event_name": {"type": "string"},
+                    "actor_user_id": {"type": ["string", "null"]},
+                    "payload": {"type": "object"},
+                },
+                "required": ["event_name", "payload"],
+                "additionalProperties": False,
+            },
         )
     )
     registry.register(
