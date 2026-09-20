@@ -251,5 +251,5 @@ def confirm_payment(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
-    db.commit()
+    MainManagerService.receive_payment_confirmation(db, transaction_id)
     return result
