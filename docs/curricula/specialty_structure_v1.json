@@ -1,0 +1,99 @@
+{
+  "version": "1.0",
+  "title": "TOFAN Global Specialty Academic Structure",
+  "purpose_ar": "الهيكل الموحد لجميع التخصصات في أكاديمية طوفان الذكية",
+  "structure": {
+    "duration_years": 4,
+    "semesters_per_year": 2,
+    "total_semesters": 8,
+    "year_model": [
+      {
+        "year_number": 1,
+        "semesters": [1, 2],
+        "focus_ar": "التأسيس وبناء المهارات الأساسية"
+      },
+      {
+        "year_number": 2,
+        "semesters": [1, 2],
+        "focus_ar": "الأساس التخصصي"
+      },
+      {
+        "year_number": 3,
+        "semesters": [1, 2],
+        "focus_ar": "التعمق والتطبيق"
+      },
+      {
+        "year_number": 4,
+        "semesters": [1, 2],
+        "focus_ar": "التخصص المتقدم والهندسة والمشاريع"
+      }
+    ]
+  },
+  "semester_schema": {
+    "required_fields": [
+      "year_number",
+      "semester_number",
+      "courses"
+    ],
+    "course_fields": [
+      "id",
+      "name_ar",
+      "name_en",
+      "description_ar",
+      "description_en",
+      "prerequisites",
+      "learning_outcomes",
+      "units",
+      "lessons",
+      "assessment",
+      "project"
+    ]
+  },
+  "content_hierarchy": [
+    "Specialty",
+    "Year",
+    "Semester",
+    "Course",
+    "Knowledge Unit",
+    "Topic",
+    "Lesson",
+    "Application",
+    "Assessment",
+    "Learning Outcome",
+    "Project"
+  ],
+  "global_alignment": {
+    "principle_ar": "المحتوى يبنى من المعرفة الأكاديمية العالمية ثم ينظم داخل خطة TOFAN الأصلية.",
+    "reference_frameworks": [
+      "ACM/IEEE-CS/AAAI CS2023",
+      "ACM/IEEE-CS/AAAI CS2023 Knowledge Areas",
+      "التخصصات الجامعية العالمية والمراجع الأكاديمية المعترف بها"
+    ],
+    "rule_ar": "لا يتم نسخ محتوى أي جامعة أو مرجع؛ تستخدم المراجع لتحديد المعرفة والموضوعات ومخرجات التعلم، ثم تنتج TOFAN محتوى تعليميا أصليا."
+  },
+  "progression": {
+    "principle_ar": "التقسيم إلى السنوات والفصول ينظم المسار، ولا يلغي المتطلبات السابقة وإثبات الإتقان.",
+    "evidence": [
+      "understanding",
+      "practical_application",
+      "problem_solving",
+      "assessment",
+      "learning_outcomes",
+      "project_when_required"
+    ]
+  },
+  "access": {
+    "year_1_semester_1": "FREE",
+    "other_semesters": "PAID"
+  },
+  "localization": {
+    "supported_locales": ["ar", "en"],
+    "default_locale": "ar",
+    "directions": {"ar": "rtl", "en": "ltr"}
+  },
+  "ui": {
+    "principle_ar": "كل تخصص يستخدم نفس الهيكل الأكاديمي والوظيفي، مع هوية وتجربة تعلم بصرية خاصة بالتخصص.",
+    "dynamic_specialty_identity": true,
+    "fixed_specialty_count": false
+  }
+}
