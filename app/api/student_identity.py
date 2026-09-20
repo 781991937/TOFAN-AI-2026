@@ -274,7 +274,7 @@ def confirm_payment(
     MainManagerService.process_event(
         db,
         "payments.confirmed",
-        result.get("user_id") if isinstance(result, dict) else None,
+        transaction.user_id,
         {"resource_type": "payment_transaction", "resource_id": transaction_id, "transaction_id": transaction_id},
     )
     return result
