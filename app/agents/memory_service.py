@@ -1,4 +1,4 @@
-"""AI-assisted conversation memory for the TOFAN Main Agent."""
+"""AI-assisted scoped conversation memory for TOFAN AI agents."""
 
 import json
 
@@ -11,6 +11,7 @@ from .memory import (
     update_memory_summary,
     upsert_memory_item,
 )
+from .models import Agent
 from .providers import AIProvider, AgentMessage, AgentProviderError
 
 
@@ -36,7 +37,7 @@ Return [] when there are no durable facts.
 
 
 class ConversationMemoryService:
-    """Maintains compact and structured persistent memory."""
+    """Maintains compact and explicitly scoped persistent memory."""
 
     def __init__(self, provider: AIProvider) -> None:
         self.provider = provider
@@ -44,24 +45,18 @@ class ConversationMemoryService:
     def should_compact(self, messages: list[AgentMessageRecord]) -> bool:
         return len(messages) > MEMORY_COMPACTION_THRESHOLD
 
-    def compact(
-        self,
-        db: Session,
-        conversation: AgentConversation,
-        messages: list[AgentMessageRecord],
-    ) -> bool:
+    def compact(self, db: Session, conversation: AgentConversation, messages: list[AgentMessageRecord]) -> bool:
         if not self.should_compact(messages):
             return False
         older = messages[:-MEMORY_RECENT_LIMIT]
         if not older:
             return False
-
         source_parts = []
         if conversation.memory_summary:
             source_parts.append("Existing memory summary:\n" + conversation.memory_summary)
         source_parts.append(
-            "Older conversation:\n"
-            + "\n".join(f"[{m.sequence}] {m.role}: {m.content}" for m in older)
+            "Older conversation:\n" +
+            "\n".join(f"[{m.sequence}] {m.role}: {m.content}" for m in older)
         )
         try:
             response = self.provider.generate(
@@ -81,11 +76,16 @@ class ConversationMemoryService:
         self,
         db: Session,
         conversation: AgentConversation,
+        agent: Agent,
         messages: list[AgentMessageRecord],
     ) -> int:
-        if not messages:
+        if not messages or not agent.memory_enabled:
             return 0
-        source = "\n".join(f"[{m.sequence}] {m.role}: {m.content}" for m in messages)
+        # Only user messages are eligible for durable memory extraction.
+        user_messages = [m for m in messages if m.role == "user"]
+        if not user_messages:
+            return 0
+        source = "\n".join(f"[{m.sequence}] user: {m.content}" for m in user_messages)
         try:
             response = self.provider.generate(
                 [AgentMessage(role="user", content=source)],
@@ -117,20 +117,27 @@ class ConversationMemoryService:
                 source_sequence = int(source_sequence) if source_sequence is not None else None
             except (TypeError, ValueError):
                 source_sequence = None
-            upsert_memory_item(
-                db,
-                conversation.id,
-                conversation.user_id,
-                memory_type,
-                content,
-                confidence,
-                source_sequence,
-            )
-            count += 1
+            try:
+                upsert_memory_item(
+                    db,
+                    conversation.id,
+                    conversation.user_id,
+                    agent.id,
+                    memory_type,
+                    content,
+                    confidence,
+                    source_sequence,
+                    memory_scope="user",
+                )
+                count += 1
+            except PermissionError:
+                continue
         return count
 
-    def context_for_agent(self, db: Session, conversation: AgentConversation) -> str:
-        items = active_memory_items(db, conversation.id)
+    def context_for_agent(self, db: Session, conversation: AgentConversation, agent: Agent) -> str:
+        if not agent.memory_enabled:
+            return ""
+        items = active_memory_items(db, conversation.id, agent.id)
         if not items:
             return ""
         return "Structured persistent memory:\n" + "\n".join(
