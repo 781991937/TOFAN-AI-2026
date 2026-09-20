@@ -131,6 +131,15 @@ def migrate_teaching_limits(engine: Engine) -> list[str]:
     return changes
 
 
+def migrate_learning_progress(engine: Engine) -> list[str]:
+    from app.db.progress_models import LearningProgress, LearningWeakPoint, LearningNextStep
+    from app.db.base import Base
+    Base.metadata.create_all(bind=engine, tables=[
+        LearningProgress.__table__, LearningWeakPoint.__table__, LearningNextStep.__table__,
+    ])
+    return []
+
+
 def migrate_notifications(engine: Engine) -> list[str]:
     from app.db.models import Notification
     from app.db.base import Base
@@ -146,6 +155,7 @@ def run_migrations(engine: Engine) -> list[str]:
     changes.extend(migrate_teaching_limits(engine))
     changes.extend(migrate_content_files(engine))
     changes.extend(migrate_curriculum_assessments(engine))
+    changes.extend(migrate_learning_progress(engine))
     changes.extend(migrate_notifications(engine))
     return changes
 
