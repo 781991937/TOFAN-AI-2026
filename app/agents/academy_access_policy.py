@@ -12,6 +12,8 @@ from app.db.models import (
     AcademyAccessTier,
     AcademicPeriod,
     ContentFile,
+    TeachingSource,
+    ContentStatus,
     Course,
     Lecture,
     Unit,
@@ -52,10 +54,10 @@ def validate_content_status(
     content_file: ContentFile,
     requested_status: str,
 ) -> None:
-    if requested_status == "draft":
+    if requested_status == ContentStatus.DRAFT.value:
         return
 
-    if content_file.teaching_source != "global_curriculum" or content_file.lecture_id is None:
+    if content_file.teaching_source != TeachingSource.GLOBAL_CURRICULUM or content_file.lecture_id is None:
         raise ValueError("Only academy curriculum content can be published.")
 
     expected = content_access_tier(db, content_file.id).value
