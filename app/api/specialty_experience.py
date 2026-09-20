@@ -83,7 +83,7 @@ def _theme_for(specialty: Specialty) -> dict:
 
 
 @router.get("/{specialty_id}/experience")
-def get_specialty_experience(specialty_id: str, db: Session = Depends(get_db)):
+def get_specialty_experience(specialty_id: str, lang: str = "ar", db: Session = Depends(get_db)):
     specialty = db.scalar(
         select(Specialty).where(
             Specialty.id == specialty_id,
@@ -93,12 +93,24 @@ def get_specialty_experience(specialty_id: str, db: Session = Depends(get_db)):
     if specialty is None:
         raise HTTPException(status_code=404, detail="Specialty not found.")
 
+    if lang not in {"ar", "en"}:
+        raise HTTPException(status_code=400, detail="Unsupported language. Use ar or en.")
+
+    name = (specialty.name_ar if lang == "ar" else specialty.name_en) or specialty.name
+    description = (specialty.description_ar if lang == "ar" else specialty.description_en) or specialty.description
+
     return {
+        "locale": lang,
+        "direction": "rtl" if lang == "ar" else "ltr",
         "specialty": {
             "id": specialty.id,
             "code": specialty.code,
-            "name": specialty.name,
-            "description": specialty.description,
+            "name": name,
+            "name_ar": specialty.name_ar or specialty.name,
+            "name_en": specialty.name_en or specialty.name,
+            "description": description,
+            "description_ar": specialty.description_ar or specialty.description,
+            "description_en": specialty.description_en or specialty.description,
         },
         "theme": _theme_for(specialty),
         "principle": "Shared TOFAN Core + specialty-specific visual identity and learning modules.",
