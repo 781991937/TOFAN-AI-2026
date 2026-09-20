@@ -130,6 +130,36 @@ class MainManagerService:
         return {"transaction_id": transaction.id, "access_authority": "tofan-main"}
 
     @staticmethod
+    def process_event(db: Session, event_name: str, actor_user_id: str | None, payload: dict) -> dict:
+        """Evaluate a trusted system event and persist the manager's decision."""
+        if event_name == "education.curriculum_assessment_result":
+            passed = bool(payload.get("passed"))
+            decision = "course_passed" if passed else "course_not_passed"
+            action = "education.course_completion.recorded" if passed else "education.assessment.retry_required"
+        elif event_name == "payments.confirmed":
+            decision = "global_access_authorized"
+            action = "manager.payment_access.activated"
+        elif event_name == "manager.teacher_provision.requested":
+            decision = "teacher_provision_requested"
+            action = "manager.teacher_provision.evaluate"
+        else:
+            decision = "event_recorded_no_automatic_action"
+            action = "manager.event.recorded"
+
+        MainManagerService.record_event(
+            db,
+            event_name=event_name,
+            actor_user_id=actor_user_id,
+            action=action,
+            resource_type=payload.get("resource_type"),
+            resource_id=payload.get("resource_id"),
+            decision=decision,
+            payload=payload,
+        )
+        db.commit()
+        return {"event": event_name, "decision": decision, "action": action}
+
+    @staticmethod
     def student_snapshot(db: Session, user_id: str) -> dict:
         user = db.get(User, user_id)
         if user is None:
