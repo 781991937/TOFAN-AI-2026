@@ -555,6 +555,9 @@ def confirm_step(
         step = confirm_student_understanding(
             db, step_id=step_id, confirmed=payload.confirmed
         )
+        if step.status == TeachingStepStatus.COMPLETED:
+            from app.learning.progress_service import sync_lesson_progress
+            sync_lesson_progress(db, actor.id, agent.id, step)
         db.commit()
         return {
             "id": step.id,
