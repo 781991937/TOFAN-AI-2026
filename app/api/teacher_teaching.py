@@ -17,7 +17,10 @@ from app.agents.teaching_policy import (
 )
 from app.auth.dependencies import get_current_user, get_db
 from app.db.models import TeachingSource, User, TeachingStep, TeachingStepStatus
-from app.db.curriculum_models import CurriculumCourse, CurriculumUnit, CurriculumLesson
+from app.db.curriculum_models import CurriculumCourse, CurriculumUnit, CurriculumLesson, CourseAssessment
+from app.db.assessment_models import CurriculumAssessmentAttempt, AssessmentAttemptStatus, AssessmentResultReport
+from datetime import datetime
+import json
 
 router = APIRouter(prefix="/agent/teacher", tags=["teacher-teaching-policy"])
 
@@ -45,6 +48,82 @@ class UnderstandingRequest(BaseModel):
 
 class ConfirmationRequest(BaseModel):
     confirmed: bool
+
+
+class CurriculumAssessmentSubmitRequest(BaseModel):
+    score: float
+    max_score: float
+    answers: dict[str, str] = {}
+
+
+@router.get("/{slug}/assessments")
+def list_curriculum_assessments(
+    slug: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    agent = _teacher(db, slug)
+    if not agent.curriculum_course_id:
+        raise HTTPException(status_code=409, detail="This teacher is not assigned to a TOFAN curriculum course.")
+    rows = db.scalars(select(CourseAssessment).where(
+        CourseAssessment.course_id == agent.curriculum_course_id
+    ).order_by(CourseAssessment.id)).all()
+    return [{
+        "id": x.id, "type": x.assessment_type, "title": x.title,
+        "description": x.description, "pass_percentage": x.pass_percentage,
+    } for x in rows]
+
+
+@router.post("/{slug}/assessments/{assessment_id}/submit")
+def submit_curriculum_assessment(
+    slug: str,
+    assessment_id: str,
+    payload: CurriculumAssessmentSubmitRequest,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    agent = _teacher(db, slug)
+    assessment = db.get(CourseAssessment, assessment_id)
+    if assessment is None or assessment.course_id != agent.curriculum_course_id:
+        raise HTTPException(status_code=404, detail="Assessment not found for this teacher course.")
+    if payload.max_score <= 0 or payload.score < 0 or payload.score > payload.max_score:
+        raise HTTPException(status_code=400, detail="Invalid assessment score.")
+    percentage = (payload.score / payload.max_score) * 100
+    passed = assessment.pass_percentage is None or percentage >= assessment.pass_percentage
+    attempt = CurriculumAssessmentAttempt(
+        user_id=actor.id, agent_id=agent.id, assessment_id=assessment.id,
+        status=AssessmentAttemptStatus.GRADED, score=payload.score,
+        max_score=payload.max_score, percentage=percentage, passed=passed,
+        answers_json=json.dumps(payload.answers, ensure_ascii=False),
+        submitted_at=datetime.utcnow(), graded_at=datetime.utcnow(),
+    )
+    db.add(attempt)
+    db.flush()
+    report = AssessmentResultReport(attempt_id=attempt.id, status="pending")
+    db.add(report)
+    main_agent = db.scalar(select(Agent).where(
+        Agent.slug == "tofan-main", Agent.kind == AgentKind.ORCHESTRATOR,
+    ))
+    if main_agent is not None:
+        from app.db.models import AgentRun
+        db.add(AgentRun(
+            agent_id=main_agent.id, actor_user_id=actor.id,
+            tool_name="education.curriculum_assessment_result", status="completed",
+            input_text=f"curriculum_assessment:{attempt.id}",
+            output_text=json.dumps({
+                "attempt_id": attempt.id, "assessment_id": assessment.id,
+                "student_id": actor.id, "teacher_agent_id": agent.id,
+                "score": payload.score, "max_score": payload.max_score,
+                "percentage": percentage, "passed": passed,
+            }, ensure_ascii=False), completed_at=datetime.utcnow(),
+        ))
+    db.commit()
+    return {
+        "attempt_id": attempt.id, "assessment_id": assessment.id,
+        "score": attempt.score, "max_score": attempt.max_score,
+        "percentage": attempt.percentage, "passed": attempt.passed,
+        "manager_report": "submitted_to_tofan_main",
+    }
 
 
 class ExamResultRequest(BaseModel):
