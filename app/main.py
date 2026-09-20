@@ -41,3 +41,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+app.include_router(curriculum_router)
