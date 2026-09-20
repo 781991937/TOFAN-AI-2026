@@ -560,9 +560,14 @@ def confirm_step(
         step = confirm_student_understanding(
             db, step_id=step_id, confirmed=payload.confirmed
         )
+        certificate = None
         if step.status == TeachingStepStatus.COMPLETED:
             from app.learning.progress_service import sync_lesson_progress
             sync_lesson_progress(db, actor.id, agent.id, step)
+            if step.source == TeachingSource.GLOBAL_CURRICULUM and "course:" in step.scope_key:
+                from app.certificates.service import issue_course_certificate
+                course_id = step.scope_key.split("course:", 1)[1].split(":unit:", 1)[0]
+                certificate = issue_course_certificate(db, actor.id, course_id)
         db.commit()
         return {
             "id": step.id,
@@ -570,6 +575,12 @@ def confirm_step(
             "understanding_verified": step.understanding_verified,
             "student_confirmed": step.student_confirmed,
             "completed": step.status == "completed",
+            "certificate": None if certificate is None else {
+                "certificate_id": certificate.id,
+                "certificate_number": certificate.certificate_number,
+                "course_id": certificate.course_id,
+                "title": certificate.title,
+            },
         }
     except HTTPException:
         db.rollback()
