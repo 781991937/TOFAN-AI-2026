@@ -105,8 +105,8 @@ def manager_dashboard(db: Session = Depends(get_db), _: list = Depends(require_o
     return MainManagerService.dashboard_summary(db)
 
 @router.get("/students")
-def manager_students(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db), _: list = Depends(require_owner_or_admin)):
-    return MainManagerService.students(db, limit=limit, offset=offset)
+def manager_students(query: str | None = Query(None, max_length=100), limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db), _: list = Depends(require_owner_or_admin)):
+    return MainManagerService.students(db, limit=limit, offset=offset, query=query)
 
 @router.get("/assessments")
 def manager_assessments(limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), db: Session = Depends(get_db), _: list = Depends(require_owner_or_admin)):
