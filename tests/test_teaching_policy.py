@@ -26,6 +26,13 @@ def setup():
     institution = Institution(name="TOFAN", code="TOFAN", organization_type="academy")
     db.add_all([user, institution])
     db.flush()
+    manager = Agent(
+        name="Main Manager",
+        slug="tofan-main",
+        kind=AgentKind.ORCHESTRATOR,
+        status=AgentStatus.ACTIVE,
+        system_prompt="manager test",
+    )
     agent = Agent(
         name="Teacher",
         slug="teacher-test",
@@ -34,7 +41,7 @@ def setup():
         teacher_institution_id=institution.id,
         system_prompt="test",
     )
-    db.add(agent)
+    db.add_all([manager, agent])
     db.flush()
     return db, user, agent
 
