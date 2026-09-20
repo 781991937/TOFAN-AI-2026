@@ -92,3 +92,63 @@ def update_memory_summary(
     conversation.memory_updated_at = datetime.utcnow()
     conversation.updated_at = datetime.utcnow()
     db.add(conversation)
+
+
+class AgentMemoryItem(Base):
+    """A durable, user-approved fact or task extracted from conversation."""
+
+    __tablename__ = "agent_memory_items"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    conversation_id: Mapped[str] = mapped_column(ForeignKey("agent_conversations.id"), nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    memory_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    confidence: Mapped[float] = mapped_column(default=1.0, nullable=False)
+    source_message_sequence: Mapped[int | None] = mapped_column(Integer)
+    active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+
+
+def active_memory_items(db: Session, conversation_id: str, limit: int = 30) -> list[AgentMemoryItem]:
+    return db.query(AgentMemoryItem).filter(
+        AgentMemoryItem.conversation_id == conversation_id,
+        AgentMemoryItem.active.is_(True),
+    ).order_by(AgentMemoryItem.updated_at.desc()).limit(limit).all()
+
+
+def upsert_memory_item(
+    db: Session,
+    conversation_id: str,
+    user_id: str,
+    memory_type: str,
+    content: str,
+    confidence: float = 1.0,
+    source_message_sequence: int | None = None,
+) -> AgentMemoryItem:
+    normalized = content.strip()
+    existing = db.query(AgentMemoryItem).filter(
+        AgentMemoryItem.conversation_id == conversation_id,
+        AgentMemoryItem.memory_type == memory_type,
+        AgentMemoryItem.content == normalized,
+        AgentMemoryItem.active.is_(True),
+    ).first()
+    now = datetime.utcnow()
+    if existing:
+        existing.confidence = max(existing.confidence, min(confidence, 1.0))
+        existing.updated_at = now
+        if source_message_sequence is not None:
+            existing.source_message_sequence = source_message_sequence
+        db.add(existing)
+        return existing
+    item = AgentMemoryItem(
+        conversation_id=conversation_id,
+        user_id=user_id,
+        memory_type=memory_type,
+        content=normalized,
+        confidence=min(max(confidence, 0.0), 1.0),
+        source_message_sequence=source_message_sequence,
+    )
+    db.add(item)
+    return item
