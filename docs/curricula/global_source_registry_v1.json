@@ -1,0 +1,49 @@
+{
+  "version": "1.0",
+  "purpose": "Global academic reference registry for TOFAN lesson authoring.",
+  "policy": {
+    "canonical_curriculum": "TOFAN",
+    "external_frameworks_are_references": true,
+    "copying_source_text_is_forbidden": true,
+    "lesson_content_must_be_original_tofan_authored": true,
+    "sources_must_be_traceable": true
+  },
+  "sources": [
+    {
+      "id": "ACM-IEEE-CS-AAAI-CS2023",
+      "name": "Computer Science Curricula 2023",
+      "organization": "ACM / IEEE Computer Society / AAAI",
+      "url": "https://csed.acm.org/final-report/",
+      "role": "primary_global_reference",
+      "areas": [
+        "Artificial Intelligence",
+        "Algorithmic Foundations",
+        "Mathematical and Statistical Foundations",
+        "Data Management",
+        "Software Development Fundamentals",
+        "Software Engineering"
+      ]
+    },
+    {
+      "id": "ACM-IEEE-CS-AAAI-CS2023-AI",
+      "name": "CS2023 Artificial Intelligence Knowledge Area",
+      "organization": "ACM / IEEE Computer Society / AAAI",
+      "url": "https://csed.acm.org/applications-cs-core-surveys/",
+      "role": "primary_ai_reference",
+      "areas": [
+        "Fundamental Issues",
+        "Search",
+        "Knowledge Representation and Reasoning",
+        "Machine Learning",
+        "Applications and Societal Impact",
+        "Probabilistic Representation and Reasoning",
+        "Planning",
+        "Logical Representation and Reasoning",
+        "Agents and Cognitive Systems",
+        "Natural Language Processing",
+        "Robotics",
+        "Perception and Computer Vision"
+      ]
+    }
+  ]
+}
