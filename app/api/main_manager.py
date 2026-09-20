@@ -47,6 +47,27 @@ def student_snapshot(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.get("/courses")
+def manager_courses(
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    return MainManagerService.courses(db)
+
+
+@router.post("/payments/{transaction_id}/confirm")
+def confirm_payment(
+    transaction_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    from app.agents.payment_tools import confirm_payment_transaction
+    try:
+        return confirm_payment_transaction(db, transaction_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @router.get("/teachers")
 def teacher_overview(
     db: Session = Depends(get_db),
