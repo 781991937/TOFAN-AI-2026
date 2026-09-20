@@ -116,16 +116,70 @@ def seed() -> None:
             db.add(curriculum)
             db.flush()
 
-        specialty = db.scalar(select(Specialty).where(Specialty.code == "AI"))
-        if specialty is None:
-            specialty = Specialty(
-                code="AI",
-                name="الذكاء الاصطناعي",
-                description="TOFAN global AI specialization.",
-            )
-            db.add(specialty)
-            db.flush()
+        specialty_catalog = [
+            {
+                "code": "AI",
+                "name": "الذكاء الاصطناعي",
+                "name_ar": "الذكاء الاصطناعي",
+                "name_en": "Artificial Intelligence",
+                "description": "TOFAN global AI specialization.",
+                "description_ar": "تخصص الذكاء الاصطناعي ضمن المنهج العالمي لأكاديمية طوفان.",
+                "description_en": "TOFAN global Artificial Intelligence specialization.",
+            },
+            {
+                "code": "CS",
+                "name": "علوم الحاسوب",
+                "name_ar": "علوم الحاسوب",
+                "name_en": "Computer Science",
+                "description": "TOFAN global Computer Science specialization.",
+                "description_ar": "تخصص علوم الحاسوب ضمن المنهج العالمي لأكاديمية طوفان.",
+                "description_en": "TOFAN global Computer Science specialization.",
+            },
+            {
+                "code": "CYBER",
+                "name": "الأمن السيبراني",
+                "name_ar": "الأمن السيبراني",
+                "name_en": "Cybersecurity",
+                "description": "TOFAN global Cybersecurity specialization.",
+                "description_ar": "تخصص الأمن السيبراني ضمن المنهج العالمي لأكاديمية طوفان.",
+                "description_en": "TOFAN global Cybersecurity specialization.",
+            },
+            {
+                "code": "SE",
+                "name": "هندسة البرمجيات",
+                "name_ar": "هندسة البرمجيات",
+                "name_en": "Software Engineering",
+                "description": "TOFAN global Software Engineering specialization.",
+                "description_ar": "تخصص هندسة البرمجيات ضمن المنهج العالمي لأكاديمية طوفان.",
+                "description_en": "TOFAN global Software Engineering specialization.",
+            },
+            {
+                "code": "DS",
+                "name": "علم البيانات",
+                "name_ar": "علم البيانات",
+                "name_en": "Data Science",
+                "description": "TOFAN global Data Science specialization.",
+                "description_ar": "تخصص علم البيانات ضمن المنهج العالمي لأكاديمية طوفان.",
+                "description_en": "TOFAN global Data Science specialization.",
+            },
+        ]
 
+        specialty_map = {}
+        for specialty_data in specialty_catalog:
+            specialty = db.scalar(select(Specialty).where(Specialty.code == specialty_data["code"]))
+            if specialty is None:
+                specialty = Specialty(code=specialty_data["code"])
+                db.add(specialty)
+            specialty.name = specialty_data["name"]
+            specialty.name_ar = specialty_data["name_ar"]
+            specialty.name_en = specialty_data["name_en"]
+            specialty.description = specialty_data["description"]
+            specialty.description_ar = specialty_data["description_ar"]
+            specialty.description_en = specialty_data["description_en"]
+            specialty_map[specialty_data["code"]] = specialty
+        db.flush()
+
+        specialty = specialty_map["AI"]
         course_map = {}
         for stage_position, stage_data in enumerate(data["stages"], start=1):
             stage = db.scalar(select(CurriculumStage).where(
