@@ -11,6 +11,7 @@ from app.agents.models import Agent, AgentKind, AgentStatus
 from app.agents.orchestrator import MainAgentOrchestrator
 from app.agents.providers import AgentMessage
 from app.agents.runtime import AgentRuntime, AgentRuntimeError
+from app.agents.teaching_policy import TeachingAccessError, consume_response_chars, remaining_response_chars
 from app.agents.service import AgentError, AgentService
 from app.agents.tools import build_default_registry
 from app.auth.dependencies import get_current_user, get_db
@@ -66,6 +67,16 @@ def chat_with_teacher(
         except RuntimeError:
             pass
 
+        remaining = remaining_response_chars(
+            db, user_id=actor.id, agent_id=agent.id,
+            source=__import__("app.db.models", fromlist=["TeachingSource"]).TeachingSource.STUDENT_FILES,
+        )
+        if remaining <= 0:
+            raise HTTPException(
+                status_code=429,
+                detail="Daily free response limit of 2000 characters has been reached. Try again after the 24-hour window resets.",
+            )
+
         append_message(db, conversation.id, "user", payload.message)
         result = _orchestrator.run(
             db, agent, actor.id, payload.message,
@@ -73,6 +84,14 @@ def chat_with_teacher(
         )
         content = result.get("content") or result.get("output") or ""
         if content:
+            content = content[:remaining]
+            result["content"] = content
+            result["output"] = content
+            consume_response_chars(
+                db, user_id=actor.id, agent_id=agent.id,
+                source=__import__("app.db.models", fromlist=["TeachingSource"]).TeachingSource.STUDENT_FILES,
+                characters=len(content),
+            )
             append_message(db, conversation.id, "assistant", content)
 
         try:
@@ -90,6 +109,9 @@ def chat_with_teacher(
     except HTTPException:
         db.rollback()
         raise
+    except TeachingAccessError as exc:
+        db.rollback()
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
     except (AgentError, AgentRuntimeError, RuntimeError) as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
