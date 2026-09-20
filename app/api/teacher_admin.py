@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.models import Agent, AgentKind, AgentStatus
-from app.agents.teacher import create_teacher_agent
+from app.agents.teacher import create_teacher_agent, provision_teacher_agents_for_institution
 from app.auth.authorization import require_owner_or_admin
 from app.auth.dependencies import get_db
 
@@ -50,6 +50,37 @@ def create_teacher(
     except ValueError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+
+@router.post("/provision/institution/{institution_id}")
+def provision_institution_teachers(
+    institution_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    try:
+        created = provision_teacher_agents_for_institution(
+            db, institution_id=institution_id
+        )
+        db.commit()
+        return {
+            "institution_id": institution_id,
+            "created_count": len(created),
+            "agents": [
+                {
+                    "id": agent.id,
+                    "name": agent.name,
+                    "slug": agent.slug,
+                    "course_id": agent.teacher_course_id,
+                    "status": agent.status.value,
+                }
+                for agent in created
+            ],
+        }
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("")
