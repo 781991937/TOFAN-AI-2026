@@ -23,6 +23,7 @@ from app.api.student_onboarding import router as student_onboarding_router
 from app.api.student_files import router as student_files_router
 from app.api.academic_catalog import router as academic_catalog_router
 from app.api.curriculum import router as curriculum_router
+from app.api.specialty_experience import router as specialty_experience_router
 from app.api.main_manager import router as main_manager_router
 from app.api.notifications import router as notifications_router
 from app.api.learning_progress import router as learning_progress_router
@@ -72,6 +73,7 @@ app.include_router(learning_progress_router)
 app.include_router(certificates_router)
 app.include_router(manager_dashboard_router)
 app.include_router(curriculum_router)
+app.include_router(specialty_experience_router)
 
 
 def main() -> None:
