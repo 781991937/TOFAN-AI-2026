@@ -14,10 +14,12 @@ from app.api.teacher_chat import router as teacher_chat_router
 from app.api.teacher_teaching import router as teacher_teaching_router
 from app.api.auth import router as auth_router
 from app.api.users import router as users_router
+from app.api.student_identity import router as student_identity_router
 
 app = FastAPI(title="TOFAN Smart Academy", version="0.1.0")
 app.include_router(auth_router)
 app.include_router(users_router)
+app.include_router(student_identity_router)
 app.include_router(admin_router)
 app.include_router(academy_admin_router)
 app.include_router(admin_users_router)
