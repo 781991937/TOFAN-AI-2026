@@ -57,10 +57,6 @@ def migrate_agent_conversation_memory(engine: Engine) -> list[str]:
     return changes
 
 
-def migrate_agent_memory_items(engine: Engine) -> bool:
-    return add_column_if_missing(engine, "agent_memory_items", "confidence", "FLOAT")
-
-
 def run_migrations(engine: Engine) -> list[str]:
     """Run all current idempotent migrations and return changed columns."""
     return migrate_agent_conversation_memory(engine)
