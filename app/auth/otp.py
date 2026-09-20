@@ -1,6 +1,6 @@
 """One-time password challenge storage."""
 import hashlib, hmac, os, secrets
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from app.db.models import OtpChallenge
@@ -9,7 +9,7 @@ def _digest(challenge_id: str, code: str) -> str:
     if not OTP_PEPPER: raise RuntimeError("AUTH_OTP_PEPPER is required for OTP authentication.")
     return hmac.new(OTP_PEPPER.encode(),(challenge_id+":"+code).encode(),hashlib.sha256).hexdigest()
 def create_otp(db: Session,user_id: str|None,destination: str,minutes: int=5)->tuple[str,str]:
-    c=OtpChallenge(user_id=user_id,destination=destination,code_hash="pending",expires_at=datetime.now(timezone.utc)+timedelta(minutes=minutes))
+    c=OtpChallenge(user_id=user_id,destination=destination,code_hash="pending",expires_at=datetime.utcnow()+timedelta(minutes=minutes))
     db.add(c); db.flush(); code=f"{secrets.randbelow(1000000):06d}"; c.code_hash=_digest(c.id,code); db.commit(); return c.id,code
 def consume_otp(db: Session,challenge_id: str,code: str,max_attempts: int=5)->OtpChallenge|None:
     c=db.scalar(select(OtpChallenge).where(OtpChallenge.id==challenge_id))
