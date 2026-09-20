@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.agents.models import Agent, AgentKind, AgentStatus, AgentRun
 from app.db.assessment_models import CurriculumAssessmentAttempt
 from app.db.identity_models import PaymentTransaction, PaymentStatus
-from app.db.models import TeachingStep, TeachingStepStatus, TeachingSource, User
+from app.db.models import AuditLog, TeachingStep, TeachingStepStatus, TeachingSource, User
 from app.agents.teacher import create_curriculum_teacher_agent
 
 
@@ -40,6 +40,10 @@ class MainManagerService:
         event_name: str,
         actor_user_id: str | None,
         payload: dict,
+        action: str | None = None,
+        resource_type: str | None = None,
+        resource_id: str | None = None,
+        decision: str = "accepted",
     ) -> AgentRun:
         manager = MainManagerService.get_manager(db)
         run = AgentRun(
@@ -52,6 +56,19 @@ class MainManagerService:
             completed_at=datetime.utcnow(),
         )
         db.add(run)
+        db.add(AuditLog(
+            user_id=actor_user_id,
+            action=action or event_name,
+            resource_type=resource_type,
+            resource_id=resource_id,
+            details=json.dumps({
+                "manager_agent_id": manager.id,
+                "manager_agent_slug": manager.slug,
+                "event": event_name,
+                "decision": decision,
+                "payload": payload,
+            }, ensure_ascii=False),
+        ))
         return run
 
     @staticmethod
@@ -63,6 +80,10 @@ class MainManagerService:
             db,
             event_name="education.curriculum_assessment_result",
             actor_user_id=attempt.user_id,
+            action="manager.assessment_result.processed",
+            resource_type="curriculum_assessment_attempt",
+            resource_id=attempt.id,
+            decision="course_passed" if attempt.passed else "course_not_passed",
             payload={
                 "attempt_id": attempt.id,
                 "assessment_id": attempt.assessment_id,
@@ -93,6 +114,10 @@ class MainManagerService:
             db,
             event_name="payments.confirmed",
             actor_user_id=transaction.user_id,
+            action="manager.payment_access.activated",
+            resource_type="payment_transaction",
+            resource_id=transaction.id,
+            decision="global_access_authorized",
             payload={
                 "transaction_id": transaction.id,
                 "user_id": transaction.user_id,
@@ -143,11 +168,22 @@ class MainManagerService:
         slug = f"teacher-tofan-{course.code.lower()}"
         existing = db.scalar(select(Agent).where(Agent.slug == slug))
         if existing is not None:
+            MainManagerService.record_event(
+                db, event_name="manager.teacher_provision.requested", actor_user_id=None,
+                action="manager.teacher_provision.reused", resource_type="agent", resource_id=existing.id,
+                decision="existing_teacher_reused", payload={"curriculum_course_id": curriculum_course_id},
+            )
+            db.commit()
             return {"agent_id": existing.id, "slug": existing.slug, "status": existing.status, "created": False}
         agent = create_curriculum_teacher_agent(
             db, name=f"مدرس {course.name}", slug=slug,
             curriculum_course_id=course.id,
             description=f"وكيل مدرس لمقرر TOFAN {course.code}: {course.name}.",
+        )
+        MainManagerService.record_event(
+            db, event_name="manager.teacher_provision.completed", actor_user_id=None,
+            action="manager.teacher_provision.created", resource_type="agent", resource_id=agent.id,
+            decision="teacher_created", payload={"curriculum_course_id": curriculum_course_id, "slug": agent.slug},
         )
         db.commit()
         return {"agent_id": agent.id, "slug": agent.slug, "status": agent.status, "created": True}
@@ -159,7 +195,13 @@ class MainManagerService:
             raise ValueError("Teacher agent not found.")
         if agent.status == AgentStatus.ARCHIVED:
             raise ValueError("Archived teacher agents cannot be reactivated.")
+        previous_status = agent.status
         agent.status = status
+        MainManagerService.record_event(
+            db, event_name="manager.teacher_status.changed", actor_user_id=None,
+            action="manager.teacher_status.updated", resource_type="agent", resource_id=agent.id,
+            decision="status_changed", payload={"previous_status": previous_status, "new_status": status},
+        )
         db.commit()
         return {"agent_id": agent.id, "slug": agent.slug, "status": agent.status}
 
