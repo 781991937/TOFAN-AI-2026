@@ -166,7 +166,7 @@ class MainManagerService:
     @staticmethod
     def student_snapshot(db: Session, user_id: str) -> dict:
         """Return a complete manager-facing student operational snapshot."""
-        from app.db.curriculum_models import CurriculumCourse
+        from app.db.curriculum_models import CourseAssessment, CurriculumCourse
         from app.db.models import AuditLog, Entitlement, TeachingAssessment, TeachingUsage
 
         user = db.get(User, user_id)
@@ -232,12 +232,17 @@ class MainManagerService:
                 if course_id:
                     course_ids.add(course_id)
         course_ids.update(t.curriculum_course_id for t in teachers if t.curriculum_course_id)
-        course_ids.update(a.assessment_id for a in attempts if a.assessment_id)
+        assessment_ids = {a.assessment_id for a in attempts if a.assessment_id}
+        if assessment_ids:
+            assessment_course_ids = db.scalars(
+                select(CourseAssessment.course_id).where(CourseAssessment.id.in_(assessment_ids))
+            ).all()
+            course_ids.update(assessment_course_ids)
+
         courses = db.scalars(
             select(CurriculumCourse).where(CurriculumCourse.id.in_(course_ids))
         ).all() if course_ids else []
         course_map = {c.id: c for c in courses}
-        teacher_map = {}
         for teacher in teachers:
             if teacher.curriculum_course_id:
                 teacher_map.setdefault(teacher.curriculum_course_id, []).append({
