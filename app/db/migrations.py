@@ -33,29 +33,21 @@ def migrate_agent_conversation_memory(engine: Engine) -> list[str]:
 
 def migrate_agent_memory_scopes(engine: Engine) -> list[str]:
     changes: list[str] = []
-    for name, sql in (
-        ("owner_agent_id", "VARCHAR(36)"),
-        ("memory_scope", "VARCHAR(30)"),
-    ):
+    for name, sql in (("owner_agent_id", "VARCHAR(36)"), ("memory_scope", "VARCHAR(30)")):
         if add_column_if_missing(engine, "agent_memory_items", name, sql):
             changes.append(f"agent_memory_items.{name}")
-
     inspector = inspect(engine)
     if "agent_memory_items" in inspector.get_table_names():
         with engine.begin() as connection:
             result = connection.execute(text(
-                "UPDATE agent_memory_items "
-                "SET owner_agent_id = ("
-                "SELECT agent_id FROM agent_conversations "
-                "WHERE agent_conversations.id = agent_memory_items.conversation_id"
-                ") "
+                "UPDATE agent_memory_items SET owner_agent_id = "
+                "(SELECT agent_id FROM agent_conversations WHERE agent_conversations.id = agent_memory_items.conversation_id) "
                 "WHERE owner_agent_id IS NULL"
             ))
             if result.rowcount:
                 changes.append("agent_memory_items.owner_agent_id backfill")
             result = connection.execute(text(
-                "UPDATE agent_memory_items SET memory_scope = 'conversation' "
-                "WHERE memory_scope IS NULL"
+                "UPDATE agent_memory_items SET memory_scope = 'conversation' WHERE memory_scope IS NULL"
             ))
             if result.rowcount:
                 changes.append("agent_memory_items.memory_scope backfill")
@@ -64,12 +56,13 @@ def migrate_agent_memory_scopes(engine: Engine) -> list[str]:
 
 def migrate_teacher_agent_course(engine: Engine) -> list[str]:
     changes: list[str] = []
-    if add_column_if_missing(engine, "agents", "teacher_course_id", "VARCHAR(36)"):
-        changes.append("agents.teacher_course_id")
-    if add_column_if_missing(engine, "agents", "teacher_institution_id", "VARCHAR(36)"):
-        changes.append("agents.teacher_institution_id")
-    if add_column_if_missing(engine, "agents", "curriculum_course_id", "VARCHAR(36)"):
-        changes.append("agents.curriculum_course_id")
+    for name, sql in (
+        ("teacher_course_id", "VARCHAR(36)"),
+        ("teacher_institution_id", "VARCHAR(36)"),
+        ("curriculum_course_id", "VARCHAR(36)"),
+    ):
+        if add_column_if_missing(engine, "agents", name, sql):
+            changes.append(f"agents.{name}")
     return changes
 
 
@@ -77,10 +70,7 @@ def migrate_academic_structure(engine: Engine) -> list[str]:
     changes: list[str] = []
     if add_column_if_missing(engine, "academic_periods", "parent_id", "VARCHAR(36)"):
         changes.append("academic_periods.parent_id")
-    for name, sql in ((
-        ("year_number", "INTEGER"),
-        ("term_number", "INTEGER"),
-    )):
+    for name, sql in (("year_number", "INTEGER"), ("term_number", "INTEGER")):
         if add_column_if_missing(engine, "academic_periods", name, sql):
             changes.append(f"academic_periods.{name}")
     for name, sql in (
@@ -93,9 +83,7 @@ def migrate_academic_structure(engine: Engine) -> list[str]:
     ):
         if add_column_if_missing(engine, "courses", name, sql):
             changes.append(f"courses.{name}")
-    if add_column_if_missing(
-        engine, "institutions", "organization_type", "VARCHAR(30) DEFAULT 'university'"
-    ):
+    if add_column_if_missing(engine, "institutions", "organization_type", "VARCHAR(30) DEFAULT 'university'"):
         changes.append("institutions.organization_type")
     return changes
 
@@ -131,6 +119,18 @@ def migrate_teaching_limits(engine: Engine) -> list[str]:
     return changes
 
 
+def migrate_curriculum_lesson_content(engine: Engine) -> list[str]:
+    changes: list[str] = []
+    for name, sql in (
+        ("content_markdown", "TEXT"),
+        ("source_refs_json", "TEXT"),
+        ("learning_objectives_json", "TEXT"),
+    ):
+        if add_column_if_missing(engine, "curriculum_lessons", name, sql):
+            changes.append(f"curriculum_lessons.{name}")
+    return changes
+
+
 def migrate_certificates(engine: Engine) -> list[str]:
     from app.db.certificate_models import Certificate
     from app.db.base import Base
@@ -154,25 +154,9 @@ def migrate_notifications(engine: Engine) -> list[str]:
     return []
 
 
-def run_migrations(engine: Engine) -> list[str]:
-    changes = migrate_agent_conversation_memory(engine)
-    changes.extend(migrate_agent_memory_scopes(engine))
-    changes.extend(migrate_teacher_agent_course(engine))
-    changes.extend(migrate_academic_structure(engine))
-    changes.extend(migrate_teaching_limits(engine))
-    changes.extend(migrate_content_files(engine))
-    changes.extend(migrate_curriculum_assessments(engine))
-    changes.extend(migrate_learning_progress(engine))
-    changes.extend(migrate_certificates(engine))
-    changes.extend(migrate_notifications(engine))
-    return changes
-
-
 def migrate_curriculum_assessments(engine: Engine) -> list[str]:
-    """Create assessment tables on existing installations without Alembic."""
     from app.db.assessment_models import CurriculumAssessmentAttempt, AssessmentResultReport
     from app.db.assessment_question_models import CurriculumAssessmentQuestion
-    # Table creation is idempotent and uses the canonical SQLAlchemy metadata.
     from app.db.base import Base
     Base.metadata.create_all(bind=engine, tables=[
         CurriculumAssessmentAttempt.__table__,
@@ -194,4 +178,19 @@ def migrate_content_files(engine: Engine) -> list[str]:
     ):
         if add_column_if_missing(engine, "content_files", name, sql):
             changes.append(f"content_files.{name}")
+    return changes
+
+
+def run_migrations(engine: Engine) -> list[str]:
+    changes = migrate_agent_conversation_memory(engine)
+    changes.extend(migrate_agent_memory_scopes(engine))
+    changes.extend(migrate_teacher_agent_course(engine))
+    changes.extend(migrate_academic_structure(engine))
+    changes.extend(migrate_teaching_limits(engine))
+    changes.extend(migrate_content_files(engine))
+    changes.extend(migrate_curriculum_lesson_content(engine))
+    changes.extend(migrate_curriculum_assessments(engine))
+    changes.extend(migrate_learning_progress(engine))
+    changes.extend(migrate_certificates(engine))
+    changes.extend(migrate_notifications(engine))
     return changes
