@@ -26,6 +26,7 @@ from app.api.curriculum import router as curriculum_router
 from app.api.main_manager import router as main_manager_router
 from app.api.notifications import router as notifications_router
 from app.api.learning_progress import router as learning_progress_router
+from app.api.certificates import router as certificates_router
 from app.api.manager_dashboard import router as manager_dashboard_router
 from app.db.init_db import init_db
 from app.db.session import SessionLocal
@@ -68,6 +69,7 @@ app.include_router(teacher_teaching_router)
 app.include_router(main_manager_router)
 app.include_router(notifications_router)
 app.include_router(learning_progress_router)
+app.include_router(certificates_router)
 app.include_router(manager_dashboard_router)
 app.include_router(curriculum_router)
 
