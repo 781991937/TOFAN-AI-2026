@@ -205,52 +205,10 @@ def confirm_payment(
     db: Session = Depends(get_db),
     _: list = Depends(require_owner_or_admin),
 ):
-    transaction = db.get(PaymentTransaction, transaction_id)
-    if transaction is None:
-        raise HTTPException(status_code=404, detail="Payment transaction not found.")
-
-    main_agent = db.scalar(
-        select(Agent).where(
-            Agent.slug == "tofan-main",
-            Agent.kind == AgentKind.ORCHESTRATOR,
-        )
-    )
-    if main_agent is None:
-        raise HTTPException(status_code=503, detail="TOFAN main manager agent is not provisioned.")
-
-    transaction.status = PaymentStatus.CONFIRMED
-    transaction.confirmed_by_agent_id = main_agent.id
-    transaction.confirmed_at = datetime.utcnow()
-
-    existing_entitlement = db.scalar(
-        select(Entitlement).where(
-            Entitlement.user_id == transaction.user_id,
-            Entitlement.access_type == transaction.product_key,
-        )
-    )
-    if existing_entitlement is None:
-        db.add(
-            Entitlement(
-                user_id=transaction.user_id,
-                access_type=transaction.product_key,
-            )
-        )
-
-    # Payment confirmation creates the global entitlement at the teacher-agent level.
-    from app.agents.models import Agent as AgentModel
-    teachers = db.scalars(
-        select(AgentModel).where(AgentModel.kind == AgentKind.TEACHER)
-    ).all()
-    for teacher in teachers:
-        grant_paid_global_access(
-            db, user_id=transaction.user_id, agent_id=teacher.id
-        )
+    try:
+        result = confirm_payment_transaction(db, transaction_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     db.commit()
-    return {
-        "transaction_id": transaction.id,
-        "user_id": transaction.user_id,
-        "status": transaction.status,
-        "confirmed_by": main_agent.slug,
-        "global_access": "active",
-    }
+    return result
