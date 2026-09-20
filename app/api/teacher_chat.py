@@ -20,10 +20,16 @@ from app.db.models import TeachingSource, User
 
 def teacher_tool_guard(db, agent, tool_name, payload):
     if tool_name == "academy.search":
-        assigned = agent.teacher_course_id
-        requested = str(payload.get("course_id", "")).strip()
-        if not assigned or requested != assigned:
-            raise RuntimeError("Teacher agent may search only its assigned course.")
+        assigned_native = agent.curriculum_course_id
+        requested_native = str(payload.get("curriculum_course_id", "")).strip()
+        if assigned_native:
+            if not requested_native or requested_native != assigned_native:
+                raise RuntimeError("Teacher agent may search only its assigned TOFAN curriculum course.")
+            return
+        assigned_legacy = agent.teacher_course_id
+        requested_legacy = str(payload.get("course_id", "")).strip()
+        if not assigned_legacy or requested_legacy != assigned_legacy:
+            raise RuntimeError("Legacy teacher agent may search only its assigned course.")
 
 router = APIRouter(prefix="/agent/teacher", tags=["teacher-agent"])
 _registry = build_default_registry()
@@ -56,8 +62,10 @@ def chat_with_teacher(
         previous = recent_messages(db, conversation.id)
         history = [AgentMessage(role=m.role, content=m.content) for m in previous]
         memory_context = build_memory_context(conversation, previous)
-        if agent.teacher_course_id:
-            memory_context = (memory_context + "\n\n" if memory_context else "") + "Assigned course ID: " + agent.teacher_course_id
+        if agent.curriculum_course_id:
+            memory_context = (memory_context + "\n\n" if memory_context else "") + "Assigned TOFAN curriculum course ID: " + agent.curriculum_course_id
+        elif agent.teacher_course_id:
+            memory_context = (memory_context + "\n\n" if memory_context else "") + "Assigned legacy course ID: " + agent.teacher_course_id
 
         try:
             provider = _orchestrator.provider or build_configured_provider()
