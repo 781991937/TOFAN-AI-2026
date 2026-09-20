@@ -2,6 +2,9 @@
 
 Safe to run repeatedly: existing rows are matched by stable curriculum/course/stage
 codes and are not duplicated.
+
+Lesson source metadata points to the global academic frameworks used to design TOFAN.
+Lesson explanations themselves must remain original TOFAN-authored content.
 """
 
 import json
@@ -20,6 +23,10 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs" / "curricula" / "ai_tofan_curriculum_v1.json"
 DELIVERY_SOURCE = ROOT / "docs" / "curricula" / "ai_tofan_delivery_map_v1.md"
 
+AI_SOURCE_IDS = [
+    "ACM-IEEE-CS-AAAI-CS2023",
+    "ACM-IEEE-CS-AAAI-CS2023-AI",
+]
 
 
 def seed_delivery_map(db, course_map: dict) -> None:
@@ -31,6 +38,7 @@ def seed_delivery_map(db, course_map: dict) -> None:
             continue
         if not current_code or current_code not in course_map:
             continue
+
         unit_match = re.match(r"^(\d+)\. (.+)$", raw.strip())
         if unit_match:
             position = int(unit_match.group(1))
@@ -45,18 +53,33 @@ def seed_delivery_map(db, course_map: dict) -> None:
                 unit = CurriculumUnit(course_id=course.id, title=title.strip(), position=position)
                 db.add(unit)
                 db.flush()
+
             lesson_title = topics.strip() or title.strip()
-            exists = db.scalar(select(CurriculumLesson).where(
+            lesson = db.scalar(select(CurriculumLesson).where(
                 CurriculumLesson.unit_id == unit.id,
                 CurriculumLesson.position == 1,
             ))
-            if exists is None:
-                db.add(CurriculumLesson(
+            if lesson is None:
+                lesson = CurriculumLesson(
                     unit_id=unit.id,
                     title=lesson_title,
                     position=1,
                     description=lesson_title,
-                ))
+                    source_refs_json=json.dumps(AI_SOURCE_IDS, ensure_ascii=False),
+                    learning_objectives_json=json.dumps(
+                        [f"يفهم الطالب {lesson_title} ويطبقه في سياق المقرر."],
+                        ensure_ascii=False,
+                    ),
+                )
+                db.add(lesson)
+            else:
+                lesson.source_refs_json = json.dumps(AI_SOURCE_IDS, ensure_ascii=False)
+                if not lesson.learning_objectives_json:
+                    lesson.learning_objectives_json = json.dumps(
+                        [f"يفهم الطالب {lesson_title} ويطبقه في سياق المقرر."],
+                        ensure_ascii=False,
+                    )
+
         assessment = re.match(r"^Assessment: (.+)$", raw.strip())
         if assessment:
             course = course_map[current_code]
@@ -71,6 +94,7 @@ def seed_delivery_map(db, course_map: dict) -> None:
                     title="تقييم المادة",
                     description=assessment.group(1),
                 ))
+
 
 def seed() -> None:
     data = json.loads(SOURCE.read_text(encoding="utf-8"))
@@ -92,9 +116,7 @@ def seed() -> None:
             db.add(curriculum)
             db.flush()
 
-        specialty = db.scalar(
-            select(Specialty).where(Specialty.code == "AI")
-        )
+        specialty = db.scalar(select(Specialty).where(Specialty.code == "AI"))
         if specialty is None:
             specialty = Specialty(
                 code="AI",
@@ -106,12 +128,10 @@ def seed() -> None:
 
         course_map = {}
         for stage_position, stage_data in enumerate(data["stages"], start=1):
-            stage = db.scalar(
-                select(CurriculumStage).where(
-                    CurriculumStage.curriculum_id == curriculum.id,
-                    CurriculumStage.code == stage_data["id"],
-                )
-            )
+            stage = db.scalar(select(CurriculumStage).where(
+                CurriculumStage.curriculum_id == curriculum.id,
+                CurriculumStage.code == stage_data["id"],
+            ))
             if stage is None:
                 stage = CurriculumStage(
                     curriculum_id=curriculum.id,
@@ -124,12 +144,10 @@ def seed() -> None:
                 db.flush()
 
             for course_position, course_data in enumerate(stage_data["courses"], start=1):
-                course = db.scalar(
-                    select(CurriculumCourse).where(
-                        CurriculumCourse.curriculum_id == curriculum.id,
-                        CurriculumCourse.code == course_data["id"],
-                    )
-                )
+                course = db.scalar(select(CurriculumCourse).where(
+                    CurriculumCourse.curriculum_id == curriculum.id,
+                    CurriculumCourse.code == course_data["id"],
+                ))
                 if course is None:
                     course = CurriculumCourse(
                         curriculum_id=curriculum.id,
@@ -165,12 +183,10 @@ def seed() -> None:
                     prerequisite = course_map.get(prerequisite_code)
                     if prerequisite is None:
                         continue
-                    exists = db.scalar(
-                        select(CoursePrerequisite).where(
-                            CoursePrerequisite.course_id == course.id,
-                            CoursePrerequisite.prerequisite_course_id == prerequisite.id,
-                        )
-                    )
+                    exists = db.scalar(select(CoursePrerequisite).where(
+                        CoursePrerequisite.course_id == course.id,
+                        CoursePrerequisite.prerequisite_course_id == prerequisite.id,
+                    ))
                     if exists is None:
                         db.add(CoursePrerequisite(
                             course_id=course.id,
@@ -180,12 +196,10 @@ def seed() -> None:
         seed_delivery_map(db, course_map)
 
         for project in data.get("capstone_projects", []):
-            exists = db.scalar(
-                select(CurriculumProject).where(
-                    CurriculumProject.curriculum_id == curriculum.id,
-                    CurriculumProject.code == project["id"],
-                )
-            )
+            exists = db.scalar(select(CurriculumProject).where(
+                CurriculumProject.curriculum_id == curriculum.id,
+                CurriculumProject.code == project["id"],
+            ))
             if exists is None:
                 db.add(CurriculumProject(
                     curriculum_id=curriculum.id,
@@ -195,12 +209,10 @@ def seed() -> None:
                 ))
 
         for track_name in data.get("elective_tracks", []):
-            exists = db.scalar(
-                select(ElectiveTrack).where(
-                    ElectiveTrack.curriculum_id == curriculum.id,
-                    ElectiveTrack.name == track_name,
-                )
-            )
+            exists = db.scalar(select(ElectiveTrack).where(
+                ElectiveTrack.curriculum_id == curriculum.id,
+                ElectiveTrack.name == track_name,
+            ))
             if exists is None:
                 db.add(ElectiveTrack(
                     curriculum_id=curriculum.id,
