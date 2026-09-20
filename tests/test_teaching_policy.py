@@ -143,3 +143,24 @@ def test_exam_result_is_recorded_and_reported():
     assert result.percentage == 80
     assert result.passed is True
     assert report.status == "pending"
+
+
+def test_student_file_metadata_is_bound_to_user_and_teacher():
+    db, user, agent = setup()
+    content = ContentFile(
+        original_name="lesson.txt",
+        storage_key="student/lesson.txt",
+        uploaded_by_user_id=user.id,
+        teaching_agent_id=agent.id,
+        teaching_source=TeachingSource.STUDENT_FILES,
+        extracted_text="Python variables are named references to values.",
+        size_bytes=45,
+        page_count=1,
+    )
+    db.add(content)
+    db.flush()
+    register_student_file(db, user_id=user.id, agent_id=agent.id, content_file=content)
+    assert content.uploaded_by_user_id == user.id
+    assert content.teaching_agent_id == agent.id
+    assert content.teaching_source == TeachingSource.STUDENT_FILES
+    assert content.extracted_text.startswith("Python variables")
