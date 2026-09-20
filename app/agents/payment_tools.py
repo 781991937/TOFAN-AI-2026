@@ -44,7 +44,8 @@ def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
     existing = db.scalar(
         select(Entitlement).where(
             Entitlement.user_id == transaction.user_id,
-            Entitlement.access_type == TeachingAccess.PAID.value,\n            Entitlement.content_file_id.is_(None),
+            Entitlement.access_type == TeachingAccess.PAID.value,
+            Entitlement.content_file_id.is_(None),
         )
     )
     if existing is None:
