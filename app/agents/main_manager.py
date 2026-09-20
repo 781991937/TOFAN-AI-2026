@@ -165,33 +165,187 @@ class MainManagerService:
 
     @staticmethod
     def student_snapshot(db: Session, user_id: str) -> dict:
+        """Return a complete manager-facing student operational snapshot."""
+        from app.db.curriculum_models import CurriculumCourse
+        from app.db.models import Entitlement, TeachingUsage
+
         user = db.get(User, user_id)
         if user is None:
             raise ValueError("Student not found.")
-        steps = db.scalars(select(TeachingStep).where(
-            TeachingStep.user_id == user_id,
-            TeachingStep.source == TeachingSource.GLOBAL_CURRICULUM,
-        )).all()
-        attempts = db.scalars(select(CurriculumAssessmentAttempt).where(
-            CurriculumAssessmentAttempt.user_id == user_id,
-        )).all()
+
+        profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user_id))
+        if profile is None:
+            raise ValueError("Student profile not found.")
+
+        steps = db.scalars(
+            select(TeachingStep)
+            .where(TeachingStep.user_id == user_id)
+            .order_by(TeachingStep.position)
+        ).all()
+        attempts = db.scalars(
+            select(CurriculumAssessmentAttempt)
+            .where(CurriculumAssessmentAttempt.user_id == user_id)
+            .order_by(desc(CurriculumAssessmentAttempt.started_at))
+        ).all()
+        payments = db.scalars(
+            select(PaymentTransaction)
+            .where(PaymentTransaction.user_id == user_id)
+            .order_by(desc(PaymentTransaction.created_at))
+        ).all()
+        usages = db.scalars(
+            select(TeachingUsage)
+            .where(TeachingUsage.user_id == user_id)
+            .order_by(TeachingUsage.source)
+        ).all()
+        entitlements = db.scalars(
+            select(Entitlement)
+            .where(Entitlement.user_id == user_id)
+            .order_by(desc(Entitlement.granted_at))
+        ).all()
+        teachers = db.scalars(
+            select(Agent)
+            .where(
+                Agent.kind == AgentKind.TEACHER,
+                Agent.curriculum_course_id.is_not(None),
+            )
+            .order_by(Agent.name)
+        ).all()
+
+        course_ids = {t.curriculum_course_id for t in steps if getattr(t, "curriculum_course_id", None)}
+        course_ids.update(a.assessment_id for a in attempts if a.assessment_id)
+        assigned_course_ids = {t.curriculum_course_id for t in teachers}
+        course_ids.update(assigned_course_ids)
+        courses = db.scalars(
+            select(CurriculumCourse).where(CurriculumCourse.id.in_(course_ids))
+        ).all() if course_ids else []
+        course_map = {c.id: c for c in courses}
+        teacher_map = {}
+        for teacher in teachers:
+            if teacher.curriculum_course_id:
+                teacher_map.setdefault(teacher.curriculum_course_id, []).append({
+                    "agent_id": teacher.id,
+                    "name": teacher.name,
+                    "slug": teacher.slug,
+                    "status": teacher.status,
+                })
+
+        progress = []
+        for step in steps:
+            course = course_map.get(getattr(step, "curriculum_course_id", None))
+            progress.append({
+                "step_id": step.id,
+                "source": step.source,
+                "scope_key": step.scope_key,
+                "position": step.position,
+                "status": step.status,
+                "attempts": step.attempts,
+                "understanding_verified": step.understanding_verified,
+                "student_confirmed": step.student_confirmed,
+                "completed_at": step.completed_at.isoformat() if step.completed_at else None,
+                "course_id": course.id if course else None,
+                "course_code": course.code if course else None,
+                "course_name": course.name if course else None,
+            })
+
         return {
-            "student_id": user_id,
-            "display_name": user.display_name,
-            "global_steps_completed": sum(s.status == TeachingStepStatus.COMPLETED for s in steps),
-            "global_steps_total_records": len(steps),
+            "student": {
+                "student_id": user_id,
+                "profile_id": profile.id,
+                "display_name": user.display_name,
+                "full_name": profile.full_name,
+                "email": user.email,
+                "phone": user.phone,
+                "is_active": user.is_active,
+                "user_type": profile.user_type,
+                "age": profile.age,
+                "institution_id": profile.institution_id,
+                "college_unit_id": profile.college_unit_id,
+                "major_unit_id": profile.major_unit_id,
+                "profile_status": profile.profile_status,
+                "biometric_verified": profile.biometric_verified,
+                "verified_at": profile.verified_at.isoformat() if profile.verified_at else None,
+                "created_at": profile.created_at.isoformat(),
+                "updated_at": profile.updated_at.isoformat(),
+            },
+            "teaching_usage": [
+                {
+                    "agent_id": u.agent_id,
+                    "source": u.source,
+                    "files_used": u.files_used,
+                    "files_limit": u.files_limit,
+                    "response_chars_used": u.response_chars_used,
+                    "response_chars_limit": u.response_chars_limit,
+                    "response_chars_remaining": max(0, u.response_chars_limit - u.response_chars_used),
+                    "paid_access": u.paid_access,
+                    "quota_started_at": u.quota_started_at.isoformat() if u.quota_started_at else None,
+                }
+                for u in usages
+            ],
+            "progress": {
+                "steps_total": len(steps),
+                "steps_completed": sum(s.status == TeachingStepStatus.COMPLETED for s in steps),
+                "steps_active": sum(s.status == TeachingStepStatus.ACTIVE for s in steps),
+                "steps": progress,
+            },
+            "teacher_agents": [
+                {
+                    "agent_id": t.id,
+                    "name": t.name,
+                    "slug": t.slug,
+                    "status": t.status,
+                    "curriculum_course_id": t.curriculum_course_id,
+                    "course_code": course_map.get(t.curriculum_course_id).code if t.curriculum_course_id in course_map else None,
+                    "course_name": course_map.get(t.curriculum_course_id).name if t.curriculum_course_id in course_map else None,
+                }
+                for t in teachers if t.curriculum_course_id in course_map
+            ],
             "assessments": [
                 {
                     "attempt_id": a.id,
                     "assessment_id": a.assessment_id,
                     "percentage": a.percentage,
+                    "score": a.score,
+                    "max_score": a.max_score,
+                    "status": a.status,
                     "passed": a.passed,
+                    "started_at": a.started_at.isoformat(),
                     "submitted_at": a.submitted_at.isoformat() if a.submitted_at else None,
+                    "graded_at": a.graded_at.isoformat() if a.graded_at else None,
                 }
                 for a in attempts
             ],
+            "payments": [
+                {
+                    "transaction_id": p.id,
+                    "product_key": p.product_key,
+                    "status": p.status,
+                    "amount": p.amount,
+                    "currency": p.currency,
+                    "reference": p.reference,
+                    "confirmed_at": p.confirmed_at.isoformat() if p.confirmed_at else None,
+                    "created_at": p.created_at.isoformat(),
+                }
+                for p in payments
+            ],
+            "entitlements": [
+                {
+                    "id": e.id,
+                    "access_type": e.access_type,
+                    "content_file_id": e.content_file_id,
+                    "lecture_id": e.lecture_id,
+                    "granted_at": e.granted_at.isoformat(),
+                    "expires_at": e.expires_at.isoformat() if e.expires_at else None,
+                }
+                for e in entitlements
+            ],
+            "global_steps_completed": sum(
+                s.status == TeachingStepStatus.COMPLETED and s.source == TeachingSource.GLOBAL_CURRICULUM
+                for s in steps
+            ),
+            "global_steps_total_records": sum(
+                s.source == TeachingSource.GLOBAL_CURRICULUM for s in steps
+            ),
         }
-
 
     @staticmethod
     def dashboard_summary(db: Session) -> dict:
