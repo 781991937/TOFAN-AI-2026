@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.authorization import require_owner_or_admin
 from app.auth.dependencies import get_db
-from app.db.models import ContentFile, ContentStatus, Lecture
+from app.db.models import ContentFile, ContentStatus, Lecture, TeachingSource
 from app.files.extractor import FileExtractionError, extract_teaching_text
 
 router = APIRouter(prefix="/admin/content", tags=["admin-content"])
@@ -107,6 +107,7 @@ async def upload_lecture_file(
             storage_key=str(storage_path),
             mime_type=file.content_type,
             status=ContentStatus.DRAFT,
+            teaching_source=TeachingSource.GLOBAL_CURRICULUM,
             extracted_text=extracted_text,
             size_bytes=len(data),
             page_count=page_count,
