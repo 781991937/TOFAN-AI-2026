@@ -8,6 +8,7 @@ from .models import (
     TeachingUsage, TeachingStep, TeachingAssessment, TeachingAssessmentReport,
 )
 from .identity_models import StudentProfile, PaymentTransaction
+from .assessment_models import CurriculumAssessmentAttempt, AssessmentResultReport
 from .curriculum_models import Curriculum, Specialty, CurriculumStage, CurriculumCourse, CoursePrerequisite, LearningOutcome, CurriculumUnit, CurriculumLesson, CourseAssessment, CurriculumProject, ElectiveTrack
 from .session import engine
 from .migrations import run_migrations
