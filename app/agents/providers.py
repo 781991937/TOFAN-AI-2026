@@ -42,23 +42,14 @@ class AIProvider(Protocol):
 
 
 class OpenAIResponsesProvider:
-    """Minimal OpenAI Responses API adapter.
-
-    Configure with OPENAI_API_KEY and optionally OPENAI_MODEL.
-    """
+    """OpenAI Responses API adapter configured by environment variables."""
 
     provider_name = "openai"
 
-    def __init__(
-        self,
-        *,
-        api_key: str | None = None,
-        model: str | None = None,
-    ) -> None:
+    def __init__(self, *, api_key: str | None = None, model: str | None = None) -> None:
         self._api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self._api_key:
             raise AgentProviderError("OPENAI_API_KEY is not configured.")
-
         self.model_name = model or os.getenv("OPENAI_MODEL", "gpt-5.6-luna")
         self._client = OpenAI(api_key=self._api_key)
 
@@ -72,12 +63,10 @@ class OpenAIResponsesProvider:
             input_messages: list[dict[str, str]] = []
             if system_prompt:
                 input_messages.append({"role": "system", "content": system_prompt})
-
-            for message in messages:
-                input_messages.append(
-                    {"role": message.role, "content": message.content}
-                )
-
+            input_messages.extend(
+                {"role": message.role, "content": message.content}
+                for message in messages
+            )
             response = self._client.responses.create(
                 model=self.model_name,
                 input=input_messages,
