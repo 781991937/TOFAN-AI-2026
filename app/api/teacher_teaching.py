@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agents.models import Agent, AgentKind, AgentStatus
@@ -15,7 +16,8 @@ from app.agents.teaching_policy import (
     start_step,
 )
 from app.auth.dependencies import get_current_user, get_db
-from app.db.models import TeachingSource, User
+from app.db.models import TeachingSource, User, TeachingStep, TeachingStepStatus
+from app.db.curriculum_models import CurriculumCourse, CurriculumUnit, CurriculumLesson
 
 router = APIRouter(prefix="/agent/teacher", tags=["teacher-teaching-policy"])
 
