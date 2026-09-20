@@ -57,10 +57,13 @@ def create_teacher_agent(
         model_name=None,
         memory_enabled=True,
         teacher_course_id=course_id,
-        teacher_institution_id=course.academic_unit_id,
+        teacher_institution_id=None,
     )
     db.add(agent)
     db.flush()
+    unit = db.get(AcademicUnit, course.academic_unit_id)
+    if unit is not None:
+        agent.teacher_institution_id = unit.institution_id
     db.add(AgentTool(agent_id=agent.id, tool_name="academy.search", enabled=True))
     db.flush()
     return agent
