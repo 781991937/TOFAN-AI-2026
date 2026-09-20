@@ -72,8 +72,25 @@ def migrate_teacher_agent_course(engine: Engine) -> list[str]:
     return changes
 
 
+def migrate_academic_structure(engine: Engine) -> list[str]:
+    changes: list[str] = []
+    if add_column_if_missing(engine, "academic_periods", "parent_id", "VARCHAR(36)"):
+        changes.append("academic_periods.parent_id")
+    for name, sql in (
+        ("course_type", "VARCHAR(30) DEFAULT 'required'"),
+        ("credit_hours", "INTEGER"),
+        ("theory_hours", "INTEGER"),
+        ("practical_hours", "INTEGER"),
+        ("prerequisites", "TEXT"),
+    ):
+        if add_column_if_missing(engine, "courses", name, sql):
+            changes.append(f"courses.{name}")
+    return changes
+
+
 def run_migrations(engine: Engine) -> list[str]:
     changes = migrate_agent_conversation_memory(engine)
     changes.extend(migrate_agent_memory_scopes(engine))
     changes.extend(migrate_teacher_agent_course(engine))
+    changes.extend(migrate_academic_structure(engine))
     return changes
