@@ -20,7 +20,8 @@ def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
     main_agent = db.scalar(
         select(Agent).where(
             Agent.slug == "tofan-main",
-            Agent.kind == AgentKind.ORCHESTRATOR,\n            Agent.status == AgentStatus.ACTIVE,
+            Agent.kind == AgentKind.ORCHESTRATOR,
+            Agent.status == AgentStatus.ACTIVE,
         )
     )
     if main_agent is None:
