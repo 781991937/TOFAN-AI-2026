@@ -153,6 +153,7 @@ def migrate_curriculum_assessments(engine: Engine) -> list[str]:
 def migrate_content_files(engine: Engine) -> list[str]:
     changes: list[str] = []
     for name, sql in (
+        ("teaching_agent_id", "VARCHAR(36)"),
         ("extracted_text", "TEXT"),
         ("size_bytes", "INTEGER"),
         ("page_count", "INTEGER"),
