@@ -49,7 +49,7 @@ def record_assessment_progress(
         row.status = "completed" if passed else "remediation"
         if passed:
             row.completed_at = row.completed_at or datetime.utcnow()
-    if not passed and lesson_id:
+    if not passed:
         weak = db.scalar(select(LearningWeakPoint).where(
             LearningWeakPoint.user_id == user_id,
             LearningWeakPoint.course_id == course_id,
