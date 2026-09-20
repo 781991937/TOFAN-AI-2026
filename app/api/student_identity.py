@@ -335,10 +335,13 @@ def confirm_payment(
     transaction = db.get(PaymentTransaction, transaction_id)
     if transaction is None:
         raise HTTPException(status_code=404, detail="Payment transaction not found.")
-    if transaction.product_key != "global_curriculum":
+    if not (
+        transaction.product_key == "global_curriculum"
+        or transaction.product_key.startswith("academy_course:")
+    ):
         raise HTTPException(
             status_code=409,
-            detail="This confirmation endpoint is only for global curriculum payments.",
+            detail="Unsupported payment product.",
         )
 
     try:
