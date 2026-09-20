@@ -15,6 +15,11 @@ from app.agents.runtime import AgentRuntime, AgentRuntimeError
 from app.agents.teaching_policy import TeachingAccessError, consume_response_chars, remaining_response_chars, get_or_create_usage, record_understanding_check, confirm_student_understanding
 from app.agents.service import AgentError, AgentService
 from app.agents.mastery import evaluate_student_answer, is_explicit_confirmation
+from app.agents.assessment_generator import generate_assessment_questions
+from app.db.assessment_question_models import CurriculumAssessmentQuestion
+from app.db.assessment_models import CurriculumAssessmentAttempt
+from app.db.curriculum_models import CourseAssessment
+import json
 from app.agents.tools import build_default_registry
 from app.auth.dependencies import get_current_user, get_db
 from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumStage, CurriculumUnit, LearningOutcome, CoursePrerequisite
@@ -120,7 +125,71 @@ def chat_with_teacher(
                 )
                 memory_context += mastery_context
             else:
-                memory_context += "\n\nالطالب أكمل جميع خطوات هذا المقرر. لا تنشئ خطوات جديدة خارج المنهج."
+                assessment = db.scalar(select(CourseAssessment).where(
+                    CourseAssessment.course_id == course.id,
+                    CourseAssessment.assessment_type == "course",
+                ))
+                passed_attempt = None
+                if assessment is not None:
+                    passed_attempt = db.scalar(select(CurriculumAssessmentAttempt).where(
+                        CurriculumAssessmentAttempt.user_id == actor.id,
+                        CurriculumAssessmentAttempt.assessment_id == assessment.id,
+                        CurriculumAssessmentAttempt.passed.is_(True),
+                    ))
+                if assessment is not None and passed_attempt is None:
+                    questions = db.scalars(select(CurriculumAssessmentQuestion).where(
+                        CurriculumAssessmentQuestion.assessment_id == assessment.id
+                    ).order_by(CurriculumAssessmentQuestion.position)).all()
+                    if not questions:
+                        try:
+                            generated = generate_assessment_questions(
+                                db=db,
+                                course=course,
+                                provider=build_configured_provider(),
+                                question_count=20,
+                            )
+                            for q in generated:
+                                db.add(CurriculumAssessmentQuestion(
+                                    assessment_id=assessment.id,
+                                    position=q.position,
+                                    question_type=q.question_type,
+                                    prompt=q.prompt,
+                                    options_json=json.dumps(q.options, ensure_ascii=False),
+                                    correct_answer=q.correct_answer,
+                                    explanation=q.explanation,
+                                    points=q.points,
+                                ))
+                            db.commit()
+                            questions = db.scalars(select(CurriculumAssessmentQuestion).where(
+                                CurriculumAssessmentQuestion.assessment_id == assessment.id
+                            ).order_by(CurriculumAssessmentQuestion.position)).all()
+                        except Exception as exc:
+                            db.rollback()
+                            raise HTTPException(status_code=502, detail="Unable to generate the course assessment.") from exc
+                    return {
+                        "kind": "course_assessment_required",
+                        "content": "أكملت جميع خطوات المقرر. تم فتح اختبار المقرر. أجب عن جميع الأسئلة ثم أرسل الإجابات للتصحيح.",
+                        "output": "أكملت جميع خطوات المقرر. تم فتح اختبار المقرر. أجب عن جميع الأسئلة ثم أرسل الإجابات للتصحيح.",
+                        "conversation_id": conversation.id,
+                        "assessment": {
+                            "id": assessment.id,
+                            "title": assessment.title,
+                            "pass_percentage": assessment.pass_percentage,
+                            "question_count": len(questions),
+                            "questions": [
+                                {
+                                    "id": q.id,
+                                    "position": q.position,
+                                    "type": q.question_type,
+                                    "prompt": q.prompt,
+                                    "options": json.loads(q.options_json),
+                                    "points": q.points,
+                                }
+                                for q in questions
+                            ],
+                        },
+                    }
+                memory_context += "\n\nالطالب أكمل جميع خطوات هذا المقرر واجتاز اختبار المقرر. لا تنشئ خطوات جديدة خارج المنهج."
         elif agent.teacher_course_id:
             memory_context = (memory_context + "\n\n" if memory_context else "") + "Assigned legacy course ID: " + agent.teacher_course_id
 
