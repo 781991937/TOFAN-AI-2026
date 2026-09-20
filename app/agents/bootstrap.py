@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .models import Agent, AgentKind, AgentStatus
+from .models import Agent, AgentKind, AgentStatus, AgentTool
 
 
 MAIN_AGENT_SLUG = "tofan-main"
@@ -33,7 +33,7 @@ def ensure_main_agent(db: Session) -> Agent:
         kind=AgentKind.ORCHESTRATOR,
         status=AgentStatus.DRAFT,
         description="General orchestration agent for TOFAN Smart Academy.",
-        system_prompt=DEFAULT_MAIN_AGENT_PROMPT,
+        system_prompt=DEFAULT_MAIN_AGENT_PROMPT + """\n\nYou are the central authority for approved manager tools. You may inspect teacher agents, provision TOFAN-native teachers, change teacher status, and receive assessment results. Use these tools only for their stated operational purpose and never fabricate identifiers or confirmations.""",
         memory_enabled=True,
     )
     db.add(agent)
