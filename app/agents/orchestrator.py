@@ -1,6 +1,7 @@
 """Main Agent orchestration with model-driven tool selection."""
 
 from dataclasses import dataclass
+from collections.abc import Callable
 import json
 
 from sqlalchemy import select
@@ -25,8 +26,10 @@ class AgentDecision:
 
 class MainAgentOrchestrator:
     def __init__(self, runtime: AgentRuntime, service: AgentService,
-                 provider: AIProvider | None = None, registry: ToolRegistry | None = None) -> None:
+                 provider: AIProvider | None = None, registry: ToolRegistry | None = None,
+                 tool_input_guard: Callable[[Session, Agent, str, dict], None] | None = None) -> None:
         self.runtime, self.service, self.provider, self.registry = runtime, service, provider, registry
+        self.tool_input_guard = tool_input_guard
 
     def decide(self, db: Session, agent: Agent, user_text: str) -> AgentDecision:
         text, lowered = user_text.strip(), user_text.strip().casefold()
@@ -61,6 +64,8 @@ class MainAgentOrchestrator:
                 payload = json.loads(call["arguments"] or "{}")
             except json.JSONDecodeError as exc:
                 raise AgentProviderError("Model returned invalid tool arguments.") from exc
+            if self.tool_input_guard:
+                self.tool_input_guard(db, agent, call["name"], payload)
             run = self.runtime.execute_tool(db, agent, call["name"], json.dumps(payload, ensure_ascii=False), actor_user_id=actor_user_id)
             outputs.append({"call_id": call["call_id"], "output": run.output_text})
 
