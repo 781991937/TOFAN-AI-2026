@@ -138,10 +138,12 @@ def run_migrations(engine: Engine) -> list[str]:
 def migrate_curriculum_assessments(engine: Engine) -> list[str]:
     """Create assessment tables on existing installations without Alembic."""
     from app.db.assessment_models import CurriculumAssessmentAttempt, AssessmentResultReport
+    from app.db.assessment_question_models import CurriculumAssessmentQuestion
     # Table creation is idempotent and uses the canonical SQLAlchemy metadata.
     from app.db.base import Base
     Base.metadata.create_all(bind=engine, tables=[
         CurriculumAssessmentAttempt.__table__,
         AssessmentResultReport.__table__,
+        CurriculumAssessmentQuestion.__table__,
     ])
     return []
