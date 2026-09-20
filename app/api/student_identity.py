@@ -62,8 +62,10 @@ def _academic_unit(
     ):
         raise HTTPException(
             status_code=409,
-            detail=f"The selected {expected_type} is not currently available. "
-                   "The {expected_type} is under construction.",
+            detail=(
+                f"The selected {expected_type} is not currently available. "
+                f"The {expected_type} is under construction."
+            ),
         )
     return unit
 
@@ -223,6 +225,13 @@ def request_payment(
     db: Session = Depends(get_db),
     actor: User = Depends(get_current_user),
 ):
+    profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == actor.id))
+    if profile is None or profile.profile_status != ProfileStatus.VERIFIED:
+        raise HTTPException(
+            status_code=409,
+            detail="Complete profile verification before requesting global curriculum access.",
+        )
+
     transaction = PaymentTransaction(
         user_id=actor.id,
         product_key=payload.product_key,
@@ -248,6 +257,15 @@ def confirm_payment(
     db: Session = Depends(get_db),
     _: list = Depends(require_owner_or_admin),
 ):
+    transaction = db.get(PaymentTransaction, transaction_id)
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Payment transaction not found.")
+    if transaction.product_key != "global_curriculum":
+        raise HTTPException(
+            status_code=409,
+            detail="This confirmation endpoint is only for global curriculum payments.",
+        )
+
     try:
         result = confirm_payment_transaction(db, transaction_id)
     except ValueError as exc:
