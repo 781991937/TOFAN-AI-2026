@@ -14,11 +14,13 @@ from .migrations import run_migrations
 from app.auth.models import UserRole
 from app.agents.models import Agent, AgentRun, AgentTool
 from app.agents.memory import AgentConversation, AgentMemoryItem, AgentMemoryPermission, AgentMessageRecord
+from scripts.seed_tofan_curriculum import seed as seed_tofan_curriculum
 
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     run_migrations(engine)
+    seed_tofan_curriculum()
 
 
 if __name__ == "__main__":
