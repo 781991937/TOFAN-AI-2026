@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.agents.models import Agent, AgentKind, AgentStatus
 from app.agents.teaching_policy import grant_paid_global_access
 from app.db.identity_models import PaymentStatus, PaymentTransaction
-from app.db.models import AuditLog, Entitlement, TeachingAccess
+from app.db.models import AuditLog, Entitlement, TeachingAccess, Lecture, Unit
 
 
 def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
@@ -42,6 +42,46 @@ def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
     transaction.status = PaymentStatus.CONFIRMED
     transaction.confirmed_by_agent_id = main_agent.id
     transaction.confirmed_at = datetime.utcnow()
+
+    if transaction.product_key.startswith("academy_course:"):
+        course_id = transaction.product_key.split(":", 1)[1].strip()
+        if not course_id:
+            raise ValueError("academy_course payment requires a course id.")
+        lecture_ids = db.scalars(
+            select(Lecture.id)
+            .join(Unit, Lecture.unit_id == Unit.id)
+            .where(Unit.course_id == course_id)
+        ).all()
+        if not lecture_ids:
+            raise ValueError("Academy course not found or has no lectures.")
+        for lecture_id in lecture_ids:
+            existing = db.scalar(select(Entitlement).where(
+                Entitlement.user_id == transaction.user_id,
+                Entitlement.lecture_id == lecture_id,
+                Entitlement.access_type == TeachingAccess.PAID.value,
+            ))
+            if existing is None:
+                db.add(Entitlement(
+                    user_id=transaction.user_id,
+                    lecture_id=lecture_id,
+                    access_type=TeachingAccess.PAID.value,
+                ))
+        db.add(AuditLog(
+            user_id=transaction.user_id,
+            action="payment.confirmed",
+            resource_type="academy_course_access",
+            resource_id=course_id,
+            details=json.dumps({"product_key": transaction.product_key, "confirmed_by_agent_id": main_agent.id}, ensure_ascii=False),
+        ))
+        db.flush()
+        return {
+            "transaction_id": transaction.id,
+            "status": transaction.status.value,
+            "access": "academy_course_active",
+            "course_id": course_id,
+            "user_id": transaction.user_id,
+            "confirmed_by_agent_id": main_agent.id,
+        }
 
     existing = db.scalar(
         select(Entitlement).where(
