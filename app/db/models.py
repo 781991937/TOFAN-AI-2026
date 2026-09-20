@@ -190,6 +190,19 @@ class UserCredential(Base):
     secret_hash: Mapped[str | None] = mapped_column(Text)
 
 
+class PasskeyChallenge(Base):
+    __tablename__ = "passkey_challenges"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"))
+    purpose: Mapped[str] = mapped_column(String(40), nullable=False)
+    state_json: Mapped[str] = mapped_column(Text, nullable=False)
+    device_id: Mapped[str | None] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class BiometricCredentialRecord(Base):
     __tablename__ = "biometric_credentials"
 
