@@ -42,7 +42,7 @@ table{width:100%;border-collapse:collapse;min-width:800px}th,td{padding:12px;bor
 <button onclick="provisionTeacher()">إنشاء مدرس للمقرر</button></div>
 <div id="teachers"></div></div></section>
 
-<section><div class="section-title">الطلاب</div><div id="students" class="table-wrap"></div></section><div id="studentModal" class="modal" onclick="if(event.target===this)closeStudent()"><div class="modal-card"><div class="modal-head"><div><h2 id="studentTitle">تفاصيل الطالب</h2><div id="studentState" class="sub">—</div></div><button class="modal-close" onclick="closeStudent()">إغلاق</button></div><div id="studentDetails"></div></div></div>
+<section><div class="section-title">الطلاب</div><div style="padding:14px;display:flex;gap:10px;flex-wrap:wrap"><input id="studentSearch" placeholder="ابحث بالاسم أو البريد أو الهاتف" style="flex:1;min-width:240px;padding:10px;border-radius:8px;background:#181818;color:#fff;border:1px solid #333"><button onclick="loadStudents()">بحث</button></div><div id="students" class="table-wrap"></div></section><div id="studentModal" class="modal" onclick="if(event.target===this)closeStudent()"><div class="modal-card"><div class="modal-head"><div><h2 id="studentTitle">تفاصيل الطالب</h2><div id="studentState" class="sub">—</div></div><button class="modal-close" onclick="closeStudent()">إغلاق</button></div><div id="studentDetails"></div></div></div>
 <section><div class="section-title">الاختبارات</div><div id="assessments" class="table-wrap"></div></section>
 <section><div class="section-title">المدفوعات</div><div id="payments" class="table-wrap"></div></section>
 <section><div class="section-title">آخر أحداث التدقيق</div><div id="audit" class="table-wrap"></div></section>
@@ -55,9 +55,9 @@ async function get(path){const r=await fetch(path,{credentials:"same-origin"});i
 async function load(){
  document.getElementById("state").textContent="جاري التحديث...";
  try{
-  const [d,a,p,l,t,s,c]=await Promise.all([
+  const studentQuery=encodeURIComponent(document.getElementById("studentSearch")?.value||"");\n  const [d,a,p,l,t,s,c]=await Promise.all([
    get("/manager/dashboard"),get("/manager/assessments?limit=10"),get("/manager/payments?limit=10"),
-   get("/manager/audit-log?limit=10"),get("/manager/teachers"),get("/manager/students?limit=10"),get("/manager/courses")
+   get("/manager/audit-log?limit=10"),get("/manager/teachers"),get("/manager/students?limit=10&q="+studentQuery),get("/manager/courses")
   ]);
   const cards=[
    ["المستخدمون",d.users.total],["طلاب الجامعات",d.users.university_students],["المتعلمون المستقلون",d.users.independent_learners],
@@ -74,6 +74,14 @@ async function load(){
   document.getElementById("state").textContent="تم التحديث بنجاح";
  }catch(e){document.getElementById("state").textContent="تعذر تحميل البيانات: "+e.message}
 }
+async function loadStudents(){
+ const q=encodeURIComponent(document.getElementById("studentSearch")?.value||"");
+ try{
+  const s=await get("/manager/students?limit=10&q="+q);
+  document.getElementById("students").innerHTML=table(["الاسم","النوع","الحالة","التحقق","التاريخ","إجراء"],s.students.map(x=>[x.name,x.user_type,x.profile_status,x.biometric_verified?"نعم":"لا",x.updated_at,"__HTML__<button onclick="viewStudent('"+x.user_id+"')">عرض</button>"]));
+ }catch(e){document.getElementById("state").textContent="تعذر البحث: "+e.message}
+}
+
 async function viewStudent(id){
  document.getElementById("studentModal").classList.add("open");
  document.getElementById("studentState").textContent="جاري تحميل ملف الطالب...";
