@@ -11,11 +11,14 @@ from app.agents.models import Agent, AgentKind, AgentStatus
 from app.agents.orchestrator import MainAgentOrchestrator
 from app.agents.providers import AgentMessage
 from app.agents.runtime import AgentRuntime, AgentRuntimeError
-from app.agents.teaching_policy import TeachingAccessError, consume_response_chars, remaining_response_chars
+from app.agents.teaching_policy import TeachingAccessError, consume_response_chars, remaining_response_chars, get_or_create_usage
 from app.agents.service import AgentError, AgentService
 from app.agents.tools import build_default_registry
 from app.auth.dependencies import get_current_user, get_db
-from app.db.models import TeachingSource, User
+from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumStage, CurriculumUnit, LearningOutcome, CoursePrerequisite
+from app.db.identity_models import StudentProfile
+from app.db.models import Entitlement, TeachingSource, User
+from app.agents.payment_tools import confirm_payment_transaction
 
 
 def teacher_tool_guard(db, agent, tool_name, payload):
@@ -63,7 +66,32 @@ def chat_with_teacher(
         history = [AgentMessage(role=m.role, content=m.content) for m in previous]
         memory_context = build_memory_context(conversation, previous)
         if agent.curriculum_course_id:
-            memory_context = (memory_context + "\n\n" if memory_context else "") + "Assigned TOFAN curriculum course ID: " + agent.curriculum_course_id
+            course = db.get(CurriculumCourse, agent.curriculum_course_id)
+            if course is None or not course.is_active:
+                raise HTTPException(status_code=404, detail="TOFAN curriculum course is not available.")
+            stage = db.get(CurriculumStage, course.stage_id)
+            outcomes = db.scalars(
+                __import__("sqlalchemy", fromlist=["select"]).select(LearningOutcome)
+                .where(LearningOutcome.course_id == course.id)
+                .order_by(LearningOutcome.position)
+            ).all()
+            units = db.scalars(
+                __import__("sqlalchemy", fromlist=["select"]).select(CurriculumUnit)
+                .where(CurriculumUnit.course_id == course.id)
+                .order_by(CurriculumUnit.position)
+            ).all()
+            prerequisites = db.scalars(
+                __import__("sqlalchemy", fromlist=["select"]).select(CoursePrerequisite)
+                .where(CoursePrerequisite.course_id == course.id)
+            ).all()
+            native_context = (
+                f"مقرر TOFAN: {course.code} — {course.name}\n"
+                f"المرحلة: {stage.name if stage else 'غير محددة'}\n"
+                f"الوحدات: " + ("؛ ".join(x.title for x in units) if units else "لا توجد وحدات مسجلة") + "\n"
+                f"مخرجات التعلم: " + ("؛ ".join(x.statement for x in outcomes) if outcomes else "غير محددة") + "\n"
+                f"المتطلبات السابقة: {len(prerequisites)} مقرر"
+            )
+            memory_context = (memory_context + "\n\n" if memory_context else "") + native_context
         elif agent.teacher_course_id:
             memory_context = (memory_context + "\n\n" if memory_context else "") + "Assigned legacy course ID: " + agent.teacher_course_id
 
@@ -75,6 +103,23 @@ def chat_with_teacher(
                 memory_context = structured + "\n\n" + memory_context
         except RuntimeError:
             pass
+
+        if payload.source == TeachingSource.GLOBAL_CURRICULUM:
+            usage = get_or_create_usage(
+                db, user_id=actor.id, agent_id=agent.id,
+                source=TeachingSource.GLOBAL_CURRICULUM,
+            )
+            entitlement = db.scalar(
+                __import__("sqlalchemy", fromlist=["select"]).select(Entitlement).where(
+                    Entitlement.user_id == actor.id,
+                    Entitlement.access_type == TeachingSource.GLOBAL_CURRICULUM.value,
+                )
+            )
+            if not usage.paid_access or entitlement is None:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Global Curriculum access requires confirmed payment by the TOFAN main manager.",
+                )
 
         remaining = remaining_response_chars(
             db, user_id=actor.id, agent_id=agent.id,
@@ -98,7 +143,7 @@ def chat_with_teacher(
             result["output"] = content
             consume_response_chars(
                 db, user_id=actor.id, agent_id=agent.id,
-                source=__import__("app.db.models", fromlist=["TeachingSource"]).TeachingSource.STUDENT_FILES,
+                source=payload.source,
                 characters=len(content),
             )
             append_message(db, conversation.id, "assistant", content)
