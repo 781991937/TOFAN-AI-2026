@@ -50,13 +50,16 @@ class AgentRuntime:
         db.flush()
 
         try:
-            output = tool.handler(input_text)
+            output = tool.handler(db, input_text)
             run.status = "completed"
             run.output_text = output
             run.completed_at = datetime.utcnow()
             db.commit()
             db.refresh(run)
             return run
+        except ToolExecutionError:
+            db.rollback()
+            raise
         except Exception as exc:
             db.rollback()
             raise ToolExecutionError("Tool execution failed.") from exc
