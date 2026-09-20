@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.agents.memory import append_message, get_or_create_conversation, recent_messages
+from app.agents.memory import append_message, build_memory_context, get_or_create_conversation, recent_messages
 from app.agents.orchestrator import MainAgentOrchestrator
 from app.agents.providers import AgentMessage
 from app.agents.runtime import AgentRuntime, AgentRuntimeError
@@ -15,9 +15,7 @@ from app.auth.dependencies import get_current_user, get_db
 from app.db.models import User
 
 router = APIRouter(prefix="/admin/agent", tags=["admin-agent"])
-_registry = build_default_registry()
-_runtime = AgentRuntime(_registry)
-_service = AgentService()
+_registry, _runtime, _service = build_default_registry(), AgentRuntime(build_default_registry()), AgentService()
 _orchestrator = MainAgentOrchestrator(_runtime, _service, registry=_registry)
 
 
@@ -31,9 +29,11 @@ def chat_with_main_agent(payload: AgentChatRequest, db: Session = Depends(get_db
     try:
         agent = _service.get_active(db, "tofan-main")
         conversation = get_or_create_conversation(db, agent.id, actor.id)
-        history = [AgentMessage(role=m.role, content=m.content) for m in recent_messages(db, conversation.id)]
+        previous = recent_messages(db, conversation.id)
+        history = [AgentMessage(role=m.role, content=m.content) for m in previous]
+        memory_context = build_memory_context(conversation, previous)
         append_message(db, conversation.id, "user", payload.message)
-        result = _orchestrator.run(db, agent, actor.id, payload.message, history=history)
+        result = _orchestrator.run(db, agent, actor.id, payload.message, history=history, memory_context=memory_context)
         assistant_content = result.get("content") or result.get("output") or ""
         if assistant_content:
             append_message(db, conversation.id, "assistant", assistant_content)
