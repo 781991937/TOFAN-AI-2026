@@ -1,65 +1,62 @@
-"""Teaching access and mastery rules for TOFAN teacher agents.
+"""TOFAN teaching quotas, exams, and mastery policy."""
 
-The limits are product policy, not prompt instructions:
-- Student-file teaching: 3 uploaded files per student/teacher.
-- Global curriculum teaching: 5 completed free steps before paid access.
-- A step is completed only when the teacher has verified understanding and the
-  student has explicitly confirmed understanding.
-"""
-
+from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
     Agent,
     ContentFile,
+    TeachingAssessment,
+    TeachingAssessmentReport,
     TeachingSource,
     TeachingStep,
     TeachingStepStatus,
     TeachingUsage,
 )
 
-
 class TeachingAccessError(ValueError):
     pass
 
-
 STUDENT_FILE_LIMIT = 3
-GLOBAL_FREE_STEP_LIMIT = 5
+DAILY_RESPONSE_CHAR_LIMIT = 2000
+PAID_GLOBAL_RESPONSE_CHAR_LIMIT = 2000
 
 
 def get_or_create_usage(db: Session, user_id: str, agent_id: str, source: TeachingSource) -> TeachingUsage:
-    usage = db.scalar(
-        select(TeachingUsage).where(
-            TeachingUsage.user_id == user_id,
-            TeachingUsage.agent_id == agent_id,
-            TeachingUsage.source == source,
-        )
-    )
+    usage = db.scalar(select(TeachingUsage).where(
+        TeachingUsage.user_id == user_id,
+        TeachingUsage.agent_id == agent_id,
+        TeachingUsage.source == source,
+    ))
     if usage is None:
         usage = TeachingUsage(
-            user_id=user_id,
-            agent_id=agent_id,
-            source=source,
+            user_id=user_id, agent_id=agent_id, source=source,
             files_limit=STUDENT_FILE_LIMIT,
-            free_steps_limit=GLOBAL_FREE_STEP_LIMIT,
+            response_chars_limit=DAILY_RESPONSE_CHAR_LIMIT,
         )
         db.add(usage)
         db.flush()
+    _reset_if_expired(usage)
     return usage
 
 
-def register_student_file(
-    db: Session,
-    *,
-    user_id: str,
-    agent_id: str,
-    content_file: ContentFile,
-) -> TeachingUsage:
-    """Reserve one of the three free student-file slots."""
+def _reset_if_expired(usage: TeachingUsage) -> None:
+    now = datetime.utcnow()
+    if usage.quota_started_at is None:
+        usage.quota_started_at = now
+        return
+    if now >= usage.quota_started_at + timedelta(hours=24):
+        usage.quota_started_at = now
+        usage.files_used = 0
+        usage.response_chars_used = 0
+        usage.free_steps_used = 0
+
+
+def register_student_file(db: Session, *, user_id: str, agent_id: str, content_file: ContentFile) -> TeachingUsage:
     usage = get_or_create_usage(db, user_id, agent_id, TeachingSource.STUDENT_FILES)
-    if usage.files_used >= usage.files_limit:
-        raise TeachingAccessError("The free student-file limit of 3 files has been reached.")
+    if usage.files_used >= STUDENT_FILE_LIMIT:
+        raise TeachingAccessError("The free student-file limit of 3 files for this 24-hour window has been reached.")
     usage.files_used += 1
     content_file.uploaded_by_user_id = user_id
     content_file.teaching_source = TeachingSource.STUDENT_FILES
@@ -67,59 +64,43 @@ def register_student_file(
     return usage
 
 
-def global_free_access_remaining(
-    db: Session, *, user_id: str, agent_id: str
-) -> int:
-    usage = get_or_create_usage(db, user_id, agent_id, TeachingSource.GLOBAL_CURRICULUM)
-    if usage.paid_access:
-        return 0
-    return max(0, usage.free_steps_limit - usage.free_steps_used)
-
-
-def start_step(
-    db: Session,
-    *,
-    user_id: str,
-    agent_id: str,
-    source: TeachingSource,
-    scope_key: str,
-    position: int,
-) -> TeachingStep:
+def remaining_response_chars(db: Session, *, user_id: str, agent_id: str, source: TeachingSource) -> int:
     usage = get_or_create_usage(db, user_id, agent_id, source)
-    if source == TeachingSource.GLOBAL_CURRICULUM and not usage.paid_access:
-        if usage.free_steps_used >= usage.free_steps_limit:
-            raise TeachingAccessError(
-                "The free global curriculum limit of 5 completed steps has been reached."
-            )
+    return max(0, usage.response_chars_limit - usage.response_chars_used)
 
-    step = db.scalar(
-        select(TeachingStep).where(
-            TeachingStep.user_id == user_id,
-            TeachingStep.agent_id == agent_id,
-            TeachingStep.source == source,
-            TeachingStep.scope_key == scope_key,
-            TeachingStep.position == position,
-        )
+
+def consume_response_chars(db: Session, *, user_id: str, agent_id: str, source: TeachingSource, characters: int) -> int:
+    if characters < 0:
+        raise TeachingAccessError("Character usage cannot be negative.")
+    usage = get_or_create_usage(db, user_id, agent_id, source)
+    limit = DAILY_RESPONSE_CHAR_LIMIT if source == TeachingSource.STUDENT_FILES else (
+        PAID_GLOBAL_RESPONSE_CHAR_LIMIT if usage.paid_access else DAILY_RESPONSE_CHAR_LIMIT
     )
+    usage.response_chars_limit = limit
+    if usage.response_chars_used + characters > limit:
+        raise TeachingAccessError(f"Daily response limit of {limit} characters has been reached.")
+    usage.response_chars_used += characters
+    db.flush()
+    return max(0, limit - usage.response_chars_used)
+
+
+def start_step(db: Session, *, user_id: str, agent_id: str, source: TeachingSource, scope_key: str, position: int) -> TeachingStep:
+    step = db.scalar(select(TeachingStep).where(
+        TeachingStep.user_id == user_id, TeachingStep.agent_id == agent_id,
+        TeachingStep.source == source, TeachingStep.scope_key == scope_key,
+        TeachingStep.position == position,
+    ))
     if step is None:
         step = TeachingStep(
-            user_id=user_id,
-            agent_id=agent_id,
-            source=source,
-            scope_key=scope_key,
-            position=position,
+            user_id=user_id, agent_id=agent_id, source=source,
+            scope_key=scope_key, position=position,
         )
         db.add(step)
         db.flush()
     return step
 
 
-def record_understanding_check(
-    db: Session,
-    *,
-    step_id: str,
-    verified: bool,
-) -> TeachingStep:
+def record_understanding_check(db: Session, *, step_id: str, verified: bool) -> TeachingStep:
     step = db.get(TeachingStep, step_id)
     if step is None:
         raise TeachingAccessError("Teaching step not found.")
@@ -129,12 +110,7 @@ def record_understanding_check(
     return step
 
 
-def confirm_student_understanding(
-    db: Session,
-    *,
-    step_id: str,
-    confirmed: bool,
-) -> TeachingStep:
+def confirm_student_understanding(db: Session, *, step_id: str, confirmed: bool) -> TeachingStep:
     step = db.get(TeachingStep, step_id)
     if step is None:
         raise TeachingAccessError("Teaching step not found.")
@@ -145,26 +121,39 @@ def confirm_student_understanding(
         db.flush()
         return step
     if not step.understanding_verified:
-        raise TeachingAccessError(
-            "The student cannot complete the step until the teacher verifies understanding."
-        )
+        raise TeachingAccessError("The student cannot complete the step until the teacher verifies understanding.")
     step.student_confirmed = True
     step.status = TeachingStepStatus.COMPLETED
-    from datetime import datetime
     step.completed_at = datetime.utcnow()
-
-    if step.source == TeachingSource.GLOBAL_CURRICULUM:
-        usage = get_or_create_usage(
-            db, step.user_id, step.agent_id, TeachingSource.GLOBAL_CURRICULUM
-        )
-        if not usage.paid_access:
-            usage.free_steps_used += 1
     db.flush()
     return step
+
+
+def record_exam_result(
+    db: Session, *, user_id: str, agent_id: str, content_file_id: str,
+    score: float, max_score: float, passed: bool,
+) -> TeachingAssessment:
+    if max_score <= 0 or score < 0 or score > max_score:
+        raise TeachingAccessError("Invalid exam score.")
+    result = TeachingAssessment(
+        user_id=user_id, agent_id=agent_id, content_file_id=content_file_id,
+        score=score, max_score=max_score,
+        percentage=(score / max_score) * 100,
+        passed=passed,
+    )
+    db.add(result)
+    db.flush()
+    db.add(TeachingAssessmentReport(assessment_id=result.id, status="pending"))
+    # Completing an exam consumes the student's file-teaching free cycle.
+    usage = get_or_create_usage(db, user_id, agent_id, TeachingSource.STUDENT_FILES)
+    usage.files_used = max(usage.files_used, usage.files_limit)
+    db.flush()
+    return result
 
 
 def grant_paid_global_access(db: Session, *, user_id: str, agent_id: str) -> TeachingUsage:
     usage = get_or_create_usage(db, user_id, agent_id, TeachingSource.GLOBAL_CURRICULUM)
     usage.paid_access = True
+    usage.response_chars_limit = PAID_GLOBAL_RESPONSE_CHAR_LIMIT
     db.flush()
     return usage
