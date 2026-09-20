@@ -42,6 +42,7 @@ class Agent(Base):
     model_name: Mapped[str | None] = mapped_column(String(150))
     memory_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     teacher_course_id: Mapped[str | None] = mapped_column(ForeignKey("courses.id"))
+    teacher_institution_id: Mapped[str | None] = mapped_column(ForeignKey("institutions.id"))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
