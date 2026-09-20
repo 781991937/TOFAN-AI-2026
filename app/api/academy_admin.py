@@ -16,6 +16,7 @@ class InstitutionCreate(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     code: str | None = Field(default=None, max_length=100)
     description: str | None = None
+    organization_type: str = Field(default="university", max_length=30)
 
 
 class AcademicUnitCreate(BaseModel):
@@ -44,6 +45,7 @@ class CourseCreate(BaseModel):
     theory_hours: int | None = Field(default=None, ge=0)
     practical_hours: int | None = Field(default=None, ge=0)
     prerequisites: str | None = None
+    learning_stage: str = Field(default="foundation", max_length=30)
 
 
 class UnitCreate(BaseModel):
@@ -249,7 +251,11 @@ def get_curriculum(
     db: Session = Depends(get_db),
     _: list = Depends(require_owner_or_admin),
 ):
-    """Return the curriculum tree: academic year -> semester -> courses."""
+    """Return the learning tree without requiring university years/semesters.
+
+    Academic periods are optional reference metadata. Native TOFAN learning is
+    organized primarily by learning_stage (foundation/level/track/project/elective).
+    """
     unit = db.get(AcademicUnit, academic_unit_id)
     if unit is None:
         raise HTTPException(status_code=404, detail="Academic unit not found.")
@@ -278,12 +284,29 @@ def get_curriculum(
         if course.academic_period_id in period_ids:
             courses_by_period.setdefault(course.academic_period_id, []).append(course)
 
+    stages: dict[str, list[Course]] = {}
+    for course in courses:
+        stages.setdefault(course.learning_stage, []).append(course)
+
     return {
         "academic_unit": {
             "id": unit.id,
             "name": unit.name,
             "unit_type": unit.unit_type,
         },
+        "learning_stages": {stage: [
+            {
+                "id": course.id,
+                "name": course.name,
+                "code": course.code,
+                "course_type": course.course_type,
+                "credit_hours": course.credit_hours,
+                "theory_hours": course.theory_hours,
+                "practical_hours": course.practical_hours,
+                "prerequisites": course.prerequisites,
+            }
+            for course in items
+        ] for stage, items in stages.items()},
         "periods": [
             {
                 "id": period.id,
