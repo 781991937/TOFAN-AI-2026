@@ -243,14 +243,6 @@ class MainManagerService:
             select(CurriculumCourse).where(CurriculumCourse.id.in_(course_ids))
         ).all() if course_ids else []
         course_map = {c.id: c for c in courses}
-        for teacher in teachers:
-            if teacher.curriculum_course_id:
-                teacher_map.setdefault(teacher.curriculum_course_id, []).append({
-                    "agent_id": teacher.id,
-                    "name": teacher.name,
-                    "slug": teacher.slug,
-                    "status": teacher.status,
-                })
 
         progress = []
         for step in steps:
