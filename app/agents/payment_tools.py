@@ -32,6 +32,7 @@ def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
             "transaction_id": transaction.id,
             "status": transaction.status.value,
             "global_access": "active",
+            "user_id": transaction.user_id,
             "idempotent": True,
         }
 
@@ -91,6 +92,7 @@ def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
         "transaction_id": transaction.id,
         "status": transaction.status.value,
         "global_access": "active",
+        "user_id": transaction.user_id,
         "confirmed_by_agent_id": main_agent.id,
     }
 
