@@ -48,6 +48,10 @@ class PaymentRequest(BaseModel):
 class PaymentConfirmation(BaseModel):
     transaction_id: str
 
+
+class PaymentRejection(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
 class PaymentAccountRequest(BaseModel):
     provider_name: str = Field(min_length=2, max_length=100)
     account_name: str | None = Field(default=None, max_length=255)
@@ -509,5 +513,25 @@ def confirm_payment(
         "payments.confirmed",
         transaction.user_id,
         {"resource_type": "payment_transaction", "resource_id": transaction_id, "transaction_id": transaction_id},
-    )
-    return result
+    )    return result
+
+
+@router.post("/payments/{transaction_id}/reject")
+def reject_payment(
+    transaction_id: str,
+    payload: PaymentRejection,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    transaction = db.get(PaymentTransaction, transaction_id)
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Payment transaction not found.")
+    if transaction.status != PaymentStatus.PENDING:
+        raise HTTPException(status_code=409, detail="Only pending payment transactions can be rejected.")
+    transaction.status = PaymentStatus.REJECTED
+    db.commit()
+    return {
+        "transaction_id": transaction.id,
+        "status": transaction.status,
+        "reason": payload.reason,
+    }
