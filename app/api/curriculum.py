@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_db
 from app.curriculum_registry import CurriculumError, get_curriculum, list_curricula, semester_courses
+from app.agents.models import Agent, AgentKind, AgentStatus
 from app.db.curriculum_models import (
     CoursePrerequisite, Curriculum, CurriculumCourse, CurriculumLesson,
     CurriculumProject, CurriculumStage, CurriculumUnit, ElectiveTrack,
@@ -63,6 +64,7 @@ def get_curriculum_course(course_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="TOFAN curriculum course not found.")
 
     stage = db.get(CurriculumStage, course.stage_id)
+    teacher = db.scalar(select(Agent).where(Agent.curriculum_course_id == course.id, Agent.kind == AgentKind.TEACHER, Agent.status == AgentStatus.ACTIVE))
     outcomes = db.scalars(select(LearningOutcome).where(LearningOutcome.course_id == course.id).order_by(LearningOutcome.position)).all()
     prerequisites = db.scalars(select(CoursePrerequisite).where(CoursePrerequisite.course_id == course.id)).all()
     units = db.scalars(select(CurriculumUnit).where(CurriculumUnit.course_id == course.id).order_by(CurriculumUnit.position)).all()
@@ -83,6 +85,8 @@ def get_curriculum_course(course_id: str, db: Session = Depends(get_db)):
         "id": course.id, "code": course.code, "name": course.name,
         "description": course.description, "course_type": course.course_type, "position": course.position,
         "stage": {"id": stage.id, "code": stage.code, "name": stage.name, "position": stage.position} if stage else None,
+        "access": {"tier": "free" if stage and stage.position == 1 else "paid"},
+        "teacher": {"available": teacher is not None, "slug": teacher.slug if teacher else None, "name": teacher.name if teacher else None},
         "outcomes": [x.statement for x in outcomes],
         "prerequisite_course_ids": [x.prerequisite_course_id for x in prerequisites],
         "units": result_units,
