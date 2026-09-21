@@ -54,6 +54,13 @@ def migrate_agent_memory_scopes(engine: Engine) -> list[str]:
     return changes
 
 
+def migrate_agent_workforce_roles(engine: Engine) -> list[str]:
+    changes: list[str] = []
+    if add_column_if_missing(engine, "agents", "role", "VARCHAR(50) DEFAULT 'operations'"):
+        changes.append("agents.role")
+    return changes
+
+
 def migrate_teacher_agent_course(engine: Engine) -> list[str]:
     changes: list[str] = []
     for name, sql in (
@@ -223,6 +230,7 @@ def run_migrations(engine: Engine) -> list[str]:
     changes.extend(migrate_payment_accounts(engine)
     changes.extend(migrate_agent_conversation_memory(engine)
     changes.extend(migrate_agent_memory_scopes(engine))
+    changes.extend(migrate_agent_workforce_roles(engine))
     changes.extend(migrate_teacher_agent_course(engine))
     changes.extend(migrate_academic_structure(engine))
     changes.extend(migrate_teaching_limits(engine))
