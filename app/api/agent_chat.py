@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.agents.memory import append_message, build_memory_context, get_or_create_conversation, recent_messages
+from app.agents.bootstrap import ensure_main_agent
+from app.agents.models import AgentStatus, AgentTool
 from app.agents.memory_service import ConversationMemoryService
 from app.agents.llm import build_configured_provider
 from app.agents.orchestrator import MainAgentOrchestrator
@@ -31,7 +33,14 @@ class AgentChatRequest(BaseModel):
 def chat_with_main_agent(payload: AgentChatRequest, db: Session = Depends(get_db),
                          actor: User = Depends(get_current_user), _: list = Depends(require_owner_or_admin)):
     try:
-        agent = _service.get_active(db, "tofan-main")
+        agent = ensure_main_agent(db)
+        if agent.status != AgentStatus.ACTIVE:
+            agent.status = AgentStatus.ACTIVE
+        enabled = {row.tool_name for row in db.query(AgentTool).filter(AgentTool.agent_id == agent.id).all()}
+        for tool_name in _registry.names():
+            if tool_name not in enabled:
+                db.add(AgentTool(agent_id=agent.id, tool_name=tool_name, enabled=True))
+        db.flush()
         conversation = get_or_create_conversation(db, agent.id, actor.id)
         previous = recent_messages(db, conversation.id)
         history = [AgentMessage(role=m.role, content=m.content) for m in previous]
