@@ -253,46 +253,50 @@ def manager_delegate_specialist_tool(db: Session, input_text: str) -> str:
         ).order_by(Agent.created_at))
     if agent is None:
         raise ToolExecutionError("Specialist agent could not be provisioned.")
-    from .llm import build_configured_provider
-    from .providers import AgentMessage
-    provider = build_configured_provider()
-    enabled = [
-        row.tool_name for row in db.scalars(
-            select(AgentTool).where(
-                AgentTool.agent_id == agent.id,
-                AgentTool.enabled.is_(True),
-            )
-        ).all()
-    ]
-    definitions = build_default_registry().openai_definitions(enabled)
+    from .orchestrator import MainAgentOrchestrator
+    from .runtime import AgentRuntime
+    from .service import AgentService
+
+    # Reuse the canonical orchestrator/runtime so delegated agents can execute
+    # their explicitly enabled tools under the same security boundary.
+    runtime = AgentRuntime(build_default_registry())
+    service = AgentService()
+    orchestrator = MainAgentOrchestrator(
+        runtime=runtime,
+        service=service,
+        registry=runtime.registry,
+    )
     run = AgentRun(
-        agent_id=agent.id, tool_name="workforce.delegate_task", status="running", input_text=task
+        agent_id=agent.id,
+        tool_name="workforce.delegate_task",
+        status="running",
+        input_text=task,
     )
     db.add(run)
     db.flush()
     try:
-        response = provider.generate(
-            [AgentMessage(role="user", content=task)],
-            system_prompt=agent.system_prompt,
-            tools=definitions,
+        result = orchestrator.run(
+            db,
+            agent,
+            actor_user_id=None,
+            user_text=task,
         )
         run.status = "completed"
-        run.output_text = response.content or json.dumps(
-            {"tool_calls": [x["name"] for x in response.tool_calls]}, ensure_ascii=False
-        )
-        from datetime import datetime
+        run.output_text = result.get("content") or json.dumps(result, ensure_ascii=False)
         run.completed_at = datetime.utcnow()
         db.commit()
-        return json.dumps({
-            "specialist_agent_id": agent.id,
-            "specialist_role": agent.role,
-            "status": "completed",
-            "response": response.content,
-        }, ensure_ascii=False)
+        return json.dumps(
+            {
+                "specialist_agent_id": agent.id,
+                "specialist_role": agent.role,
+                "status": "completed",
+                "result": result,
+            },
+            ensure_ascii=False,
+        )
     except Exception as exc:
         db.rollback()
         raise ToolExecutionError("Specialist delegation failed.") from exc
-
 
 def manager_provision_specialist_tool(db: Session, input_text: str) -> str:
     p = _payload(input_text)
