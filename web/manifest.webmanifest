@@ -1,0 +1,13 @@
+{
+  "name": "TOFAN Smart Academy",
+  "short_name": "TOFAN",
+  "description": "TOFAN Smart Academy academic learning platform.",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/web/",
+  "scope": "/web/",
+  "display": "standalone",
+  "background_color": "#070809",
+  "theme_color": "#070809",
+  "icons": []
+}
