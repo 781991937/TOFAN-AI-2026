@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from .llm import build_configured_provider
 from .memory import build_memory_context
-from .models import Agent, AgentTool
+from .models import Agent, AgentRole, AgentTool
 from .providers import AgentMessage, AgentProviderError, AIProvider, OpenAIResponsesProvider
 from .runtime import AgentRuntime
 from .service import AgentService
@@ -33,6 +33,32 @@ class MainAgentOrchestrator:
 
     def decide(self, db: Session, agent: Agent, user_text: str) -> AgentDecision:
         text, lowered = user_text.strip(), user_text.strip().casefold()
+        # Deterministic fallback routing mirrors the workforce map. It never
+        # bypasses runtime authorization; it only selects the specialist/tool.
+        if agent.role == AgentRole.GENERAL_MANAGER:
+            specialist_terms = {
+                AgentRole.FINANCE: ("دفع", "دفعة", "رسوم", "مالي", "مالية", "تحويل", "معاملة"),
+                AgentRole.STUDENT_AFFAIRS: ("طالب", "طلاب", "الطلاب", "شؤون", "ملف الطالب"),
+                AgentRole.ACADEMIC: ("منهج", "مناهج", "مقرر", "تخصص", "فصل", "سنة دراسية"),
+                AgentRole.CONTENT: ("محتوى", "ملف", "محاضرة", "درس", "وحدة"),
+                AgentRole.ASSESSMENT: ("اختبار", "تقييم", "درجة", "درجات", "محاولة", "امتحان"),
+                AgentRole.CERTIFICATES: ("شهادة", "شهادات", "تحقق من الشهادة"),
+                AgentRole.NOTIFICATIONS: ("إشعار", "إشعارات", "تنبيه", "إعلان"),
+                AgentRole.SECURITY: ("أمن", "أمان", "تدقيق", "سجل", "audit"),
+                AgentRole.RESEARCH: ("بحث", "مرجع", "CS2023", "CC2020", "دراسة"),
+                AgentRole.CAREER: ("وظيفة", "وظائف", "مسار مهني", "مهنة", "مهارات"),
+                AgentRole.QUALITY: ("جودة", "مراجعة جودة", "تدقيق محتوى"),
+                AgentRole.ADMISSIONS: ("قبول", "تسجيل", "متقدم", "التحاق"),
+                AgentRole.OPERATIONS: ("تشغيل", "حالة النظام", "لوحة", "عمليات"),
+            }
+            for role, terms in specialist_terms.items():
+                if any(term in lowered for term in terms):
+                    return AgentDecision(
+                        "tool",
+                        "manager.delegate_specialist",
+                        json.dumps({"role": role.value, "task": text}, ensure_ascii=False),
+                        f"Deterministic workforce routing selected {role.value}.",
+                    )
         if any(w in lowered for w in ("هيكل", "الهيكل", "الأقسام", "التخصصات", "الكليات", "الجامعة")):
             return AgentDecision("tool", "academy.structure", "", "The request asks about academy structure.")
         if any(w in lowered for w in ("ابحث", "بحث", "مادة", "محاضرة", "محاضرات", "مقرر", "دورة", "وحدة")):
@@ -70,8 +96,6 @@ class MainAgentOrchestrator:
             outputs.append({"call_id": call["call_id"], "output": run.output_text})
 
         if not isinstance(provider, OpenAIResponsesProvider):
-            return {"kind": "tool", "provider": first.provider, "model": first.model, "tool_calls": [c["name"] for c in first.tool_calls], "outputs": outputs}
-
             return {"kind": "tool", "provider": first.provider, "model": first.model, "tool_calls": [c["name"] for c in first.tool_calls], "outputs": outputs}
 
         # Keep the Responses API conversation alive for bounded multi-step tool use.
