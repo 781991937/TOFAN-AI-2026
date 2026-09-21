@@ -1,8 +1,12 @@
 """Student onboarding, biometric verification, and global-access payment flow."""
 
 from datetime import datetime
+import os
+from pathlib import Path
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -480,9 +484,72 @@ def request_payment(
         "amount": transaction.amount,
         "currency": transaction.currency,
         "reference": transaction.reference,
+        "proof_file_id": transaction.proof_file_id,
         "message": "Payment request recorded and awaiting confirmation.",
     }
 
+
+@router.post("/payments/{transaction_id}/proof", status_code=201)
+async def upload_payment_proof(
+    transaction_id: str,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    transaction = db.get(PaymentTransaction, transaction_id)
+    if transaction is None or transaction.user_id != actor.id:
+        raise HTTPException(status_code=404, detail="Payment transaction not found.")
+    if transaction.status != PaymentStatus.PENDING:
+        raise HTTPException(status_code=409, detail="Only pending payments can receive a proof.")
+    filename = (file.filename or "").strip()
+    suffix = Path(filename).suffix.lower()
+    allowed = {".jpg", ".jpeg", ".png", ".webp", ".pdf"}
+    if suffix not in allowed:
+        raise HTTPException(status_code=415, detail="Proof must be JPG, PNG, WEBP, or PDF.")
+    data = await file.read()
+    max_bytes = int(os.getenv("MAX_PAYMENT_PROOF_MB", "10")) * 1024 * 1024
+    if not data:
+        raise HTTPException(status_code=400, detail="The proof file is empty.")
+    if len(data) > max_bytes:
+        raise HTTPException(status_code=413, detail="The payment proof exceeds the allowed size.")
+    root = Path(os.getenv("TOFAN_UPLOAD_DIR", "data/uploads")) / actor.id / "payment-proofs"
+    root.mkdir(parents=True, exist_ok=True)
+    path = root / f"{uuid4().hex}{suffix}"
+    path.write_bytes(data)
+    proof = ContentFile(
+        original_name=filename,
+        storage_key=str(path),
+        mime_type=file.content_type,
+        status=ContentStatus.PRIVATE,
+        size_bytes=len(data),
+        uploaded_by_user_id=actor.id,
+        teaching_source=TeachingSource.STUDENT_FILES,
+    )
+    db.add(proof)
+    db.flush()
+    transaction.proof_file_id = proof.id
+    db.commit()
+    return {"transaction_id": transaction.id, "proof_file_id": proof.id, "proof_name": proof.original_name}
+
+@router.get("/payments/{transaction_id}/proof")
+def get_payment_proof(
+    transaction_id: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    transaction = db.get(PaymentTransaction, transaction_id)
+    if transaction is None or not (transaction.user_id == actor.id):
+        # Owner/admin can inspect through their authenticated dashboard.
+        try:
+            require_owner_or_admin([actor])
+        except Exception:
+            raise HTTPException(status_code=404, detail="Payment proof not found.")
+    if not transaction.proof_file_id:
+        raise HTTPException(status_code=404, detail="Payment proof not uploaded.")
+    proof = db.get(ContentFile, transaction.proof_file_id)
+    if proof is None or not Path(proof.storage_key).is_file():
+        raise HTTPException(status_code=404, detail="Payment proof file not found.")
+    return FileResponse(proof.storage_key, media_type=proof.mime_type, filename=proof.original_name)
 
 @router.post("/payments/{transaction_id}/confirm")
 def confirm_payment(
