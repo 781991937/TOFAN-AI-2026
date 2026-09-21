@@ -592,6 +592,29 @@ class MainManagerService:
         return {"agent_id": agent.id, "slug": agent.slug, "status": agent.status, "created": True}
 
     @staticmethod
+    def provision_all_teachers(db: Session) -> dict:
+        from app.db.curriculum_models import CurriculumCourse
+
+        courses = db.scalars(
+            select(CurriculumCourse)
+            .where(CurriculumCourse.is_active.is_(True))
+            .order_by(CurriculumCourse.position, CurriculumCourse.name)
+        ).all()
+        created = 0
+        reused = 0
+        for course in courses:
+            result = MainManagerService.provision_teacher(db, course.id)
+            if result["created"]:
+                created += 1
+            else:
+                reused += 1
+        return {
+            "total_courses": len(courses),
+            "teachers_created": created,
+            "teachers_reused": reused,
+        }
+
+    @staticmethod
     def set_teacher_status(db: Session, agent_id: str, status: AgentStatus) -> dict:
         agent = db.get(Agent, agent_id)
         if agent is None or agent.kind != AgentKind.TEACHER:
