@@ -17,19 +17,20 @@ router = APIRouter(prefix="/curriculum", tags=["curriculum"])
 
 @router.get("/registry/specialties")
 def list_registry_specialties():
-    return [
-        {
-            "specialty_id": item["specialty_id"],
-            "curriculum_id": item["curriculum_id"],
-            "name_ar": item["name_ar"],
-            "name_en": item["name_en"],
-            "description_ar": item.get("description_ar"),
-            "description_en": item.get("description_en"),
-            "years": item["years"],
-            "semesters_per_year": item["semesters_per_year"],
-        }
-        for item in list_curricula()
-    ]
+    result = []
+    for ref in list_curricula():
+        curriculum = get_curriculum(ref.specialty_id)
+        result.append({
+            "specialty_id": ref.specialty_id,
+            "curriculum_id": ref.curriculum_id,
+            "name_ar": curriculum.get("name_ar"),
+            "name_en": curriculum.get("name_en"),
+            "description_ar": curriculum.get("description_ar"),
+            "description_en": curriculum.get("description_en"),
+            "years": 4,
+            "semesters_per_year": 2,
+        })
+    return result
 
 
 @router.get("/registry/{specialty_id}")
