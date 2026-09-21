@@ -201,6 +201,41 @@ def academy_search_tool(db: Session, input_text: str) -> str:
     )
 
 
+
+def specialist_read_tool(db: Session, input_text: str, role: AgentRole) -> str:
+    """Run a fixed, read-only operational view for one specialist domain."""
+    p = _payload(input_text)
+    limit = min(max(int(p.get("limit", 25)), 1), 100)
+    offset = max(int(p.get("offset", 0)), 0)
+    query = str(p.get("query", "")).strip() or None
+    if role == AgentRole.ACADEMIC:
+        return json.dumps({"domain": "academic", "courses": MainManagerService.courses(db)["courses"][:limit]}, ensure_ascii=False)
+    if role == AgentRole.STUDENT_AFFAIRS:
+        return json.dumps({"domain": "student_affairs", **MainManagerService.students(db, limit, offset, query)}, ensure_ascii=False)
+    if role == AgentRole.FINANCE:
+        return json.dumps({"domain": "finance", **MainManagerService.payments(db, limit, offset)}, ensure_ascii=False)
+    if role == AgentRole.ASSESSMENT:
+        return json.dumps({"domain": "assessment", **MainManagerService.assessments(db, limit, offset)}, ensure_ascii=False)
+    if role == AgentRole.SECURITY:
+        return json.dumps({"domain": "security", **MainManagerService.audit_log(db, limit, offset)}, ensure_ascii=False)
+    if role == AgentRole.OPERATIONS:
+        return json.dumps({"domain": "operations", "dashboard": MainManagerService.dashboard_summary(db)}, ensure_ascii=False)
+    if role == AgentRole.CONTENT:
+        return json.dumps({"domain": "content", "search": json.loads(academy_search_tool(db, json.dumps({"query": p.get("query", ""), "limit": limit}))) if p.get("query") else {"courses": [], "units": [], "lectures": []}}, ensure_ascii=False)
+    if role == AgentRole.CERTIFICATES:
+        return json.dumps({"domain": "certificates", "search": json.loads(academy_search_tool(db, json.dumps({"query": p.get("query", ""), "limit": limit}))) if p.get("query") else {"courses": [], "units": [], "lectures": []}}, ensure_ascii=False)
+    if role == AgentRole.ADMISSIONS:
+        return json.dumps({"domain": "admissions", **MainManagerService.students(db, limit, offset, query)}, ensure_ascii=False)
+    if role == AgentRole.CAREER:
+        return json.dumps({"domain": "career", "courses": MainManagerService.courses(db)["courses"][:limit]}, ensure_ascii=False)
+    if role == AgentRole.NOTIFICATIONS:
+        return json.dumps({"domain": "notifications", "dashboard": MainManagerService.dashboard_summary(db)}, ensure_ascii=False)
+    if role == AgentRole.RESEARCH:
+        return global_computing_curriculum_tool(db, "{}")
+    if role == AgentRole.QUALITY:
+        return json.dumps({"domain": "quality", "dashboard": MainManagerService.dashboard_summary(db), "courses": MainManagerService.courses(db)["courses"][:limit]}, ensure_ascii=False)
+    raise ToolExecutionError("No operational read tool is defined for this specialist role.")
+
 def manager_assessment_result_tool(db: Session, input_text: str) -> str:
     try:
         payload = json.loads(input_text or "{}")
@@ -481,6 +516,25 @@ def manager_create_lesson_tool(db: Session, input_text: str) -> str:
 
 
 
+def _specialist_tool(role: AgentRole) -> ToolDefinition:
+    name = f"specialist.{role.value}.operations"
+    return ToolDefinition(
+        name=name,
+        description=f"Read-only operational workspace for the {role.value} specialist. No writes, payments, grades, or permissions changes.",
+        handler=lambda db, input_text, _role=role: specialist_read_tool(db, input_text, _role),
+        sensitive=False,
+        parameters={
+            "type": "object",
+            "properties": {
+                "query": {"type": ["string", "null"]},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100},
+                "offset": {"type": "integer", "minimum": 0},
+            },
+            "additionalProperties": False,
+        },
+    )
+
+
 def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
     registry.register(
@@ -636,6 +690,14 @@ def build_default_registry() -> ToolRegistry:
             parameters={"type":"object","properties":{},"additionalProperties":False},
         )
     )
+    for _role in (
+        AgentRole.ACADEMIC, AgentRole.STUDENT_AFFAIRS, AgentRole.FINANCE,
+        AgentRole.CONTENT, AgentRole.ASSESSMENT, AgentRole.CERTIFICATES,
+        AgentRole.NOTIFICATIONS, AgentRole.SECURITY, AgentRole.RESEARCH,
+        AgentRole.CAREER, AgentRole.QUALITY, AgentRole.ADMISSIONS,
+        AgentRole.OPERATIONS,
+    ):
+        registry.register(_specialist_tool(_role))
     for _tool in (
         ToolDefinition("manager.create_curriculum","Create a TOFAN curriculum after the Owner explicitly requests it.",manager_create_curriculum_tool,True,{"type":"object","properties":{"slug":{"type":"string"},"name":{"type":"string"},"version":{"type":"string"},"description":{"type":["string","null"]}},"required":["slug","name","version"],"additionalProperties":False},"tofan-main"),
         ToolDefinition("manager.create_specialty","Create an academic specialty.",manager_create_specialty_tool,True,{"type":"object","properties":{"name":{"type":"string"},"code":{"type":"string"},"description":{"type":["string","null"]},"name_ar":{"type":["string","null"]},"name_en":{"type":["string","null"]}},"required":["name","code"],"additionalProperties":False},"tofan-main"),
