@@ -257,6 +257,98 @@ def manager_event_decision_tool(db: Session, input_text: str) -> str:
 def manager_teacher_overview_tool(db: Session, _: str) -> str:
     return json.dumps({"teachers": MainManagerService.teacher_overview(db)}, ensure_ascii=False)
 
+def _payload(input_text: str) -> dict:
+    try:
+        value = json.loads(input_text or "{}")
+    except json.JSONDecodeError as exc:
+        raise ToolExecutionError("Input must be valid JSON.") from exc
+    if not isinstance(value, dict):
+        raise ToolExecutionError("Input must be a JSON object.")
+    return value
+
+
+def manager_create_curriculum_tool(db: Session, input_text: str) -> str:
+    from app.db.curriculum_models import Curriculum
+    p = _payload(input_text)
+    for key in ("slug", "name", "version"):
+        if not str(p.get(key, "")).strip():
+            raise ToolExecutionError(f"{key} is required.")
+    item = Curriculum(slug=str(p["slug"]).strip(), name=str(p["name"]).strip(), version=str(p["version"]).strip(), description=p.get("description"))
+    db.add(item)
+    try: db.commit()
+    except Exception as exc:
+        db.rollback(); raise ToolExecutionError("Curriculum slug/version already exists.") from exc
+    db.refresh(item)
+    return json.dumps({"id":item.id,"slug":item.slug,"name":item.name,"version":item.version}, ensure_ascii=False)
+
+
+def manager_create_specialty_tool(db: Session, input_text: str) -> str:
+    from app.db.curriculum_models import Specialty
+    p = _payload(input_text)
+    for key in ("name", "code"):
+        if not str(p.get(key, "")).strip(): raise ToolExecutionError(f"{key} is required.")
+    item = Specialty(name=str(p["name"]).strip(), code=str(p["code"]).strip(), description=p.get("description"), name_ar=p.get("name_ar"), name_en=p.get("name_en"))
+    db.add(item)
+    try: db.commit()
+    except Exception as exc:
+        db.rollback(); raise ToolExecutionError("Specialty code already exists.") from exc
+    db.refresh(item)
+    return json.dumps({"id":item.id,"name":item.name,"code":item.code}, ensure_ascii=False)
+
+
+def manager_create_stage_tool(db: Session, input_text: str) -> str:
+    from app.db.curriculum_models import Curriculum, CurriculumStage, Specialty
+    p = _payload(input_text)
+    for key in ("curriculum_id","specialty_id","code","name","position"):
+        if p.get(key) in (None,""): raise ToolExecutionError(f"{key} is required.")
+    if db.get(Curriculum,str(p["curriculum_id"])) is None: raise ToolExecutionError("Curriculum not found.")
+    if db.get(Specialty,str(p["specialty_id"])) is None: raise ToolExecutionError("Specialty not found.")
+    item=CurriculumStage(curriculum_id=str(p["curriculum_id"]),specialty_id=str(p["specialty_id"]),code=str(p["code"]).strip(),name=str(p["name"]).strip(),position=max(1,int(p["position"])),description=p.get("description"))
+    db.add(item)
+    try: db.commit()
+    except Exception as exc:
+        db.rollback(); raise ToolExecutionError("Stage code already exists for this curriculum.") from exc
+    db.refresh(item); return json.dumps({"id":item.id,"code":item.code,"name":item.name,"position":item.position},ensure_ascii=False)
+
+
+def manager_create_course_tool(db: Session, input_text: str) -> str:
+    from app.db.curriculum_models import CurriculumStage, CurriculumCourse
+    p=_payload(input_text)
+    for key in ("curriculum_id","stage_id","code","name","position"):
+        if p.get(key) in (None,""): raise ToolExecutionError(f"{key} is required.")
+    stage=db.get(CurriculumStage,str(p["stage_id"]))
+    if stage is None or stage.curriculum_id != str(p["curriculum_id"]): raise ToolExecutionError("Stage does not belong to the selected curriculum.")
+    item=CurriculumCourse(curriculum_id=str(p["curriculum_id"]),stage_id=str(p["stage_id"]),code=str(p["code"]).strip(),name=str(p["name"]).strip(),description=p.get("description"),course_type=str(p.get("course_type","required")),position=max(1,int(p["position"])))
+    db.add(item)
+    try: db.commit()
+    except Exception as exc:
+        db.rollback(); raise ToolExecutionError("Course code already exists.") from exc
+    db.refresh(item); return json.dumps({"id":item.id,"code":item.code,"name":item.name,"position":item.position},ensure_ascii=False)
+
+
+def manager_create_unit_tool(db: Session, input_text: str) -> str:
+    from app.db.curriculum_models import CurriculumCourse, CurriculumUnit
+    p=_payload(input_text)
+    for key in ("course_id","title","position"):
+        if p.get(key) in (None,""): raise ToolExecutionError(f"{key} is required.")
+    if db.get(CurriculumCourse,str(p["course_id"])) is None: raise ToolExecutionError("Course not found.")
+    item=CurriculumUnit(course_id=str(p["course_id"]),title=str(p["title"]).strip(),position=max(1,int(p["position"])))
+    db.add(item); db.commit(); db.refresh(item)
+    return json.dumps({"id":item.id,"course_id":item.course_id,"title":item.title,"position":item.position},ensure_ascii=False)
+
+
+def manager_create_lesson_tool(db: Session, input_text: str) -> str:
+    from app.db.curriculum_models import CurriculumUnit, CurriculumLesson
+    p=_payload(input_text)
+    for key in ("unit_id","title","position"):
+        if p.get(key) in (None,""): raise ToolExecutionError(f"{key} is required.")
+    if db.get(CurriculumUnit,str(p["unit_id"])) is None: raise ToolExecutionError("Unit not found.")
+    item=CurriculumLesson(unit_id=str(p["unit_id"]),title=str(p["title"]).strip(),position=max(1,int(p["position"])),description=p.get("description"),content_markdown=p.get("content_markdown"))
+    db.add(item); db.commit(); db.refresh(item)
+    return json.dumps({"id":item.id,"unit_id":item.unit_id,"title":item.title,"position":item.position},ensure_ascii=False)
+
+
+
 
 def build_default_registry() -> ToolRegistry:
     registry = ToolRegistry()
@@ -358,6 +450,15 @@ def build_default_registry() -> ToolRegistry:
             parameters={"type":"object","properties":{},"additionalProperties":False},
         )
     )
+    for _tool in (
+        ToolDefinition("manager.create_curriculum","Create a TOFAN curriculum after the Owner explicitly requests it.",manager_create_curriculum_tool,True,{"type":"object","properties":{"slug":{"type":"string"},"name":{"type":"string"},"version":{"type":"string"},"description":{"type":["string","null"]}},"required":["slug","name","version"],"additionalProperties":False},"tofan-main"),
+        ToolDefinition("manager.create_specialty","Create an academic specialty.",manager_create_specialty_tool,True,{"type":"object","properties":{"name":{"type":"string"},"code":{"type":"string"},"description":{"type":["string","null"]},"name_ar":{"type":["string","null"]},"name_en":{"type":["string","null"]}},"required":["name","code"],"additionalProperties":False},"tofan-main"),
+        ToolDefinition("manager.create_stage","Create a year/semester stage.",manager_create_stage_tool,True,{"type":"object","properties":{"curriculum_id":{"type":"string"},"specialty_id":{"type":"string"},"code":{"type":"string"},"name":{"type":"string"},"position":{"type":"integer","minimum":1},"description":{"type":["string","null"]}},"required":["curriculum_id","specialty_id","code","name","position"],"additionalProperties":False},"tofan-main"),
+        ToolDefinition("manager.create_course","Create a course under a stage.",manager_create_course_tool,True,{"type":"object","properties":{"curriculum_id":{"type":"string"},"stage_id":{"type":"string"},"code":{"type":"string"},"name":{"type":"string"},"description":{"type":["string","null"]},"course_type":{"type":"string"},"position":{"type":"integer","minimum":1}},"required":["curriculum_id","stage_id","code","name","position"],"additionalProperties":False},"tofan-main"),
+        ToolDefinition("manager.create_unit","Create a unit under a TOFAN course.",manager_create_unit_tool,True,{"type":"object","properties":{"course_id":{"type":"string"},"title":{"type":"string"},"position":{"type":"integer","minimum":1}},"required":["course_id","title","position"],"additionalProperties":False},"tofan-main"),
+        ToolDefinition("manager.create_lesson","Create a lesson under a TOFAN unit.",manager_create_lesson_tool,True,{"type":"object","properties":{"unit_id":{"type":"string"},"title":{"type":"string"},"position":{"type":"integer","minimum":1},"description":{"type":["string","null"]},"content_markdown":{"type":["string","null"]}},"required":["unit_id","title","position"],"additionalProperties":False},"tofan-main"),
+    ):
+        registry.register(_tool)
     registry.register(
         ToolDefinition(
             name="payments.confirm",
