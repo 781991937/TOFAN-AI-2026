@@ -55,6 +55,7 @@ class PaymentAccountRequest(BaseModel):
     instructions: str | None = Field(default=None, max_length=1000)
     currency: str | None = Field(default=None, max_length=20)
     active: bool = True
+    amount: float | None = Field(default=None, ge=0)
 
 
 class PasskeyRegistrationRequest(BaseModel):
@@ -397,6 +398,7 @@ def get_payment_account(db: Session = Depends(get_db)):
         "account_number": account.account_number,
         "instructions": account.instructions,
         "currency": account.currency,
+        "amount": account.amount,
     }
 
 
@@ -420,6 +422,7 @@ def configure_payment_account(
         "account_number": account.account_number,
         "instructions": account.instructions,
         "currency": account.currency,
+        "amount": account.amount,
         "active": account.active,
     }
 
@@ -450,6 +453,10 @@ def request_payment(
         account = db.scalar(select(PaymentAccountSetting).where(PaymentAccountSetting.active.is_(True)).order_by(PaymentAccountSetting.updated_at.desc()))
         if account is None:
             raise HTTPException(status_code=503, detail="Payment account is not configured yet.")
+        if account.amount is None or account.amount <= 0:
+            raise HTTPException(status_code=503, detail="Payment amount is not configured yet.")
+        payload.amount = account.amount
+        payload.currency = account.currency
 
     transaction = PaymentTransaction(
         user_id=actor.id,
@@ -466,6 +473,9 @@ def request_payment(
         "transaction_id": transaction.id,
         "product_key": transaction.product_key,
         "status": transaction.status,
+        "amount": transaction.amount,
+        "currency": transaction.currency,
+        "reference": transaction.reference,
         "message": "Payment request recorded and awaiting confirmation.",
     }
 
