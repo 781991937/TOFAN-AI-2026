@@ -84,3 +84,19 @@ def has_academy_content_access(db: Session, *, user_id: str, content_file_id: st
             Entitlement.access_type == TeachingAccess.PAID.value,
         )
     ) is not None
+
+
+def has_curriculum_stage_access(db: Session, *, user_id: str, stage_id: str) -> bool:
+    from app.db.curriculum_models import CurriculumStage, CurriculumEntitlement
+    stage = db.get(CurriculumStage, stage_id)
+    if stage is None:
+        return False
+    if stage.position == 1:
+        return True
+    return db.scalar(
+        select(CurriculumEntitlement.id).where(
+            CurriculumEntitlement.user_id == user_id,
+            CurriculumEntitlement.stage_id == stage_id,
+            CurriculumEntitlement.active.is_(True),
+        )
+    ) is not None
