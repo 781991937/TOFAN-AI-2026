@@ -33,7 +33,7 @@ async function openLesson(id,c){
 async function startTeaching(slug,lesson,c){
   if(!slug){toast(t("teacherUnavailable"));return}
   try{
-    const step=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source:"global_curriculum",scope_key:"course:"+c.id+":unit:"+((c.units||[]).find(u=>(u.lessons||[]).some(l=>l.id===lesson.id))||{}).id+":lesson:"+lesson.id,position:lesson.position})});
+    const unit=(c.units||[]).find(u=>(u.lessons||[]).some(l=>l.id===lesson.id));const position=(c.units||[]).slice(0,(c.units||[]).indexOf(unit)).reduce((n,u)=>n+(u.lessons||[]).length,0)+lesson.position;const step=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({source:"global_curriculum",scope_key:"course:"+c.id+":unit:"+unit.id+":lesson:"+lesson.id,position})});
     await openTeacherChat(slug,step.id,lesson,c);
   }catch(e){toast(e.message)}
 }
@@ -44,7 +44,7 @@ async function openTeacherChat(slug,stepId,lesson,c){
   const send=async(msg)=>{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,source:"global_curriculum"})});const text=d.content||d.output||"";messages.insertAdjacentHTML("beforeend","<div class='chat-msg assistant'>"+text+"</div>");return d};
   $("#teacherChatForm").onsubmit=async e=>{e.preventDefault();const input=$("#teacherInput");const msg=input.value.trim();if(!msg)return;messages.insertAdjacentHTML("beforeend","<div class='chat-msg user'>"+msg+"</div>");input.value="";try{await send(msg)}catch(err){toast(err.message)}};
   $("#verifyBtn").onclick=async()=>{try{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps/"+encodeURIComponent(stepId)+"/understanding",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({verified:true})});toast(d.status==="completed"?t("teacherReady"):(lang==="ar"?"تم تسجيل تحقق الفهم":"Understanding check recorded"))}catch(e){toast(e.message)}};
-  $("#confirmBtn").onclick=async()=>{try{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps/"+encodeURIComponent(stepId)+"/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmed:true})});toast(d.completed?(lang==="ar"?"تم إكمال الدرس":"Lesson completed") : e.message);if(d.completed){openCourse(c.id)}}catch(e){toast(e.message)}};
+  $("#confirmBtn").onclick=async()=>{try{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps/"+encodeURIComponent(stepId)+"/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmed:true})});toast(d.completed?(lang==="ar"?"تم إكمال الدرس":"Lesson completed"):(lang==="ar"?"تم تسجيل التأكيد":"Confirmation recorded"));if(d.completed){openCourse(c.id)}}catch(e){toast(e.message)}};
 }
 
 $("#closeCurriculum").onclick=()=>$("#curriculumPanel").classList.add("hidden");
