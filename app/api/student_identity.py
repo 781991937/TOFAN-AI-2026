@@ -595,9 +595,10 @@ def reject_payment(
     if transaction.status != PaymentStatus.PENDING:
         raise HTTPException(status_code=409, detail="Only pending payment transactions can be rejected.")
     transaction.status = PaymentStatus.REJECTED
+    transaction.rejection_reason = payload.reason
     db.commit()
     return {
         "transaction_id": transaction.id,
         "status": transaction.status,
-        "reason": payload.reason,
+        "reason": transaction.rejection_reason,
     }
