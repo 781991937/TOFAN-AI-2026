@@ -44,10 +44,15 @@ async function requestCurriculumPayment(c){
     const amount=account.amount??"";
     const reference=prompt(lang==="ar"?"أدخل رقم العملية/المرجع بعد التحويل:":"Enter the transaction/reference number after transfer:");
     if(!reference?.trim()){toast(lang==="ar"?"يجب إدخال رقم العملية/المرجع.":"Transaction reference is required.");return}
+    const input=document.createElement("input");input.type="file";input.accept="image/jpeg,image/png,image/webp,application/pdf";
+    input.click();
+    await new Promise((resolve,reject)=>{input.onchange=()=>input.files?.[0]?resolve():reject(new Error(lang==="ar"?"يجب اختيار إثبات الدفع.":"Payment proof is required."));});
     const result=await api("/student/payments/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_key:"curriculum_stage:"+stageId,reference:reference.trim()})});
+    const form=new FormData();form.append("file",input.files[0]);
+    await api("/student/payments/"+encodeURIComponent(result.transaction_id)+"/proof",{method:"POST",body:form});
     const message=lang==="ar"
-      ?"المبلغ: "+amount+" "+(account.currency||"")+" — حوّل إلى "+account.provider_name+" — رقم النقطة: "+account.account_number+(account.instructions?" — "+account.instructions:"")+" — تم إرسال الطلب للمالك للمراجعة."
-      :"Amount: "+amount+" "+(account.currency||"")+" — transfer to "+account.provider_name+" — account: "+account.account_number+(account.instructions?" — "+account.instructions:"")+" — request sent for owner review.";
+      ?"المبلغ: "+amount+" "+(account.currency||"")+" — تم إرسال رقم العملية وإثبات الدفع للمالك للمراجعة."
+      :"Amount: "+amount+" "+(account.currency||"")+" — transaction reference and payment proof were sent for owner review.";
     toast(message);
     return result;
   }catch(err){toast(err.message)}
