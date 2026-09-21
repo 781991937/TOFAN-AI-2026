@@ -316,6 +316,17 @@ def manager_provision_specialist_tool(db: Session, input_text: str) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def manager_provision_all_teachers_tool(db: Session, input_text: str) -> str:
+    p = _payload(input_text)
+    if p:
+        raise ToolExecutionError("This tool accepts an empty JSON object only.")
+    try:
+        result = MainManagerService.provision_all_teachers(db)
+    except ValueError as exc:
+        raise ToolExecutionError(str(exc)) from exc
+    return json.dumps(result, ensure_ascii=False)
+
+
 def manager_set_teacher_status_tool(db: Session, input_text: str) -> str:
     try:
         payload = json.loads(input_text or "{}")
@@ -529,6 +540,16 @@ def build_default_registry() -> ToolRegistry:
             sensitive=True,
             allowed_agent_slug="tofan-main",
             parameters={"type":"object","properties":{"curriculum_course_id":{"type":"string"}},"required":["curriculum_course_id"],"additionalProperties":False},
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.provision_all_teachers",
+            description="Privileged manager action: idempotently provision AI teachers for every active TOFAN curriculum course.",
+            handler=manager_provision_all_teachers_tool,
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={"type":"object","properties":{},"additionalProperties":False},
         )
     )
     registry.register(
