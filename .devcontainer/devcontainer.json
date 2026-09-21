@@ -1,7 +1,9 @@
 {
   "name": "TOFAN Smart Academy",
   "image": "mcr.microsoft.com/devcontainers/python:1-3.13-bookworm",
-  "forwardPorts": [8000],
+  "forwardPorts": [
+    8000
+  ],
   "portsAttributes": {
     "8000": {
       "label": "TOFAN AI Web App",
@@ -9,7 +11,7 @@
     }
   },
   "postCreateCommand": "python -m pip install --upgrade pip && python -m pip install -r requirements.txt",
-  "postStartCommand": "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000",
+  "postStartCommand": "bash -lc 'nohup python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 >/tmp/tofan-uvicorn.log 2>&1 &'",
   "customizations": {
     "vscode": {
       "extensions": [
