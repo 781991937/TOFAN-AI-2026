@@ -10,7 +10,7 @@ SPECIALIST_TOOL_ALLOWLIST: dict[AgentRole, tuple[str, ...]] = {
     AgentRole.STUDENT_AFFAIRS: ("academy.structure", "academy.search"),
     AgentRole.FINANCE: ("academy.structure",),
     AgentRole.CONTENT: ("academy.structure", "academy.search"),
-    AgentRole.ASSESSMENT: ("academy.structure", "academy.search", "education.assessment_result"),
+    AgentRole.ASSESSMENT: ("academy.structure", "academy.search"),
     AgentRole.CERTIFICATES: ("academy.structure", "academy.search"),
     AgentRole.NOTIFICATIONS: ("academy.structure",),
     AgentRole.SECURITY: ("academy.structure",),
