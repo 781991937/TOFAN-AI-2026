@@ -34,7 +34,13 @@ input,select,textarea{background:#181818;color:#fff;border:1px solid #363636;bor
 <body>
 <header><div class="brand">TOFAN <span>SMART ACADEMY</span> · Manager</div><button onclick="load()">تحديث</button></header>
 <main>
-<h1>لوحة المدير العام</h1><div class="sub">إدارة الأكاديمية والمنهج والدفع والمحتوى من مكان واحد</div><div id="state" class="status">جاري التحميل...</div>
+<h1>لوحة المدير العام</h1><div class="sub">إدارة الأكاديمية والمنهج والدفع والمحتوى من مكان واحد</div>
+<section><div class="section-title">🤖 محادثة المدير العام الذكي</div>
+<div class="panel">
+<div id="gmMessages" style="height:280px;overflow:auto;display:grid;gap:8px;margin-bottom:10px"></div>
+<div class="toolbar"><input id="gmInput" placeholder="اكتب طلبك للمدير العام..." style="flex:1;min-width:220px"><button onclick="sendGeneralManager()">إرسال</button></div>
+<div class="muted">المدير العام ينسّق الوكلاء والأدوات المصرّح بها ويسجل العمليات الحساسة.</div>
+</div></section><div id="state" class="status">جاري التحميل...</div>
 <div id="cards" class="grid"></div>
 
 <section><div class="section-title">إدارة المدرسين</div><div class="table-wrap"><div class="toolbar" style="padding:12px"><select id="courseSelect" style="max-width:500px"></select><button onclick="provisionTeacher()">إنشاء مدرس للمقرر</button></div><div id="teachers"></div></div></section>
@@ -185,4 +191,21 @@ async function load(){
  await loadNativeTree();
 }
 load();
+</script><script>
+function addGeneralManagerMessage(role,text){
+  const box=document.getElementById("gmMessages"); if(!box)return;
+  const row=document.createElement("div");
+  row.style.cssText="padding:10px;border:1px solid #2a2a2a;border-radius:9px;background:"+(role==="user"?"#171717":"#1b1710");
+  row.innerHTML="<b>"+(role==="user"?"أنت":"🤖 المدير العام")+"</b><div style='margin-top:5px;white-space:pre-wrap'>"+String(text).replace(/[&<>]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[m]))+"</div>";
+  box.appendChild(row); box.scrollTop=box.scrollHeight;
+}
+async function sendGeneralManager(){
+  const input=document.getElementById("gmInput"); const message=input.value.trim(); if(!message)return;
+  addGeneralManagerMessage("user",message); input.value="";
+  try{
+    const result=await api("/admin/agent/tofan-main/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message})});
+    addGeneralManagerMessage("assistant",result.content||result.output||JSON.stringify(result,null,2));
+  }catch(err){addGeneralManagerMessage("assistant","تعذر تنفيذ الطلب: "+err.message)}
+}
+document.getElementById("gmInput")?.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();sendGeneralManager()}});
 </script></body></html>"""
