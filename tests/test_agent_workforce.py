@@ -52,3 +52,10 @@ def test_specialist_policy_uses_registered_tools():
     for names in SPECIALIST_TOOL_ALLOWLIST.values():
         for name in names:
             assert name in registry.names()
+
+
+def test_bulk_teacher_provisioning_is_manager_only():
+    registry = build_default_registry()
+    tool = registry.get("manager.provision_all_teachers")
+    assert tool.allowed_agent_slug == "tofan-main"
+    assert tool.sensitive is True
