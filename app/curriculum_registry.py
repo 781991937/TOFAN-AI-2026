@@ -145,19 +145,47 @@ def validate_registry() -> list[str]:
             continue
 
         seen: set[tuple[int, int]] = set()
+        course_ids: set[str] = set()
+        expected_course_ids: set[str] = set()
         for semester in curriculum.get("semesters", []):
             pair = (semester.get("year_number"), semester.get("semester_number"))
             if pair in seen:
                 errors.append(f"Duplicate semester {pair} in {ref['specialty_id']}.")
             seen.add(pair)
-            if not semester.get("courses"):
+            if pair not in expected_semesters:
+                errors.append(f"Invalid semester {pair} in {ref['specialty_id']}.")
+            courses = semester.get("courses") or []
+            if not courses:
                 errors.append(f"Empty semester {pair} in {ref['specialty_id']}.")
-            for course in semester.get("courses", []):
-                if not course.get("id") or not course.get("name_ar"):
+            for course in courses:
+                code = course.get("id")
+                if not code or not course.get("name_ar"):
                     errors.append(f"Invalid course in {ref['specialty_id']} semester {pair}.")
+                    continue
+                if code in course_ids:
+                    errors.append(f"Duplicate course {code} in {ref['specialty_id']}.")
+                course_ids.add(code)
+                expected_course_ids.add(code)
+
         missing = expected_semesters - seen
         if missing:
             errors.append(
                 f"Missing semesters in {ref['specialty_id']}: {sorted(missing)}."
             )
+
+        expected_total = curriculum.get("expected_course_count")
+        if expected_total is not None and len(course_ids) != int(expected_total):
+            errors.append(
+                f"Course count mismatch in {ref['specialty_id']}: "
+                f"{len(course_ids)} != {expected_total}."
+            )
+
+        for semester in curriculum.get("semesters", []):
+            for course in semester.get("courses", []):
+                for prereq in course.get("prerequisites", []) or []:
+                    if prereq not in course_ids:
+                        errors.append(
+                            f"Unknown prerequisite {prereq} for {course.get('id')} "
+                            f"in {ref['specialty_id']}."
+                        )
     return errors
