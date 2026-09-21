@@ -204,8 +204,16 @@ def migrate_payment_accounts(engine: Engine) -> list[str]:
     return changes
 
 
+def migrate_payment_proofs(engine: Engine) -> list[str]:
+    changes: list[str] = []
+    if add_column_if_missing(engine, "payment_transactions", "proof_file_id", "VARCHAR(36)"):
+        changes.append("payment_transactions.proof_file_id")
+    return changes
+
+
 def run_migrations(engine: Engine) -> list[str]:
-    changes = migrate_payment_accounts(engine)
+    changes = migrate_payment_proofs(engine)
+    changes.extend(migrate_payment_accounts(engine)
     changes.extend(migrate_agent_conversation_memory(engine)
     changes.extend(migrate_agent_memory_scopes(engine))
     changes.extend(migrate_teacher_agent_course(engine))
