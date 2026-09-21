@@ -10,7 +10,7 @@ from .models import (
 from .identity_models import StudentProfile, PaymentTransaction
 from .assessment_models import CurriculumAssessmentAttempt, AssessmentResultReport
 from .assessment_question_models import CurriculumAssessmentQuestion
-from .curriculum_models import Curriculum, Specialty, CurriculumStage, CurriculumCourse, CoursePrerequisite, LearningOutcome, CurriculumUnit, CurriculumLesson, CourseAssessment, CurriculumProject, ElectiveTrack
+from .curriculum_models import Curriculum, Specialty, CurriculumStage, CurriculumCourse, CurriculumEntitlement, CoursePrerequisite, LearningOutcome, CurriculumUnit, CurriculumLesson, CourseAssessment, CurriculumProject, ElectiveTrack
 from .session import engine
 from .migrations import run_migrations
 from app.auth.models import UserRole
