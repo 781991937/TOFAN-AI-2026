@@ -59,6 +59,15 @@ class MainAgentOrchestrator:
                         json.dumps({"role": role.value, "task": text}, ensure_ascii=False),
                         f"Deterministic workforce routing selected {role.value}.",
                     )
+        if agent.role not in {AgentRole.GENERAL_MANAGER, AgentRole.TEACHER}:
+            operational_tool = f"specialist.{agent.role.value}.operations"
+            return AgentDecision(
+                "tool",
+                operational_tool,
+                json.dumps({"query": text, "limit": 25, "offset": 0}, ensure_ascii=False),
+                f"Deterministic fallback selected the fixed {agent.role.value} operational tool.",
+            )
+
         if any(w in lowered for w in ("هيكل", "الهيكل", "الأقسام", "التخصصات", "الكليات", "الجامعة")):
             return AgentDecision("tool", "academy.structure", "", "The request asks about academy structure.")
         if any(w in lowered for w in ("ابحث", "بحث", "مادة", "محاضرة", "محاضرات", "مقرر", "دورة", "وحدة")):
