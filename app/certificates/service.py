@@ -5,7 +5,8 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.db.curriculum_models import CurriculumCourse
+from app.db.curriculum_models import CourseAssessment, CurriculumCourse
+from app.db.assessment_models import CurriculumAssessmentAttempt
 from app.db.models import TeachingStep, TeachingStepStatus, TeachingSource
 from app.db.certificate_models import Certificate
 
@@ -21,6 +22,19 @@ def issue_course_certificate(db: Session, user_id: str, course_id: str) -> Certi
     course_steps = [s for s in steps if f"course:{course_id}:" in (s.scope_key or "")]
     if not course_steps or not all(s.status == TeachingStepStatus.COMPLETED for s in course_steps):
         return None
+    assessment = db.scalar(select(CourseAssessment).where(
+        CourseAssessment.course_id == course_id,
+        CourseAssessment.assessment_type == "course",
+    ))
+    if assessment is not None:
+        passed_attempt = db.scalar(select(CurriculumAssessmentAttempt).where(
+            CurriculumAssessmentAttempt.user_id == user_id,
+            CurriculumAssessmentAttempt.assessment_id == assessment.id,
+            CurriculumAssessmentAttempt.passed.is_(True),
+        ).order_by(CurriculumAssessmentAttempt.submitted_at.desc()))
+        if passed_attempt is None:
+            return None
+
     existing = db.scalar(select(Certificate).where(
         Certificate.user_id == user_id, Certificate.course_id == course_id
     ))
