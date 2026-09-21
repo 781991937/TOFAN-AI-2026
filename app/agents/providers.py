@@ -94,6 +94,7 @@ class OpenAIResponsesProvider:
         messages: list[dict],
         tool_outputs: list[dict],
         system_prompt: str | None = None,
+        tools: list[dict] | None = None,
     ) -> AgentResponse:
         try:
             input_messages: list = []
@@ -111,6 +112,7 @@ class OpenAIResponsesProvider:
             response = self._client.responses.create(
                 model=self.model_name,
                 input=input_messages,
+                tools=tools or [],
             )
             calls = []
             for item in response.output:
