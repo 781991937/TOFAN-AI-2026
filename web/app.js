@@ -31,6 +31,12 @@ async function startCourseQuiz(c){
   const assessment=c.assessment;
   if(!assessment?.id){toast(lang==="ar"?"لا يوجد اختبار مقرر لهذا المقرر":"No course assessment is configured.");return}
   try{
+    if(!c.teacher?.slug){toast(t("teacherUnavailable"));return}
+    const progress=await api("/agent/teacher/"+encodeURIComponent(c.teacher.slug)+"/progress");
+    if(progress.total_steps && progress.completed_steps < progress.total_steps){
+      toast(lang==="ar"?"أكمل جميع الدروس قبل فتح الاختبار النهائي":"Complete all lessons before opening the final assessment.");
+      return;
+    }
     let d;
     try{d=await api("/agent/teacher/"+encodeURIComponent(c.teacher.slug)+"/assessments/"+encodeURIComponent(assessment.id)+"/questions")}
     catch{d=await api("/agent/teacher/"+encodeURIComponent(c.teacher.slug)+"/assessments/"+encodeURIComponent(assessment.id)+"/generate",{method:"POST"})}
