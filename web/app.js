@@ -15,9 +15,72 @@ $("#logoutBtn").onclick=async()=>{try{await api("/auth/logout",{method:"POST"})}
 async function loadDashboard(){try{const [on,sp]=await Promise.all([api("/student/onboarding"),api("/curriculum/specialties")]);$("#authView").classList.add("hidden");$("#dashboardView").classList.remove("hidden");$("#logoutBtn").classList.remove("hidden");$("#onboardingText").textContent=on.next_action||"";$("#statSpecialties").textContent=sp.length;$("#statAccess").textContent=on.global_curriculum?.entitled?"ACTIVE":(on.step||"PENDING").toUpperCase();$("#statLearning").textContent="TOFAN CORE";renderSpecialties(sp)}catch(err){token=null;localStorage.removeItem("tofan_token");$("#authView").classList.remove("hidden");toast(err.message)}}
 async function renderSpecialties(items){const box=$("#specialties");box.innerHTML="";for(const s of items){let x;try{x=await api("/specialties/"+s.id+"/experience?lang="+lang)}catch{x={theme:{accent:"#c8a85b"},specialty:{name:s.name,description:""}}}const th=x.theme||{},name=x.specialty?.name||s.name;const card=document.createElement("article");card.className="specialty card";card.style.setProperty("--accent",th.accent||"#c8a85b");card.innerHTML="<div class='icon'>"+(th.icon||"◆")+"</div><h3>"+name+"</h3><p>"+(x.specialty?.description||"")+"</p><div class='modules'>"+(th.dashboard_modules||[]).slice(0,4).map(m=>"<span>"+m.replaceAll("_"," ")+"</span>").join("")+"</div>";card.onclick=()=>openCurriculum();box.appendChild(card)}}
 async function openCurriculum(){try{$("#coursePanel").classList.add("hidden");const c=await api("/curriculum/ai-tofan-curriculum-v1");$("#curriculumPanel").classList.remove("hidden");$("#curriculumTitle").textContent=c.name+" · v"+c.version;$("#curriculumBody").innerHTML=c.stages.map(s=>"<div class='stage'><h3>"+s.name+"</h3>"+s.courses.map(x=>"<button class='course course-button' data-course-id='"+x.id+"'><b>"+x.code+"</b> — "+x.name+" <small>"+(x.outcomes?.length||0)+" outcomes</small></button>").join("")+"</div>").join("");$$(".course-button").forEach(b=>b.onclick=()=>openCourse(b.dataset.courseId))}catch(err){toast(err.message)}}
-async function openCourse(courseId){try{const c=await api("/curriculum/courses/"+encodeURIComponent(courseId));$("#curriculumPanel").classList.add("hidden");$("#coursePanel").classList.remove("hidden");$("#courseTitle").textContent=c.code+" — "+c.name;const type=c.course_type==="elective"?t("elective"):t("required");const prereq=c.prerequisite_course_ids?.length?c.prerequisite_course_ids.map(id=>"<span class='tag'>"+id+"</span>").join(""):"<span class='muted'>"+t("noPrereq")+"</span>";const outcomes=(c.outcomes||[]).map((x,i)=>"<li>"+x+"</li>").join("")||"<li>—</li>";const units=(c.units||[]).map(u=>"<section class='unit'><div class='unit-head'><div><span class='eyebrow'>"+t("units")+" "+u.position+"</span><h3>"+u.title+"</h3></div><span class='count'>"+u.lessons.length+" "+t("lessons")+"</span></div>"+(u.lessons.length?u.lessons.map(l=>"<button class='lesson-row lesson-button' data-lesson-id='"+l.id+"'><span>"+l.position+". "+l.title+"</span><span>"+(l.has_content?"●":"○")+"</span></button>").join(""):"<div class='muted'>"+t("noLessons")+"</div>")+"</section>").join("");$("#courseBody").innerHTML="<div class='course-meta'><span>"+type+"</span><span>"+t("courseType")+"</span></div><div class='detail-grid'><section><h3>"+t("outcomes")+"</h3><ol class='outcome-list'>"+outcomes+"</ol></section><section><h3>"+t("prerequisites")+"</h3><div class='tags'>"+prereq+"</div></section></div><div class='section-head'><h3>"+t("units")+"</h3></div>"+units+"<div class='teacher-entry'><p>"+t("lessonContent")+"</p><button class='primary' id='courseTeacherBtn'>"+t("openTeacher")+"</button></div>";$("#courseTeacherBtn").onclick=()=>toast(t("teacherReady"));$(".lesson-button").forEach(b=>b.onclick=()=>openLesson(b.dataset.lessonId,c))}catch(err){toast(err.message)}}
+async function openCourse(courseId){try{const c=await api("/curriculum/courses/"+encodeURIComponent(courseId));$("#curriculumPanel").classList.add("hidden");$("#coursePanel").classList.remove("hidden");$("#courseTitle").textContent=c.code+" — "+c.name;const type=c.course_type==="elective"?t("elective"):t("required");const prereq=c.prerequisite_course_ids?.length?c.prerequisite_course_ids.map(id=>"<span class='tag'>"+id+"</span>").join(""):"<span class='muted'>"+t("noPrereq")+"</span>";const outcomes=(c.outcomes||[]).map((x,i)=>"<li>"+x+"</li>").join("")||"<li>—</li>";const units=(c.units||[]).map(u=>"<section class='unit'><div class='unit-head'><div><span class='eyebrow'>"+t("units")+" "+u.position+"</span><h3>"+u.title+"</h3></div><span class='count'>"+u.lessons.length+" "+t("lessons")+"</span></div>"+(u.lessons.length?u.lessons.map(l=>"<button class='lesson-row lesson-button' data-lesson-id='"+l.id+"'><span>"+l.position+". "+l.title+"</span><span>"+(l.has_content?"●":"○")+"</span></button>").join(""):"<div class='muted'>"+t("noLessons")+"</div>")+"</section>").join("");$("#courseBody").innerHTML="<div class='course-meta'><span>"+type+"</span><span>"+t("courseType")+"</span></div><div class='detail-grid'><section><h3>"+t("outcomes")+"</h3><ol class='outcome-list'>"+outcomes+"</ol></section><section><h3>"+t("prerequisites")+"</h3><div class='tags'>"+prereq+"</div></section></div><div class='section-head'><h3>"+t("units")+"</h3></div>"+units+"<div class='teacher-entry'><p>"+t("lessonContent")+"</p><button class='primary' id='courseTeacherBtn'>"+t("openTeacher")+"</button></div>";$("#courseTeacherBtn").onclick=()=>toast(t("teacherReady"));
+    if(c.assessment?.id){
+      const quizBtn=document.createElement("button");
+      quizBtn.className="primary";
+      quizBtn.id="courseQuizBtn";
+      quizBtn.textContent=lang==="ar"?"بدء الاختبار النهائي":"Start final assessment";
+      $("#courseBody").appendChild(quizBtn);
+      quizBtn.onclick=()=>startCourseQuiz(c);
+    }
+    $(".lesson-button").forEach(b=>b.onclick=()=>openLesson(b.dataset.lessonId,c))}catch(err){toast(err.message)}}
 $("#backCurriculum").onclick=()=>openCurriculum();
 $("#backCourse").onclick=()=>{$("#lessonPanel").classList.add("hidden");$("#coursePanel").classList.remove("hidden")};
+async function startCourseQuiz(c){
+  const assessment=c.assessment;
+  if(!assessment?.id){toast(lang==="ar"?"لا يوجد اختبار مقرر لهذا المقرر":"No course assessment is configured.");return}
+  try{
+    let d;
+    try{d=await api("/agent/teacher/"+encodeURIComponent(c.teacher.slug)+"/assessments/"+encodeURIComponent(assessment.id)+"/questions")}
+    catch{d=await api("/agent/teacher/"+encodeURIComponent(c.teacher.slug)+"/assessments/"+encodeURIComponent(assessment.id)+"/generate",{method:"POST"})}
+    const questions=d.questions||[];
+    if(!questions.length){toast(lang==="ar"?"لم يتم إنشاء أسئلة الاختبار":"No assessment questions were generated.");return}
+    $("#curriculumPanel").classList.add("hidden");$("#coursePanel").classList.add("hidden");$("#lessonPanel").classList.remove("hidden");
+    $("#lessonTitle").textContent=assessment.title;
+    const panel=$("#lessonBody");
+    let index=0; const answers={};
+    const render=()=>{
+      const q=questions[index]; panel.innerHTML="";
+      const wrap=document.createElement("div"); wrap.className="teacher-chat";
+      const head=document.createElement("div"); head.className="lesson-meta"; head.textContent=(lang==="ar"?"السؤال":"Question")+" "+(index+1)+" / "+questions.length;
+      const prompt=document.createElement("h3"); prompt.textContent=q.prompt;
+      const options=document.createElement("div"); options.className="quiz-options";
+      (q.options||[]).forEach(option=>{
+        const label=document.createElement("label"); label.className="quiz-option";
+        const input=document.createElement("input"); input.type="radio"; input.name="quiz-answer"; input.value=option; input.checked=answers[String(q.position)]===option;
+        label.append(input,document.createTextNode(" "+option)); options.appendChild(label);
+      });
+      const next=document.createElement("button"); next.className="primary"; next.textContent=index===questions.length-1?(lang==="ar"?"إرسال الاختبار":"Submit assessment"):(lang==="ar"?"التالي":"Next");
+      next.onclick=async()=>{
+        const selected=panel.querySelector("input[name='quiz-answer']:checked");
+        if(!selected){toast(lang==="ar"?"اختر إجابة أولاً":"Choose an answer first.");return}
+        answers[String(q.position)]=selected.value;
+        if(index<questions.length-1){index++;render();return}
+        try{
+          const result=await api("/agent/teacher/"+encodeURIComponent(c.teacher.slug)+"/assessments/"+encodeURIComponent(assessment.id)+"/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({answers})});
+          panel.innerHTML="";
+          const resultBox=document.createElement("div"); resultBox.className="teacher-entry";
+          resultBox.innerHTML="<h3>"+(lang==="ar"?"نتيجة الاختبار":"Assessment result")+"</h3>";
+          const score=document.createElement("p"); score.textContent=(lang==="ar"?"النتيجة: ":"Score: ")+result.percentage+"% — "+(result.passed?(lang==="ar"?"ناجح":"Passed"):(lang==="ar"?"يحتاج إعادة":"Needs retry")); resultBox.appendChild(score);
+          const details=document.createElement("div"); details.className="quiz-results";
+          Object.values(result.details||{}).forEach(x=>{const p=document.createElement("p");p.textContent=(x.correct?"✓ ":"✗ ")+(x.correct?(lang==="ar"?"إجابة صحيحة":"Correct"):(lang==="ar"?"الإجابة الصحيحة: "+x.correct_answer:"Correct answer: "+x.correct_answer));details.appendChild(p)});
+          resultBox.appendChild(details); panel.appendChild(resultBox);
+          if(result.passed){
+            try{
+              const cert=await api("/certificates/courses/"+encodeURIComponent(c.id)+"/issue",{method:"POST"});
+              const cp=document.createElement("p"); cp.textContent=(lang==="ar"?"تم إصدار الشهادة: ":"Certificate issued: ")+cert.certificate_number; resultBox.appendChild(cp);
+            }catch(err){const cp=document.createElement("p");cp.textContent=err.message;resultBox.appendChild(cp)}
+          }
+          const back=document.createElement("button");back.className="primary";back.textContent=lang==="ar"?"العودة للمقرر":"Back to course";back.onclick=()=>openCourse(c.id);panel.appendChild(back);
+        }catch(err){toast(err.message)}
+      };
+      wrap.append(head,prompt,options,next); panel.appendChild(wrap);
+    };
+    render();
+  }catch(err){toast(err.message)}
+}
+
 async function openLesson(id,c){
   const unit=(c.units||[]).find(u=>(u.lessons||[]).some(l=>l.id===id));
   const lesson=unit?.lessons?.find(l=>l.id===id);
