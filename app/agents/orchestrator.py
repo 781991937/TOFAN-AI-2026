@@ -72,7 +72,6 @@ class MainAgentOrchestrator:
         if not isinstance(provider, OpenAIResponsesProvider):
             return {"kind": "tool", "provider": first.provider, "model": first.model, "tool_calls": [c["name"] for c in first.tool_calls], "outputs": outputs}
 
-        if not isinstance(provider, OpenAIResponsesProvider):
             return {"kind": "tool", "provider": first.provider, "model": first.model, "tool_calls": [c["name"] for c in first.tool_calls], "outputs": outputs}
 
         # Keep the Responses API conversation alive for bounded multi-step tool use.
