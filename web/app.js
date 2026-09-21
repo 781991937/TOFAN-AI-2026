@@ -39,8 +39,13 @@ async function requestCurriculumPayment(c){
   const stageId=c.stage_id||c.stage?.id;
   if(!stageId){toast(lang==="ar"?"لا يمكن تحديد الفصل المطلوب للدفع":"The semester could not be identified.");return}
   try{
-    const result=await api("/student/payments/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_key:"curriculum_stage:"+stageId})});
-    toast(lang==="ar"?"تم تسجيل طلب الدفع. بانتظار تأكيد الإدارة.":"Payment request recorded. Waiting for admin confirmation.");
+    const account=await api("/student/payments/account");
+    if(!account.configured){toast(lang==="ar"?"حساب الدفع غير مُعد بعد من الإدارة.":"Payment account is not configured yet.");return}
+    const result=await api("/student/payments/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_key:"curriculum_stage:"+stageId,currency:account.currency})});
+    const message=lang==="ar"
+      ?"حوّل المبلغ إلى "+account.provider_name+" — رقم النقطة: "+account.account_number+(account.instructions?" — "+account.instructions:"")+" ثم أرسل رقم العملية/المرجع للإدارة."
+      :"Transfer to "+account.provider_name+" — account: "+account.account_number+(account.instructions?" — "+account.instructions:"")+" then send the transaction reference to admin.";
+    toast(message);
     return result;
   }catch(err){toast(err.message)}
 }
