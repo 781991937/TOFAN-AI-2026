@@ -803,12 +803,49 @@ def reorder_native_resource(
     item = db.get(model, resource_id)
     if item is None:
         raise HTTPException(status_code=404, detail=f"{resource.capitalize()} not found.")
-    item.position = position
+
+    if resource == "stage":
+        siblings = db.scalars(
+            select(CurriculumStage)
+            .where(CurriculumStage.curriculum_id == item.curriculum_id)
+            .order_by(CurriculumStage.position)
+        ).all()
+    elif resource == "course":
+        siblings = db.scalars(
+            select(CurriculumCourse)
+            .where(CurriculumCourse.stage_id == item.stage_id)
+            .order_by(CurriculumCourse.position)
+        ).all()
+    elif resource == "unit":
+        siblings = db.scalars(
+            select(CurriculumUnit)
+            .where(CurriculumUnit.course_id == item.course_id)
+            .order_by(CurriculumUnit.position)
+        ).all()
+    else:
+        siblings = db.scalars(
+            select(CurriculumLesson)
+            .where(CurriculumLesson.unit_id == item.unit_id)
+            .order_by(CurriculumLesson.position)
+        ).all()
+
+    siblings = [x for x in siblings if x.id != item.id]
+    position = min(position, len(siblings) + 1)
+
+    # Temporarily move the item out of the unique position range, then
+    # normalize every sibling so the unique (parent_id, position) constraint
+    # remains valid throughout the transaction.
+    item.position = 0
+    db.flush()
+    siblings.insert(position - 1, item)
+    for index, sibling in enumerate(siblings, start=1):
+        sibling.position = index
+
     try:
         db.commit()
     except Exception:
         db.rollback()
-        raise HTTPException(status_code=409, detail="Position conflicts with another item.")
+        raise HTTPException(status_code=409, detail="Unable to reorder this item.")
     db.refresh(item)
     return item
 
