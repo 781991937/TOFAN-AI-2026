@@ -66,6 +66,7 @@ class PaymentAccountSetting(Base):
     account_number: Mapped[str] = mapped_column(String(100), nullable=False)
     instructions: Mapped[str | None] = mapped_column(String(1000))
     currency: Mapped[str | None] = mapped_column(String(20))
+    amount: Mapped[float | None] = mapped_column(Float)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
