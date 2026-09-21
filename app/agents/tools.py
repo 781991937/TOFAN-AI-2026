@@ -9,7 +9,9 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumUnit
-from app.db.models import AcademicUnit, Course, Institution, Lecture, Unit
+from app.db.models import AcademicUnit, ContentFile, Course, Institution, Lecture, Notification, Unit
+from app.db.assessment_models import CurriculumAssessmentAttempt
+from app.db.certificate_models import Certificate
 from .payment_tools import confirm_payment_tool
 from .main_manager import MainManagerService
 from .models import Agent, AgentRole, AgentRun, AgentStatus, AgentTool
@@ -215,21 +217,82 @@ def specialist_read_tool(db: Session, input_text: str, role: AgentRole) -> str:
     if role == AgentRole.FINANCE:
         return json.dumps({"domain": "finance", **MainManagerService.payments(db, limit, offset)}, ensure_ascii=False)
     if role == AgentRole.ASSESSMENT:
-        return json.dumps({"domain": "assessment", **MainManagerService.assessments(db, limit, offset)}, ensure_ascii=False)
+        rows = db.scalars(
+            select(CurriculumAssessmentAttempt)
+            .order_by(CurriculumAssessmentAttempt.started_at.desc())
+            .offset(offset).limit(limit)
+        ).all()
+        return json.dumps({
+            "domain": "assessment",
+            "total": db.query(CurriculumAssessmentAttempt).count(),
+            "attempts": [{
+                "id": x.id, "user_id": x.user_id, "assessment_id": x.assessment_id,
+                "status": x.status, "score": x.score, "max_score": x.max_score,
+                "percentage": x.percentage, "passed": x.passed,
+                "started_at": x.started_at.isoformat(),
+                "submitted_at": x.submitted_at.isoformat() if x.submitted_at else None,
+                "graded_at": x.graded_at.isoformat() if x.graded_at else None,
+            } for x in rows],
+        }, ensure_ascii=False)
     if role == AgentRole.SECURITY:
         return json.dumps({"domain": "security", **MainManagerService.audit_log(db, limit, offset)}, ensure_ascii=False)
     if role == AgentRole.OPERATIONS:
         return json.dumps({"domain": "operations", "dashboard": MainManagerService.dashboard_summary(db)}, ensure_ascii=False)
     if role == AgentRole.CONTENT:
-        return json.dumps({"domain": "content", "search": json.loads(academy_search_tool(db, json.dumps({"query": p.get("query", ""), "limit": limit}))) if p.get("query") else {"courses": [], "units": [], "lectures": []}}, ensure_ascii=False)
+        stmt = select(ContentFile).order_by(ContentFile.uploaded_at.desc())
+        if query:
+            pattern = f"%{query}%"
+            stmt = stmt.where(
+                or_(ContentFile.original_name.ilike(pattern), ContentFile.status.ilike(pattern))
+            )
+        rows = db.scalars(stmt.offset(offset).limit(limit)).all()
+        return json.dumps({
+            "domain": "content",
+            "files": [{
+                "id": x.id, "original_name": x.original_name, "status": x.status,
+                "teaching_source": x.teaching_source, "mime_type": x.mime_type,
+                "size_bytes": x.size_bytes, "page_count": x.page_count,
+                "uploaded_at": x.uploaded_at.isoformat(),
+            } for x in rows],
+        }, ensure_ascii=False)
     if role == AgentRole.CERTIFICATES:
-        return json.dumps({"domain": "certificates", "search": json.loads(academy_search_tool(db, json.dumps({"query": p.get("query", ""), "limit": limit}))) if p.get("query") else {"courses": [], "units": [], "lectures": []}}, ensure_ascii=False)
+        stmt = select(Certificate).order_by(Certificate.issued_at.desc())
+        if query:
+            pattern = f"%{query}%"
+            stmt = stmt.where(
+                or_(Certificate.certificate_number.ilike(pattern), Certificate.title.ilike(pattern), Certificate.user_id.ilike(pattern))
+            )
+        rows = db.scalars(stmt.offset(offset).limit(limit)).all()
+        return json.dumps({
+            "domain": "certificates",
+            "certificates": [{
+                "id": x.id, "certificate_number": x.certificate_number,
+                "user_id": x.user_id, "course_id": x.course_id,
+                "title": x.title, "status": x.status,
+                "issued_at": x.issued_at.isoformat(),
+            } for x in rows],
+        }, ensure_ascii=False)
     if role == AgentRole.ADMISSIONS:
         return json.dumps({"domain": "admissions", **MainManagerService.students(db, limit, offset, query)}, ensure_ascii=False)
     if role == AgentRole.CAREER:
         return json.dumps({"domain": "career", "courses": MainManagerService.courses(db)["courses"][:limit]}, ensure_ascii=False)
     if role == AgentRole.NOTIFICATIONS:
-        return json.dumps({"domain": "notifications", "dashboard": MainManagerService.dashboard_summary(db)}, ensure_ascii=False)
+        stmt = select(Notification).order_by(Notification.created_at.desc())
+        if query:
+            pattern = f"%{query}%"
+            stmt = stmt.where(
+                or_(Notification.event_type.ilike(pattern), Notification.title.ilike(pattern), Notification.message.ilike(pattern))
+            )
+        rows = db.scalars(stmt.offset(offset).limit(limit)).all()
+        return json.dumps({
+            "domain": "notifications",
+            "notifications": [{
+                "id": x.id, "user_id": x.user_id, "event_type": x.event_type,
+                "title": x.title, "message": x.message, "resource_type": x.resource_type,
+                "resource_id": x.resource_id, "is_read": x.is_read,
+                "created_at": x.created_at.isoformat(),
+            } for x in rows],
+        }, ensure_ascii=False)
     if role == AgentRole.RESEARCH:
         return global_computing_curriculum_tool(db, "{}")
     if role == AgentRole.QUALITY:
