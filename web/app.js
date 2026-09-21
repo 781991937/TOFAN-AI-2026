@@ -197,7 +197,7 @@ async function openOwnerManager(){
 }
 $("#ownerChatForm").onsubmit=async e=>{
   e.preventDefault();if(!isOwner)return;
-  const input=$("#ownerInput"),msg=input.value.trim();if(!msg)return;
+  const input=$("#ownerInput"),box=$("#ownerMessages"),msg=input.value.trim();if(!msg)return;
   const appendMessage=(role,content)=>{const node=document.createElement("div");node.className="chat-msg "+role;node.textContent=String(content??"");box.appendChild(node);box.scrollTop=box.scrollHeight};
   appendMessage("user",msg);input.value="";
   try{
