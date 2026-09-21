@@ -112,10 +112,19 @@ class OpenAIResponsesProvider:
                 model=self.model_name,
                 input=input_messages,
             )
+            calls = []
+            for item in response.output:
+                if getattr(item, "type", None) == "function_call":
+                    calls.append({
+                        "call_id": item.call_id,
+                        "name": item.name,
+                        "arguments": item.arguments,
+                    })
             return AgentResponse(
                 content=response.output_text or "",
                 provider=self.provider_name,
                 model=self.model_name,
+                tool_calls=tuple(calls),
             )
         except Exception as exc:
             raise AgentProviderError(f"OpenAI tool-output request failed: {exc}") from exc
