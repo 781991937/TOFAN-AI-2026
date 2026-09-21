@@ -72,15 +72,52 @@ class MainAgentOrchestrator:
         if not isinstance(provider, OpenAIResponsesProvider):
             return {"kind": "tool", "provider": first.provider, "model": first.model, "tool_calls": [c["name"] for c in first.tool_calls], "outputs": outputs}
 
-        final = provider.submit_tool_outputs(
-            messages=[{"role": m.role, "content": m.content} for m in messages] + [
+        if not isinstance(provider, OpenAIResponsesProvider):
+            return {"kind": "tool", "provider": first.provider, "model": first.model, "tool_calls": [c["name"] for c in first.tool_calls], "outputs": outputs}
+
+        # Keep the Responses API conversation alive for bounded multi-step tool use.
+        pending = first
+        all_tool_names = [c["name"] for c in first.tool_calls]
+        conversation = [{"role": m.role, "content": m.content} for m in messages] + [
+            {"type": "function_call", "call_id": c["call_id"], "name": c["name"], "arguments": c["arguments"]}
+            for c in first.tool_calls
+        ]
+        for _ in range(4):
+            final = provider.submit_tool_outputs(
+                messages=conversation,
+                tool_outputs=outputs,
+                system_prompt=agent.system_prompt,
+            )
+            if not final.tool_calls:
+                return {
+                    "kind": "model_tool",
+                    "provider": final.provider,
+                    "model": final.model,
+                    "content": final.content,
+                    "tool_calls": all_tool_names,
+                }
+            next_outputs = []
+            for call in final.tool_calls:
+                try:
+                    payload = json.loads(call["arguments"] or "{}")
+                except json.JSONDecodeError as exc:
+                    raise AgentProviderError("Model returned invalid tool arguments.") from exc
+                if self.tool_input_guard:
+                    self.tool_input_guard(db, agent, call["name"], payload)
+                run = self.runtime.execute_tool(
+                    db, agent, call["name"],
+                    json.dumps(payload, ensure_ascii=False),
+                    actor_user_id=actor_user_id,
+                )
+                next_outputs.append({"call_id": call["call_id"], "output": run.output_text})
+                all_tool_names.append(call["name"])
+            conversation.extend(
                 {"type": "function_call", "call_id": c["call_id"], "name": c["name"], "arguments": c["arguments"]}
-                for c in first.tool_calls
-            ],
-            tool_outputs=outputs, system_prompt=agent.system_prompt,
-        )
-        return {"kind": "model_tool", "provider": final.provider, "model": final.model,
-                "content": final.content, "tool_calls": [c["name"] for c in first.tool_calls]}
+                for c in final.tool_calls
+            )
+            outputs = next_outputs
+            pending = final
+        raise AgentProviderError("Agent exceeded the bounded tool-call depth.")
 
     def run(self, db: Session, agent: Agent, actor_user_id: str | None, user_text: str,
             history: list[AgentMessage] | None = None, memory_context: str | None = None):
