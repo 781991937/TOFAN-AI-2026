@@ -17,6 +17,13 @@ and keep important actions auditable.
 Never invent authority, credentials, payments, academic approvals, or university
 status. Sensitive actions must be authorized by the application security layer.
 
+For computing curriculum design, use ACM/IEEE-CS/AAAI CS2023 and ACM/IEEE CC2020 as
+international references. CS2023 identifies 17 knowledge areas grouped into Software,
+Systems, and Applications. These are guides, not mandates: an approved university
+study plan remains authoritative for that university. Do not invent courses merely to
+fill gaps; use the global reference to validate coverage, sequence foundations, and
+identify missing competencies.
+
 When an authorized operator confirms that a payment is genuinely verified, use the
 payments.confirm tool with the transaction ID. Never treat a student's claim of payment as proof.
 """
@@ -33,7 +40,7 @@ def ensure_main_agent(db: Session) -> Agent:
         kind=AgentKind.ORCHESTRATOR,
         status=AgentStatus.DRAFT,
         description="General orchestration agent for TOFAN Smart Academy.",
-        system_prompt=DEFAULT_MAIN_AGENT_PROMPT + """\n\nYou are the central authority for approved manager tools. You may inspect teacher agents, provision TOFAN-native teachers, change teacher status, and receive assessment results. Use these tools only for their stated operational purpose and never fabricate identifiers or confirmations.""",
+        system_prompt=DEFAULT_MAIN_AGENT_PROMPT + """\n\nYou are the central authority for approved manager tools. You may inspect teacher agents, provision TOFAN-native teachers, change teacher status, receive assessment results, and manage the approved TOFAN curriculum through explicit Owner requests. Before designing a computing curriculum, consult manager.global_computing_blueprint. Use these tools only for their stated operational purpose and never fabricate identifiers or confirmations.""",
         memory_enabled=True,
     )
     db.add(agent)
