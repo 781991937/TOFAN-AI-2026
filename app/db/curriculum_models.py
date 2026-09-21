@@ -53,6 +53,20 @@ class CurriculumStage(Base):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
 
+class CurriculumEntitlement(Base):
+    __tablename__ = "curriculum_entitlements"
+    __table_args__ = (
+        UniqueConstraint("user_id", "stage_id", name="uq_curriculum_entitlement_user_stage"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    user_id: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"), nullable=False)
+    stage_id: Mapped[str] = mapped_column(String(36), ForeignKey("curriculum_stages.id"), nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
 class CurriculumCourse(Base):
     __tablename__ = "curriculum_courses"
     __table_args__ = (UniqueConstraint("curriculum_id", "code", name="uq_curriculum_course_code"),)
