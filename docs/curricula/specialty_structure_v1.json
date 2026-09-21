@@ -78,27 +78,32 @@
     {
       "specialty_id": "AI",
       "curriculum_id": "tofan-ai-v1",
-      "path": "docs/curricula/ai_tofan_curriculum_v1.json"
+      "path": "docs/curricula/ai_tofan_curriculum_v1.json",
+      "expected_course_count": 42
     },
     {
       "specialty_id": "CS",
       "curriculum_id": "tofan-cs-v1",
-      "path": "docs/curricula/cs_tofan_curriculum_v1.json"
+      "path": "docs/curricula/cs_tofan_curriculum_v1.json",
+      "expected_course_count": 45
     },
     {
       "specialty_id": "CYBER",
       "curriculum_id": "tofan-cybersecurity-v1",
-      "path": "docs/curricula/cybersecurity_tofan_curriculum_v1.json"
+      "path": "docs/curricula/cybersecurity_tofan_curriculum_v1.json",
+      "expected_course_count": 46
     },
     {
       "specialty_id": "SE",
       "curriculum_id": "tofan-software-engineering-v1",
-      "path": "docs/curricula/software_engineering_tofan_curriculum_v1.json"
+      "path": "docs/curricula/software_engineering_tofan_curriculum_v1.json",
+      "expected_course_count": 45
     },
     {
       "specialty_id": "DS",
       "curriculum_id": "tofan-data-science-v1",
-      "path": "docs/curricula/data_science_tofan_curriculum_v1.json"
+      "path": "docs/curricula/data_science_tofan_curriculum_v1.json",
+      "expected_course_count": 45
     }
   ],
   "global_alignment": {
