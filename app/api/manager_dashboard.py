@@ -44,6 +44,18 @@ table{width:100%;border-collapse:collapse;min-width:800px}th,td{padding:12px;bor
 
 <section><div class="section-title">الطلاب</div><div style="padding:14px;display:flex;gap:10px;flex-wrap:wrap"><input id="studentSearch" placeholder="ابحث بالاسم أو البريد أو الهاتف" style="flex:1;min-width:240px;padding:10px;border-radius:8px;background:#181818;color:#fff;border:1px solid #333"><button onclick="loadStudents()">بحث</button></div><div id="students" class="table-wrap"></div></section><div id="studentModal" class="modal" onclick="if(event.target===this)closeStudent()"><div class="modal-card"><div class="modal-head"><div><h2 id="studentTitle">تفاصيل الطالب</h2><div id="studentState" class="sub">—</div></div><button class="modal-close" onclick="closeStudent()">إغلاق</button></div><div id="studentDetails"></div></div></div>
 <section><div class="section-title">الاختبارات</div><div id="assessments" class="table-wrap"></div></section>
+<section><div class="section-title">إدارة المنهج الأكاديمي</div>
+<div class="table-wrap" style="padding:16px">
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+<button onclick="nativeCreate('curriculum')">+ منهج</button>
+<button onclick="nativeCreate('specialty')">+ تخصص</button>
+<button onclick="nativeCreate('stage')">+ فصل/مرحلة</button>
+<button onclick="nativeCreate('course')">+ مقرر</button>
+<button onclick="nativeCreate('unit')">+ وحدة</button>
+<button onclick="nativeCreate('lesson')">+ محاضرة</button>
+</div>
+<div id="nativeTree" class="detail-grid"><div class="detail">جاري تحميل المنهج...</div></div>
+</div></section>
 <section><div class="section-title">إعداد نقطة الدفع</div>
 <div class="detail-grid" style="padding:14px">
 <div class="detail"><b>مزود الدفع</b><input id="payProvider" style="width:100%;padding:9px"></div>
@@ -61,8 +73,58 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const cell=v=>String(v??"").startsWith("__HTML__") ? "<td>"+String(v).slice(8)+"</td>" : "<td>"+esc(v)+"</td>";
 function table(headers,rows){return '<table><thead><tr>'+headers.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr>'+r.map(cell).join('')+'</tr>').join('')+'</tbody></table>'}
 async function get(path){const r=await fetch(path,{credentials:"same-origin"});if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
+async function nativeApi(path,opt={}){const r=await fetch(path,{...opt,credentials:"same-origin",headers:{"Content-Type":"application/json",...(opt.headers||{})}});if(!r.ok){let d={};try{d=await r.json()}catch{}throw new Error(d.detail||"HTTP "+r.status)}return r.status===204?null:r.json()}
+async function loadNativeTree(){
+ const root=document.getElementById("nativeTree"); if(!root)return;
+ try{
+  const [curricula,specialties]=await Promise.all([nativeApi("/admin/academy/native/curricula"),nativeApi("/admin/academy/native/specialties")]);
+  root.innerHTML="";
+  for(const cur of curricula){
+   const stages=await nativeApi("/admin/academy/native/stages?curriculum_id="+encodeURIComponent(cur.id));
+   const box=document.createElement("div");box.className="detail";box.style.gridColumn="1/-1";
+   box.innerHTML="<b>"+esc(cur.name)+" · v"+esc(cur.version)+"</b><div class='muted'>"+esc(cur.slug)+" · "+esc(cur.status)+"</div>";
+   for(const s of stages){
+    const st=document.createElement("div");st.className="detail";st.style.marginTop="10px";
+    st.innerHTML="<b>"+esc(s.position)+". "+esc(s.name)+"</b><div class='muted'>"+esc(s.code)+"</div>";
+    const courses=await nativeApi("/admin/academy/native/courses?stage_id="+encodeURIComponent(s.id));
+    for(const co of courses){
+      const row=document.createElement("div");row.style.marginTop="8px";
+      row.innerHTML="📘 <b>"+esc(co.code)+"</b> — "+esc(co.name)+" <button class='ghost' onclick=\"nativeEdit('course','"+co.id+"','"+encodeURIComponent(co.name)+"')\">تعديل</button> <button class='ghost' onclick=\"nativeDelete('course','"+co.id+"')\">حذف</button>";
+      const units=await nativeApi("/admin/academy/native/units?course_id="+encodeURIComponent(co.id));
+      for(const u of units){
+       const ur=document.createElement("div");ur.style.margin="6px 0 6px 18px";ur.innerHTML="└─ "+esc(u.position)+". "+esc(u.title);
+       const lessons=await nativeApi("/admin/academy/native/lessons?unit_id="+encodeURIComponent(u.id));
+       for(const l of lessons){ur.innerHTML+="<div style='margin:4px 0 4px 20px'>└─ "+esc(l.position)+". "+esc(l.title)+" <button class='ghost' onclick=\"nativeDelete('lesson','"+l.id+"')\">حذف</button></div>"}
+       row.appendChild(ur);
+      }
+      st.appendChild(row);
+    }
+    box.appendChild(st);
+   }
+   root.appendChild(box);
+  }
+  if(!curricula.length)root.innerHTML="<div class='detail'>لا يوجد منهج بعد.</div>";
+ }catch(e){root.innerHTML="<div class='detail fail'>"+esc(e.message)+"</div>"}
+}
+async function nativeCreate(type){
+ const labels={curriculum:["اسم المنهج","الإصدار"],specialty:["اسم التخصص","الرمز"],stage:["اسم الفصل/المرحلة","الرمز"],course:["اسم المقرر","رمز المقرر"],unit:["عنوان الوحدة","رقم الترتيب"],lesson:["عنوان المحاضرة","رقم الترتيب"]};
+ const a=prompt(labels[type]?.[0]||"الاسم"); if(!a?.trim())return;
+ const b=prompt(labels[type]?.[1]||""); if(b===null)return;
+ try{
+  if(type==="curriculum"){const slug=prompt("Slug المنهج","curriculum-"+Date.now());await nativeApi("/admin/academy/native/curricula",{method:"POST",body:JSON.stringify({slug,name:a.trim(),version:b.trim()})})}
+  else if(type==="specialty"){await nativeApi("/admin/academy/native/specialties",{method:"POST",body:JSON.stringify({name:a.trim(),code:b.trim()})})}
+  else if(type==="stage"){const curriculum_id=prompt("معرّف المنهج");const specialty_id=prompt("معرّف التخصص");await nativeApi("/admin/academy/native/stages",{method:"POST",body:JSON.stringify({curriculum_id,specialty_id,code:b.trim(),name:a.trim(),position:Number(prompt("الترتيب","1"))})})}
+  else if(type==="course"){const curriculum_id=prompt("معرّف المنهج");const stage_id=prompt("معرّف الفصل/المرحلة");await nativeApi("/admin/academy/native/courses",{method:"POST",body:JSON.stringify({curriculum_id,stage_id,code:b.trim(),name:a.trim(),position:Number(prompt("الترتيب","1"))})})}
+  else if(type==="unit"){const course_id=prompt("معرّف المقرر");await nativeApi("/admin/academy/native/units",{method:"POST",body:JSON.stringify({course_id,title:a.trim(),position:Number(b)})})}
+  else if(type==="lesson"){const unit_id=prompt("معرّف الوحدة");await nativeApi("/admin/academy/native/lessons",{method:"POST",body:JSON.stringify({unit_id,title:a.trim(),position:Number(b)})})}
+  toast("تم الحفظ");loadNativeTree();
+ }catch(e){toast(e.message)}
+}
+async function nativeDelete(type,id){if(!confirm("هل تريد الحذف؟"))return;try{await nativeApi("/admin/academy/native/"+type+"/"+encodeURIComponent(id),{method:"DELETE"});toast("تم الحذف");loadNativeTree()}catch(e){toast(e.message)}}
+async function nativeEdit(type,id,name){const value=prompt("الاسم الجديد",decodeURIComponent(name));if(!value?.trim())return;try{await nativeApi("/admin/academy/native/courses/"+encodeURIComponent(id),{method:"PATCH",body:JSON.stringify({name:value.trim()})});toast("تم التعديل");loadNativeTree()}catch(e){toast(e.message)}}
 async function load(){
  document.getElementById("state").textContent="جاري التحديث...";
+ loadNativeTree();
  try{const a=await get("/student/payments/account"); if(a.configured){payProvider.value=a.provider_name||"";payAccountName.value=a.account_name||"";payAccountNumber.value=a.account_number||"";payAmount.value=a.amount??"";payCurrency.value=a.currency||"";payInstructions.value=a.instructions||"";}}catch{}
  try{
   const studentQuery=encodeURIComponent(document.getElementById("studentSearch")?.value||"");
