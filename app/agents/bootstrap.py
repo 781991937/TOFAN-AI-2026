@@ -45,6 +45,9 @@ def ensure_main_agent(db: Session) -> Agent:
         memory_enabled=True,
     )
     db.add(agent)
+    db.flush()
+    # The General Manager owns delegation; specialist agents receive only their
+    # explicitly assigned domain tools when provisioned.
     db.commit()
     db.refresh(agent)
     return agent
