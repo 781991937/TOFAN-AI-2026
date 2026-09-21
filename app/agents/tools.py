@@ -267,6 +267,36 @@ def _payload(input_text: str) -> dict:
     return value
 
 
+def global_computing_curriculum_tool(_: Session, input_text: str) -> str:
+    """Return the international CS curriculum reference used by the General Manager."""
+    areas = [
+        ("AL", "Algorithmic Foundations", "Software"),
+        ("AR", "Architecture and Organization", "Systems"),
+        ("AI", "Artificial Intelligence", "Applications"),
+        ("DM", "Data Management", "Systems"),
+        ("FPL", "Foundations of Programming Languages", "Software"),
+        ("GIT", "Graphics and Interactive Techniques", "Applications"),
+        ("HCI", "Human-Computer Interaction", "Applications"),
+        ("MSF", "Mathematical and Statistical Foundations", "Software"),
+        ("NC", "Networking and Communication", "Systems"),
+        ("OS", "Operating Systems", "Systems"),
+        ("PDC", "Parallel and Distributed Computing", "Systems"),
+        ("SEC", "Security", "Systems"),
+        ("SEP", "Society, Ethics, and the Profession", "Applications"),
+        ("SDF", "Software Development Fundamentals", "Software"),
+        ("SE", "Software Engineering", "Software"),
+        ("SPD", "Specialized Platform Development", "Applications"),
+        ("SF", "Systems Fundamentals", "Systems"),
+    ]
+    return json.dumps({
+        "reference": "ACM/IEEE-CS/AAAI CS2023 + ACM/IEEE CC2020",
+        "program_shape": "4 years / 8 semesters",
+        "competency_areas": ["Software", "Systems", "Applications"],
+        "knowledge_areas": [{"code": code, "name": name, "competency_area": group} for code, name, group in areas],
+        "rule": "Use this as an international reference; adapt course packaging to the institution and never override an approved university study plan."
+    }, ensure_ascii=False)
+
+
 def manager_create_curriculum_tool(db: Session, input_text: str) -> str:
     from app.db.curriculum_models import Curriculum
     p = _payload(input_text)
@@ -447,6 +477,14 @@ def build_default_registry() -> ToolRegistry:
             handler=manager_teacher_overview_tool,
             sensitive=True,
             allowed_agent_slug="tofan-main",
+            parameters={"type":"object","properties":{},"additionalProperties":False},
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.global_computing_blueprint",
+            description="Read the international computer-science curriculum reference based on ACM/IEEE-CS/AAAI CS2023 and CC2020. Use it when designing or checking a computing curriculum; it does not create records.",
+            handler=global_computing_curriculum_tool,
             parameters={"type":"object","properties":{},"additionalProperties":False},
         )
     )
