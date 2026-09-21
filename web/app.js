@@ -41,10 +41,13 @@ async function requestCurriculumPayment(c){
   try{
     const account=await api("/student/payments/account");
     if(!account.configured){toast(lang==="ar"?"حساب الدفع غير مُعد بعد من الإدارة.":"Payment account is not configured yet.");return}
-    const result=await api("/student/payments/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_key:"curriculum_stage:"+stageId,currency:account.currency})});
+    const amount=account.amount??"";
+    const reference=prompt(lang==="ar"?"أدخل رقم العملية/المرجع بعد التحويل:":"Enter the transaction/reference number after transfer:");
+    if(!reference?.trim()){toast(lang==="ar"?"يجب إدخال رقم العملية/المرجع.":"Transaction reference is required.");return}
+    const result=await api("/student/payments/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_key:"curriculum_stage:"+stageId,reference:reference.trim()})});
     const message=lang==="ar"
-      ?"حوّل المبلغ إلى "+account.provider_name+" — رقم النقطة: "+account.account_number+(account.instructions?" — "+account.instructions:"")+" ثم أرسل رقم العملية/المرجع للإدارة."
-      :"Transfer to "+account.provider_name+" — account: "+account.account_number+(account.instructions?" — "+account.instructions:"")+" then send the transaction reference to admin.";
+      ?"المبلغ: "+amount+" "+(account.currency||"")+" — حوّل إلى "+account.provider_name+" — رقم النقطة: "+account.account_number+(account.instructions?" — "+account.instructions:"")+" — تم إرسال الطلب للمالك للمراجعة."
+      :"Amount: "+amount+" "+(account.currency||"")+" — transfer to "+account.provider_name+" — account: "+account.account_number+(account.instructions?" — "+account.instructions:"")+" — request sent for owner review.";
     toast(message);
     return result;
   }catch(err){toast(err.message)}
