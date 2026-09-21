@@ -53,8 +53,34 @@ def get_registry_semester_courses(specialty_id: str, year: int, semester: int):
 
 @router.get("/specialties")
 def list_specialties(db: Session = Depends(get_db)):
-    rows = db.scalars(select(Specialty).where(Specialty.is_active.is_(True)).order_by(Specialty.name)).all()
-    return [{"id": x.id, "code": x.code, "name": x.name} for x in rows]
+    rows = db.scalars(
+        select(Specialty)
+        .where(Specialty.is_active.is_(True))
+        .order_by(Specialty.name)
+    ).all()
+    result = []
+    for specialty in rows:
+        stage = db.scalar(
+            select(CurriculumStage)
+            .where(CurriculumStage.specialty_id == specialty.id)
+            .order_by(CurriculumStage.position)
+        )
+        curriculum = db.get(Curriculum, stage.curriculum_id) if stage else None
+        result.append({
+            "id": specialty.id,
+            "code": specialty.code,
+            "name": specialty.name,
+            "name_ar": specialty.name_ar,
+            "name_en": specialty.name_en,
+            "description": specialty.description,
+            "description_ar": specialty.description_ar,
+            "description_en": specialty.description_en,
+            "icon": specialty.icon,
+            "curriculum_id": curriculum.id if curriculum else None,
+            "curriculum_slug": curriculum.slug if curriculum else None,
+            "curriculum_version": curriculum.version if curriculum else None,
+        })
+    return result
 
 
 @router.get("/courses/{course_id}")
