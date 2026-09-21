@@ -83,6 +83,7 @@ class PaymentTransaction(Base):
     amount: Mapped[float | None] = mapped_column(Float)
     currency: Mapped[str | None] = mapped_column(String(20))
     reference: Mapped[str | None] = mapped_column(String(255))
+    proof_file_id: Mapped[str | None] = mapped_column(ForeignKey("content_files.id"))
     confirmed_by_agent_id: Mapped[str | None] = mapped_column(ForeignKey("agents.id"))
     confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
