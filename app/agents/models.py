@@ -23,44 +23,49 @@ class AgentStatus(StrEnum):
     ARCHIVED = "archived"
 
 
+class AgentRole(StrEnum):
+    GENERAL_MANAGER = "general_manager"
+    ACADEMIC = "academic"
+    TEACHER = "teacher"
+    STUDENT_AFFAIRS = "student_affairs"
+    FINANCE = "finance"
+    CONTENT = "content"
+    ASSESSMENT = "assessment"
+    CERTIFICATES = "certificates"
+    NOTIFICATIONS = "notifications"
+    SECURITY = "security"
+    RESEARCH = "research"
+    CAREER = "career"
+    QUALITY = "quality"
+    ADMISSIONS = "admissions"
+    OPERATIONS = "operations"
+
+
 class Agent(Base):
     __tablename__ = "agents"
-    __table_args__ = (
-        UniqueConstraint("slug", name="uq_agent_slug"),
-    )
+    __table_args__ = (UniqueConstraint("slug", name="uq_agent_slug"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(150), nullable=False)
     kind: Mapped[AgentKind] = mapped_column(nullable=False)
-    status: Mapped[AgentStatus] = mapped_column(
-        default=AgentStatus.DRAFT, nullable=False
-    )
+    role: Mapped[AgentRole] = mapped_column(default=AgentRole.OPERATIONS, nullable=False)
+    status: Mapped[AgentStatus] = mapped_column(default=AgentStatus.DRAFT, nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     system_prompt: Mapped[str | None] = mapped_column(Text)
     model_provider: Mapped[str | None] = mapped_column(String(100))
     model_name: Mapped[str | None] = mapped_column(String(150))
     memory_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    # Legacy university-course reference; retained only for backward compatibility.
     teacher_course_id: Mapped[str | None] = mapped_column(ForeignKey("courses.id"))
-    # Canonical TOFAN-native academic assignment.
     curriculum_course_id: Mapped[str | None] = mapped_column(ForeignKey("curriculum_courses.id"))
-    # Optional external university/reference alignment; never the academic parent.
     teacher_institution_id: Mapped[str | None] = mapped_column(ForeignKey("institutions.id"))
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, nullable=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow,
-        onupdate=datetime.utcnow, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class AgentTool(Base):
     __tablename__ = "agent_tools"
-    __table_args__ = (
-        UniqueConstraint("agent_id", "tool_name", name="uq_agent_tool"),
-    )
+    __table_args__ = (UniqueConstraint("agent_id", "tool_name", name="uq_agent_tool"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     agent_id: Mapped[str] = mapped_column(ForeignKey("agents.id"), nullable=False)
@@ -78,7 +83,5 @@ class AgentRun(Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     input_text: Mapped[str | None] = mapped_column(Text)
     output_text: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=datetime.utcnow, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
