@@ -11,7 +11,7 @@ from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, Curricu
 from app.db.models import AcademicUnit, Course, Institution, Lecture, Unit
 from .payment_tools import confirm_payment_tool
 from .main_manager import MainManagerService
-from .models import AgentRole, AgentStatus
+from .models import Agent, AgentRole, AgentRun, AgentStatus, AgentTool
 
 
 class ToolExecutionError(RuntimeError):
@@ -257,15 +257,14 @@ def manager_delegate_specialist_tool(db: Session, input_text: str) -> str:
     provider = build_configured_provider()
     enabled = [
         row.tool_name for row in db.scalars(
-            select(__import__("app.agents.models", fromlist=["AgentTool"]).AgentTool)
-            .where(
-                __import__("app.agents.models", fromlist=["AgentTool"]).AgentTool.agent_id == agent.id,
-                __import__("app.agents.models", fromlist=["AgentTool"]).AgentTool.enabled.is_(True),
+            select(AgentTool).where(
+                AgentTool.agent_id == agent.id,
+                AgentTool.enabled.is_(True),
             )
         ).all()
     ]
     definitions = build_default_registry().openai_definitions(enabled)
-    run = __import__("app.agents.models", fromlist=["AgentRun"]).AgentRun(
+    run = AgentRun(
         agent_id=agent.id, tool_name="workforce.delegate_task", status="running", input_text=task
     )
     db.add(run)
@@ -280,7 +279,8 @@ def manager_delegate_specialist_tool(db: Session, input_text: str) -> str:
         run.output_text = response.content or json.dumps(
             {"tool_calls": [x["name"] for x in response.tool_calls]}, ensure_ascii=False
         )
-        run.completed_at = __import__("datetime").datetime.utcnow()
+        from datetime import datetime
+        run.completed_at = datetime.utcnow()
         db.commit()
         return json.dumps({
             "specialist_agent_id": agent.id,
