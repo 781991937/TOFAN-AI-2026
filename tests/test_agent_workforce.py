@@ -114,3 +114,25 @@ def test_specialist_cannot_route_to_manager_delegate():
     )
     decision = MainAgentOrchestrator(None, None).decide(None, specialist, "اعرض المدفوعات")
     assert decision.tool_name != "manager.delegate_specialist"
+
+def test_specialist_operational_tools_expose_read_only_domain_contracts():
+    registry = build_default_registry()
+    for role in SPECIALIST_TOOL_ALLOWLIST:
+        tool = registry.get(f"specialist.{role.value}.operations")
+        assert tool.sensitive is False
+        assert "Read-only" in tool.description
+        assert tool.parameters["properties"]["limit"]["maximum"] == 100
+
+
+def test_general_manager_assessment_requests_prefer_assessment_specialist():
+    manager = Agent(
+        id="gm",
+        name="GM",
+        slug="tofan-main",
+        kind=AgentKind.ORCHESTRATOR,
+        role=AgentRole.GENERAL_MANAGER,
+        status=AgentStatus.ACTIVE,
+    )
+    decision = MainAgentOrchestrator(None, None).decide(None, manager, "راجع نتيجة اختبار الطالب ودرجته")
+    assert decision.tool_name == "manager.delegate_specialist"
+    assert '"assessment"' in decision.tool_input
