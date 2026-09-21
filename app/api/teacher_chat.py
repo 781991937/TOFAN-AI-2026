@@ -220,6 +220,11 @@ def chat_with_teacher(
                 db, user_id=actor.id, agent_id=agent.id,
                 source=TeachingSource.GLOBAL_CURRICULUM,
             )
+            stage_is_free = False
+            if agent.curriculum_course_id:
+                course_for_access = db.get(CurriculumCourse, agent.curriculum_course_id)
+                stage_for_access = db.get(CurriculumStage, course_for_access.stage_id) if course_for_access else None
+                stage_is_free = bool(stage_for_access and stage_for_access.position == 1)
             entitlement = db.scalar(
                 __import__("sqlalchemy", fromlist=["select"]).select(Entitlement).where(
                     Entitlement.user_id == actor.id,
@@ -227,11 +232,13 @@ def chat_with_teacher(
                     Entitlement.content_file_id.is_(None),
                 )
             )
-            if not usage.paid_access or entitlement is None:
+            if not stage_is_free and (not usage.paid_access or entitlement is None):
                 raise HTTPException(
                     status_code=403,
-                    detail="Global Curriculum access requires confirmed payment by the TOFAN main manager.",
+                    detail="This curriculum content requires confirmed paid access.",
                 )
+            if stage_is_free:
+                usage.paid_access = True
 
         file_step = None
         file_course_name = None
