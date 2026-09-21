@@ -1,5 +1,5 @@
 {
-  "version": "1.0",
+  "version": "1.1",
   "title": "TOFAN Global Specialty Academic Structure",
   "purpose_ar": "الهيكل الموحد لجميع التخصصات في أكاديمية طوفان الذكية",
   "structure": {
@@ -9,22 +9,34 @@
     "year_model": [
       {
         "year_number": 1,
-        "semesters": [1, 2],
+        "semesters": [
+          1,
+          2
+        ],
         "focus_ar": "التأسيس وبناء المهارات الأساسية"
       },
       {
         "year_number": 2,
-        "semesters": [1, 2],
+        "semesters": [
+          1,
+          2
+        ],
         "focus_ar": "الأساس التخصصي"
       },
       {
         "year_number": 3,
-        "semesters": [1, 2],
+        "semesters": [
+          1,
+          2
+        ],
         "focus_ar": "التعمق والتطبيق"
       },
       {
         "year_number": 4,
-        "semesters": [1, 2],
+        "semesters": [
+          1,
+          2
+        ],
         "focus_ar": "التخصص المتقدم والهندسة والمشاريع"
       }
     ]
@@ -62,12 +74,42 @@
     "Learning Outcome",
     "Project"
   ],
+  "curriculum_registry": [
+    {
+      "specialty_id": "AI",
+      "curriculum_id": "tofan-ai-v1",
+      "path": "docs/curricula/ai_tofan_curriculum_v1.json"
+    },
+    {
+      "specialty_id": "CS",
+      "curriculum_id": "tofan-cs-v1",
+      "path": "docs/curricula/cs_tofan_curriculum_v1.json"
+    },
+    {
+      "specialty_id": "CYBER",
+      "curriculum_id": "tofan-cybersecurity-v1",
+      "path": "docs/curricula/cybersecurity_tofan_curriculum_v1.json"
+    },
+    {
+      "specialty_id": "SE",
+      "curriculum_id": "tofan-software-engineering-v1",
+      "path": "docs/curricula/software_engineering_tofan_curriculum_v1.json"
+    },
+    {
+      "specialty_id": "DS",
+      "curriculum_id": "tofan-data-science-v1",
+      "path": "docs/curricula/data_science_tofan_curriculum_v1.json"
+    }
+  ],
   "global_alignment": {
     "principle_ar": "المحتوى يبنى من المعرفة الأكاديمية العالمية ثم ينظم داخل خطة TOFAN الأصلية.",
     "reference_frameworks": [
       "ACM/IEEE-CS/AAAI CS2023",
-      "ACM/IEEE-CS/AAAI CS2023 Knowledge Areas",
-      "التخصصات الجامعية العالمية والمراجع الأكاديمية المعترف بها"
+      "ACM/IEEE-CS CSEC2017",
+      "NIST NICE Cybersecurity Workforce Framework",
+      "ISO/IEC/IEEE software life-cycle guidance",
+      "CRISP-DM",
+      "مراجع أكاديمية ومهنية عالمية بحسب التخصص"
     ],
     "rule_ar": "لا يتم نسخ محتوى أي جامعة أو مرجع؛ تستخدم المراجع لتحديد المعرفة والموضوعات ومخرجات التعلم، ثم تنتج TOFAN محتوى تعليميا أصليا."
   },
@@ -83,13 +125,23 @@
     ]
   },
   "access": {
-    "year_1_semester_1": "FREE",
-    "other_semesters": "PAID"
+    "principle_ar": "الوصول إلى المحتوى يخضع لسياسة TOFAN الحالية وليس لقاعدة ثابتة مرتبطة بفصل دراسي.",
+    "file_upload_free_limit_per_day": 3,
+    "response_free_characters_after_file_limit": 2000,
+    "daily_reset": "24 hours from the start time of the first lecture/session",
+    "exams": "FREE",
+    "payment_confirmation_authority": "TOFAN General Manager"
   },
   "localization": {
-    "supported_locales": ["ar", "en"],
+    "supported_locales": [
+      "ar",
+      "en"
+    ],
     "default_locale": "ar",
-    "directions": {"ar": "rtl", "en": "ltr"}
+    "directions": {
+      "ar": "rtl",
+      "en": "ltr"
+    }
   },
   "ui": {
     "principle_ar": "كل تخصص يستخدم نفس الهيكل الأكاديمي والوظيفي، مع هوية وتجربة تعلم بصرية خاصة بالتخصص.",
