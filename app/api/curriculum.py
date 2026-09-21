@@ -128,6 +128,32 @@ def get_curriculum_course(course_id: str, db: Session = Depends(get_db)):
     }
 
 
+@router.get("/lessons/{lesson_id}")
+def get_curriculum_lesson(lesson_id: str, db: Session = Depends(get_db)):
+    lesson = db.get(CurriculumLesson, lesson_id)
+    if lesson is None:
+        raise HTTPException(status_code=404, detail="TOFAN curriculum lesson not found.")
+    unit = db.get(CurriculumUnit, lesson.unit_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="Lesson unit not found.")
+    course = db.get(CurriculumCourse, unit.course_id)
+    if course is None or not course.is_active:
+        raise HTTPException(status_code=404, detail="Lesson course not found.")
+    stage = db.get(CurriculumStage, course.stage_id)
+    return {
+        "id": lesson.id,
+        "title": lesson.title,
+        "position": lesson.position,
+        "description": lesson.description,
+        "content_markdown": lesson.content_markdown or "",
+        "has_content": bool((lesson.content_markdown or "").strip()),
+        "source_refs": lesson.source_refs_json,
+        "unit": {"id": unit.id, "title": unit.title, "position": unit.position},
+        "course": {"id": course.id, "code": course.code, "name": course.name},
+        "stage": {"id": stage.id, "code": stage.code, "name": stage.name, "position": stage.position} if stage else None,
+    }
+
+
 @router.get("/{curriculum_slug}")
 def get_db_curriculum(curriculum_slug: str, db: Session = Depends(get_db)):
     curriculum = db.scalar(
