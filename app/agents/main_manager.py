@@ -551,7 +551,7 @@ class MainManagerService:
         )
         db.add(agent)
         db.flush()
-        for tool_name in ("academy.search", "academy.structure"):
+        for tool_name in tools_for_specialist(role):
             db.add(AgentTool(agent_id=agent.id, tool_name=tool_name, enabled=True))
         MainManagerService.record_event(
             db, event_name="manager.specialist_provision.completed", actor_user_id=None,
