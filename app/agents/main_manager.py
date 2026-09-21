@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session
 
-from app.agents.models import Agent, AgentKind, AgentStatus, AgentRun
+from app.agents.models import Agent, AgentKind, AgentRole, AgentStatus, AgentRun
 from app.db.assessment_models import CurriculumAssessmentAttempt
 from app.db.identity_models import PaymentTransaction, PaymentStatus, StudentProfile, UserType
 from app.db.models import AuditLog, TeachingStep, TeachingStepStatus, TeachingSource, User
@@ -527,6 +527,38 @@ class MainManagerService:
             "id": a.id, "user_id": a.user_id, "action": a.action, "resource_type": a.resource_type,
             "resource_id": a.resource_id, "created_at": a.created_at.isoformat(), "details": a.details
         } for a in rows]}
+    @staticmethod
+    def provision_specialist(db: Session, role: AgentRole, *, name: str | None = None, description: str | None = None) -> dict:
+        if role in {AgentRole.GENERAL_MANAGER, AgentRole.TEACHER}:
+            raise ValueError("Use the dedicated manager or teacher provisioning workflow for this role.")
+        slug = f"specialist-tofan-{role.value}"
+        existing = db.scalar(select(Agent).where(Agent.slug == slug))
+        if existing is not None:
+            return {"agent_id": existing.id, "slug": existing.slug, "role": existing.role, "status": existing.status, "created": False}
+        agent = Agent(
+            name=name or f"وكيل {role.value}",
+            slug=slug,
+            kind=AgentKind.SPECIALIST,
+            role=role,
+            status=AgentStatus.ACTIVE,
+            description=description or f"وكيل ذكاء اصطناعي متخصص في {role.value} لأكاديمية طوفان الذكية.",
+            system_prompt=(
+                f"You are TOFAN's {role.value} specialist AI agent. "
+                "Operate only within your assigned domain, use approved tools, "
+                "protect student data, and escalate cross-domain or sensitive decisions to tofan-main."
+            ),
+            memory_enabled=True,
+        )
+        db.add(agent)
+        MainManagerService.record_event(
+            db, event_name="manager.specialist_provision.completed", actor_user_id=None,
+            action="manager.specialist_provision.created", resource_type="agent", resource_id=agent.id,
+            decision="specialist_created", payload={"role": role.value, "slug": slug},
+        )
+        db.commit()
+        db.refresh(agent)
+        return {"agent_id": agent.id, "slug": agent.slug, "role": agent.role, "status": agent.status, "created": True}
+
     @staticmethod
     def provision_teacher(db: Session, curriculum_course_id: str) -> dict:
         from app.db.curriculum_models import CurriculumCourse
