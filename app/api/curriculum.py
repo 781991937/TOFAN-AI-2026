@@ -8,7 +8,7 @@ from app.auth.dependencies import get_db
 from app.curriculum_registry import CurriculumError, get_curriculum, list_curricula, semester_courses
 from app.agents.models import Agent, AgentKind, AgentStatus
 from app.db.curriculum_models import (
-    CoursePrerequisite, Curriculum, CurriculumCourse, CurriculumLesson,
+    CourseAssessment, CoursePrerequisite, Curriculum, CurriculumCourse, CurriculumLesson,
     CurriculumProject, CurriculumStage, CurriculumUnit, ElectiveTrack,
     LearningOutcome, Specialty,
 )
@@ -65,6 +65,10 @@ def get_curriculum_course(course_id: str, db: Session = Depends(get_db)):
 
     stage = db.get(CurriculumStage, course.stage_id)
     teacher = db.scalar(select(Agent).where(Agent.curriculum_course_id == course.id, Agent.kind == AgentKind.TEACHER, Agent.status == AgentStatus.ACTIVE))
+    assessment = db.scalar(select(CourseAssessment).where(
+        CourseAssessment.course_id == course.id,
+        CourseAssessment.assessment_type == "course",
+    ))
     outcomes = db.scalars(select(LearningOutcome).where(LearningOutcome.course_id == course.id).order_by(LearningOutcome.position)).all()
     prerequisites = db.scalars(select(CoursePrerequisite).where(CoursePrerequisite.course_id == course.id)).all()
     units = db.scalars(select(CurriculumUnit).where(CurriculumUnit.course_id == course.id).order_by(CurriculumUnit.position)).all()
@@ -87,6 +91,11 @@ def get_curriculum_course(course_id: str, db: Session = Depends(get_db)):
         "stage": {"id": stage.id, "code": stage.code, "name": stage.name, "position": stage.position} if stage else None,
         "access": {"tier": "free" if stage and stage.position == 1 else "paid"},
         "teacher": {"available": teacher is not None, "slug": teacher.slug if teacher else None, "name": teacher.name if teacher else None},
+        "assessment": None if assessment is None else {
+            "id": assessment.id,
+            "title": assessment.title,
+            "pass_percentage": assessment.pass_percentage,
+        },
         "outcomes": [x.statement for x in outcomes],
         "prerequisite_course_ids": [x.prerequisite_course_id for x in prerequisites],
         "units": result_units,
