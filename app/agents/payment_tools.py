@@ -12,6 +12,7 @@ from app.agents.academy_access_policy import course_access_tier
 from app.db.models import AcademyAccessTier
 from app.db.identity_models import PaymentStatus, PaymentTransaction
 from app.db.models import AuditLog, Entitlement, TeachingAccess, Lecture, Unit
+from app.db.curriculum_models import CurriculumCourse, CurriculumEntitlement, CurriculumStage
 
 
 def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
@@ -44,6 +45,42 @@ def confirm_payment_transaction(db: Session, transaction_id: str) -> dict:
     transaction.status = PaymentStatus.CONFIRMED
     transaction.confirmed_by_agent_id = main_agent.id
     transaction.confirmed_at = datetime.utcnow()
+
+    if transaction.product_key.startswith("curriculum_stage:"):
+        stage_id = transaction.product_key.split(":", 1)[1].strip()
+        stage = db.get(CurriculumStage, stage_id)
+        if stage is None:
+            raise ValueError("Curriculum stage not found.")
+        if stage.position == 1:
+            raise ValueError("The first semester is free and does not require payment.")
+        existing = db.scalar(select(CurriculumEntitlement).where(
+            CurriculumEntitlement.user_id == transaction.user_id,
+            CurriculumEntitlement.stage_id == stage_id,
+        ))
+        if existing is None:
+            db.add(CurriculumEntitlement(
+                user_id=transaction.user_id,
+                stage_id=stage_id,
+                active=True,
+            ))
+        else:
+            existing.active = True
+        db.add(AuditLog(
+            user_id=transaction.user_id,
+            action="payment.confirmed",
+            resource_type="curriculum_stage_access",
+            resource_id=stage_id,
+            details=json.dumps({"product_key": transaction.product_key, "confirmed_by_agent_id": main_agent.id}, ensure_ascii=False),
+        ))
+        db.flush()
+        return {
+            "transaction_id": transaction.id,
+            "status": transaction.status.value,
+            "access": "curriculum_stage_active",
+            "stage_id": stage_id,
+            "user_id": transaction.user_id,
+            "confirmed_by_agent_id": main_agent.id,
+        }
 
     if transaction.product_key.startswith("academy_course:"):
         course_id = transaction.product_key.split(":", 1)[1].strip()
