@@ -226,6 +226,73 @@ def manager_provision_teacher_tool(db: Session, input_text: str) -> str:
     return json.dumps(result, ensure_ascii=False)
 
 
+def manager_delegate_specialist_tool(db: Session, input_text: str) -> str:
+    """Delegate a bounded task to an active specialist AI agent and return its result."""
+    p = _payload(input_text)
+    role_value = str(p.get("role", "")).strip()
+    task = str(p.get("task", "")).strip()
+    if not role_value or not task:
+        raise ToolExecutionError("role and task are required.")
+    try:
+        role = AgentRole(role_value)
+    except ValueError as exc:
+        raise ToolExecutionError("Unsupported specialist role.") from exc
+    if role in {AgentRole.GENERAL_MANAGER, AgentRole.TEACHER}:
+        raise ToolExecutionError("Use a specialist role.")
+    agent = db.scalar(select(Agent).where(
+        Agent.role == role, Agent.status == AgentStatus.ACTIVE
+    ).order_by(Agent.created_at))
+    if agent is None:
+        try:
+            MainManagerService.provision_specialist(db, role)
+        except ValueError as exc:
+            raise ToolExecutionError(str(exc)) from exc
+        agent = db.scalar(select(Agent).where(
+            Agent.role == role, Agent.status == AgentStatus.ACTIVE
+        ).order_by(Agent.created_at))
+    if agent is None:
+        raise ToolExecutionError("Specialist agent could not be provisioned.")
+    from .llm import build_configured_provider
+    from .providers import AgentMessage
+    provider = build_configured_provider()
+    enabled = [
+        row.tool_name for row in db.scalars(
+            select(__import__("app.agents.models", fromlist=["AgentTool"]).AgentTool)
+            .where(
+                __import__("app.agents.models", fromlist=["AgentTool"]).AgentTool.agent_id == agent.id,
+                __import__("app.agents.models", fromlist=["AgentTool"]).AgentTool.enabled.is_(True),
+            )
+        ).all()
+    ]
+    definitions = build_default_registry().openai_definitions(enabled)
+    run = __import__("app.agents.models", fromlist=["AgentRun"]).AgentRun(
+        agent_id=agent.id, tool_name="workforce.delegate_task", status="running", input_text=task
+    )
+    db.add(run)
+    db.flush()
+    try:
+        response = provider.generate(
+            [AgentMessage(role="user", content=task)],
+            system_prompt=agent.system_prompt,
+            tools=definitions,
+        )
+        run.status = "completed"
+        run.output_text = response.content or json.dumps(
+            {"tool_calls": [x["name"] for x in response.tool_calls]}, ensure_ascii=False
+        )
+        run.completed_at = __import__("datetime").datetime.utcnow()
+        db.commit()
+        return json.dumps({
+            "specialist_agent_id": agent.id,
+            "specialist_role": agent.role,
+            "status": "completed",
+            "response": response.content,
+        }, ensure_ascii=False)
+    except Exception as exc:
+        db.rollback()
+        raise ToolExecutionError("Specialist delegation failed.") from exc
+
+
 def manager_provision_specialist_tool(db: Session, input_text: str) -> str:
     p = _payload(input_text)
     role_value = str(p.get("role", "")).strip()
@@ -484,6 +551,24 @@ def build_default_registry() -> ToolRegistry:
                     "payload": {"type": "object"},
                 },
                 "required": ["event_name", "payload"],
+                "additionalProperties": False,
+            },
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.delegate_specialist",
+            description="Delegate a bounded task to an active TOFAN specialist AI workforce agent and return its response.",
+            handler=manager_delegate_specialist_tool,
+            sensitive=False,
+            allowed_agent_slug="tofan-main",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "role": {"type": "string", "enum": [r.value for r in AgentRole if r not in {AgentRole.GENERAL_MANAGER, AgentRole.TEACHER}]},
+                    "task": {"type": "string", "minLength": 1, "maxLength": 10000},
+                },
+                "required": ["role", "task"],
                 "additionalProperties": False,
             },
         )
