@@ -345,6 +345,7 @@ from app.db.curriculum_models import (
     CurriculumUnit,
     CurriculumLesson,
     Specialty,
+    CurriculumStatus,
 )
 
 
@@ -576,6 +577,240 @@ def create_native_lesson(
     db.refresh(item)
     return item
 
+
+
+
+class CurriculumUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    version: str | None = Field(default=None, min_length=1, max_length=50)
+    description: str | None = None
+    status: str | None = Field(default=None, max_length=20)
+
+
+class SpecialtyUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    code: str | None = Field(default=None, min_length=1, max_length=100)
+    description: str | None = None
+    name_ar: str | None = None
+    name_en: str | None = None
+
+
+class StageUpdate(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=50)
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    position: int | None = Field(default=None, ge=1)
+
+
+class NativeCourseUpdate(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=100)
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = None
+    course_type: str | None = Field(default=None, max_length=30)
+    position: int | None = Field(default=None, ge=1)
+
+
+class NativeUnitUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    position: int | None = Field(default=None, ge=1)
+
+
+class NativeLessonUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    position: int | None = Field(default=None, ge=1)
+    description: str | None = None
+    content_markdown: str | None = None
+
+
+@router.patch("/native/curricula/{curriculum_id}")
+def update_native_curriculum(
+    curriculum_id: str,
+    payload: CurriculumUpdate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    item = db.get(Curriculum, curriculum_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+    data = payload.model_dump(exclude_unset=True)
+    if "status" in data:
+        try:
+            data["status"] = CurriculumStatus(data["status"])
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid curriculum status.")
+    for key, value in data.items():
+        setattr(item, key, value)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Curriculum slug/version already exists.")
+    db.refresh(item)
+    return item
+
+
+@router.patch("/native/specialties/{specialty_id}")
+def update_native_specialty(
+    specialty_id: str,
+    payload: SpecialtyUpdate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    item = db.get(Specialty, specialty_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Specialty not found.")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, key, value)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Specialty code already exists.")
+    db.refresh(item)
+    return item
+
+
+@router.patch("/native/stages/{stage_id}")
+def update_native_stage(
+    stage_id: str,
+    payload: StageUpdate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    item = db.get(CurriculumStage, stage_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Stage not found.")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, key, value)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Stage code/position conflicts with another stage.")
+    db.refresh(item)
+    return item
+
+
+@router.patch("/native/courses/{course_id}")
+def update_native_course(
+    course_id: str,
+    payload: NativeCourseUpdate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    item = db.get(CurriculumCourse, course_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Course not found.")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, key, value)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Course code/position conflicts with another course.")
+    db.refresh(item)
+    return item
+
+
+@router.patch("/native/units/{unit_id}")
+def update_native_unit(
+    unit_id: str,
+    payload: NativeUnitUpdate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    item = db.get(CurriculumUnit, unit_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Unit not found.")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, key, value)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Unit position conflicts with another unit.")
+    db.refresh(item)
+    return item
+
+
+@router.patch("/native/lessons/{lesson_id}")
+def update_native_lesson(
+    lesson_id: str,
+    payload: NativeLessonUpdate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    item = db.get(CurriculumLesson, lesson_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Lesson not found.")
+    for key, value in payload.model_dump(exclude_unset=True).items():
+        setattr(item, key, value)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Lesson position conflicts with another lesson.")
+    db.refresh(item)
+    return item
+
+
+@router.delete("/native/{resource}/{resource_id}", status_code=204)
+def delete_native_resource(
+    resource: str,
+    resource_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    mapping = {
+        "curriculum": Curriculum,
+        "specialty": Specialty,
+        "stage": CurriculumStage,
+        "course": CurriculumCourse,
+        "unit": CurriculumUnit,
+        "lesson": CurriculumLesson,
+    }
+    model = mapping.get(resource)
+    if model is None:
+        raise HTTPException(status_code=400, detail="Unsupported resource.")
+    item = db.get(model, resource_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"{resource.capitalize()} not found.")
+    db.delete(item)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Cannot delete this resource while it is referenced by other data.")
+
+
+@router.post("/native/{resource}/{resource_id}/reorder")
+def reorder_native_resource(
+    resource: str,
+    resource_id: str,
+    position: int = Field(ge=1),
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    mapping = {
+        "stage": CurriculumStage,
+        "course": CurriculumCourse,
+        "unit": CurriculumUnit,
+        "lesson": CurriculumLesson,
+    }
+    model = mapping.get(resource)
+    if model is None:
+        raise HTTPException(status_code=400, detail="Only stage/course/unit/lesson can be reordered.")
+    item = db.get(model, resource_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail=f"{resource.capitalize()} not found.")
+    item.position = position
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Position conflicts with another item.")
+    db.refresh(item)
+    return item
 
 @router.patch("/native/{resource}/{resource_id}/active")
 def toggle_native_active(
