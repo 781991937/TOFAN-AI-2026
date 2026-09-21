@@ -1,8 +1,23 @@
+
+def test_every_specialist_policy_has_fixed_domain_operational_tool():
+    for role, tools in SPECIALIST_TOOL_ALLOWLIST.items():
+        assert f"specialist.{role.value}.operations" in tools
+
+
+def test_specialist_operational_tools_are_registered_and_non_sensitive():
+    registry = build_default_registry()
+    for role in SPECIALIST_TOOL_ALLOWLIST:
+        tool = registry.get(f"specialist.{role.value}.operations")
+        assert tool.sensitive is False
+        assert tool.allowed_agent_slug is None
+
+
 """Tests for TOFAN AI workforce roles and tool boundaries."""
 
 from app.agents.models import AgentKind, AgentRole, AgentStatus
 from app.agents.tools import build_default_registry
-from app.agents.workforce_policy import SPECIALIST_TOOL_ALLOWLIST, tools_for_specialist
+from app.agents.workforce_policy import SPECIALIST_TOOL_ALLOWLIST
+from app.agents.tools import build_default_registry, tools_for_specialist
 
 
 def test_workforce_roles_are_explicit():
