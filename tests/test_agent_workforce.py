@@ -89,6 +89,20 @@ def test_general_manager_deterministic_routing_selects_specialist_delegate():
     assert '"finance"' in decision.tool_input
 
 
+def test_specialist_deterministic_fallback_uses_domain_tool():
+    specialist = Agent(
+        id="s",
+        name="Finance",
+        slug="specialist-tofan-finance",
+        kind=AgentKind.SPECIALIST,
+        role=AgentRole.FINANCE,
+        status=AgentStatus.ACTIVE,
+    )
+    decision = MainAgentOrchestrator(None, None).decide(None, specialist, "اعرض المدفوعات")
+    assert decision.tool_name == "specialist.finance.operations"
+    assert '"query"' in decision.tool_input
+
+
 def test_specialist_cannot_route_to_manager_delegate():
     specialist = Agent(
         id="s",
