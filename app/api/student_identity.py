@@ -16,8 +16,10 @@ from app.agents.teaching_policy import grant_paid_global_access
 from app.agents.payment_tools import confirm_payment_transaction
 from app.agents.academy_access_policy import course_access_tier, has_academy_content_access
 from app.agents.main_manager import MainManagerService
-from app.auth.dependencies import get_current_user, get_db
+from app.auth.dependencies import get_current_user, get_db, get_current_roles
 from app.auth.authorization import require_owner_or_admin
+from app.auth.models import RoleName
+from app.auth.service import has_role
 from app.auth.webauthn import begin_authentication, begin_registration, finish_authentication, finish_registration
 from app.auth.biometric import BiometricAuthError
 from app.db.identity_models import (
@@ -536,14 +538,11 @@ def get_payment_proof(
     transaction_id: str,
     db: Session = Depends(get_db),
     actor: User = Depends(get_current_user),
+    roles=Depends(get_current_roles),
 ):
     transaction = db.get(PaymentTransaction, transaction_id)
-    if transaction is None or not (transaction.user_id == actor.id):
-        # Owner/admin can inspect through their authenticated dashboard.
-        try:
-            require_owner_or_admin([actor])
-        except Exception:
-            raise HTTPException(status_code=404, detail="Payment proof not found.")
+    if transaction is None or not (transaction.user_id == actor.id or has_role(roles, RoleName.OWNER) or has_role(roles, RoleName.ADMIN)):
+        raise HTTPException(status_code=404, detail="Payment proof not found.")
     if not transaction.proof_file_id:
         raise HTTPException(status_code=404, detail="Payment proof not uploaded.")
     proof = db.get(ContentFile, transaction.proof_file_id)
