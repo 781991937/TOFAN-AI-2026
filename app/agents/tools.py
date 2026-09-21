@@ -1,6 +1,7 @@
 """Tool registry for the TOFAN agent runtime."""
 
 import json
+from datetime import datetime
 from dataclasses import dataclass
 from typing import Callable
 
