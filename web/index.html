@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>TOFAN Smart Academy</title>
   <link rel="stylesheet" href="/web/app.css">
+  <link rel="manifest" href="/web/manifest.webmanifest">
+  <meta name="theme-color" content="#070809">
 </head>
 <body>
   <div id="app">
@@ -43,5 +45,6 @@
     <div id="toast" class="toast"></div>
   </div>
   <script src="/web/app.js"></script>
+  <script>if ("serviceWorker" in navigator) navigator.serviceWorker.register("/web/sw.js").catch(()=>{});</script>
 </body>
 </html>
