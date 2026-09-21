@@ -332,3 +332,270 @@ def get_curriculum(
             for period in periods
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# TOFAN-native curriculum catalog management
+# ---------------------------------------------------------------------------
+
+from app.db.curriculum_models import (
+    Curriculum,
+    CurriculumStage,
+    CurriculumCourse,
+    CurriculumUnit,
+    CurriculumLesson,
+    Specialty,
+)
+
+
+class CurriculumCreate(BaseModel):
+    slug: str = Field(min_length=1, max_length=150)
+    name: str = Field(min_length=1, max_length=255)
+    version: str = Field(min_length=1, max_length=50)
+    description: str | None = None
+
+
+class SpecialtyCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+    code: str = Field(min_length=1, max_length=100)
+    description: str | None = None
+    name_ar: str | None = None
+    name_en: str | None = None
+
+
+class StageCreate(BaseModel):
+    curriculum_id: str
+    specialty_id: str
+    code: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=255)
+    position: int = Field(ge=1)
+    description: str | None = None
+
+
+class NativeCourseCreate(BaseModel):
+    curriculum_id: str
+    stage_id: str
+    code: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    course_type: str = Field(default="required", max_length=30)
+    position: int = Field(ge=1)
+
+
+class NativeUnitCreate(BaseModel):
+    course_id: str
+    title: str = Field(min_length=1, max_length=255)
+    position: int = Field(ge=1)
+
+
+class NativeLessonCreate(BaseModel):
+    unit_id: str
+    title: str = Field(min_length=1, max_length=255)
+    position: int = Field(ge=1)
+    description: str | None = None
+    content_markdown: str | None = None
+
+
+@router.get("/native/curricula")
+def list_native_curricula(
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    return db.scalars(select(Curriculum).order_by(Curriculum.created_at.desc())).all()
+
+
+@router.post("/native/curricula", status_code=201)
+def create_native_curriculum(
+    payload: CurriculumCreate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    item = Curriculum(**payload.model_dump())
+    db.add(item)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Curriculum slug/version already exists.")
+    db.refresh(item)
+    return item
+
+
+@router.get("/native/specialties")
+def list_native_specialties(
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    return db.scalars(select(Specialty).order_by(Specialty.name)).all()
+
+
+@router.post("/native/specialties", status_code=201)
+def create_native_specialty(
+    payload: SpecialtyCreate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    item = Specialty(**payload.model_dump())
+    db.add(item)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Specialty code already exists.")
+    db.refresh(item)
+    return item
+
+
+@router.get("/native/stages")
+def list_native_stages(
+    curriculum_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    return db.scalars(
+        select(CurriculumStage)
+        .where(CurriculumStage.curriculum_id == curriculum_id)
+        .order_by(CurriculumStage.position)
+    ).all()
+
+
+@router.post("/native/stages", status_code=201)
+def create_native_stage(
+    payload: StageCreate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    if db.get(Curriculum, payload.curriculum_id) is None:
+        raise HTTPException(status_code=404, detail="Curriculum not found.")
+    if db.get(Specialty, payload.specialty_id) is None:
+        raise HTTPException(status_code=404, detail="Specialty not found.")
+    item = CurriculumStage(**payload.model_dump())
+    db.add(item)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Stage code already exists for this curriculum.")
+    db.refresh(item)
+    return item
+
+
+@router.get("/native/courses")
+def list_native_courses(
+    stage_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    return db.scalars(
+        select(CurriculumCourse)
+        .where(CurriculumCourse.stage_id == stage_id)
+        .order_by(CurriculumCourse.position)
+    ).all()
+
+
+@router.post("/native/courses", status_code=201)
+def create_native_course(
+    payload: NativeCourseCreate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    stage = db.get(CurriculumStage, payload.stage_id)
+    if stage is None or stage.curriculum_id != payload.curriculum_id:
+        raise HTTPException(status_code=400, detail="Stage does not belong to the selected curriculum.")
+    item = CurriculumCourse(**payload.model_dump())
+    db.add(item)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Course code already exists for this curriculum.")
+    db.refresh(item)
+    return item
+
+
+@router.get("/native/units")
+def list_native_units(
+    course_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    return db.scalars(
+        select(CurriculumUnit)
+        .where(CurriculumUnit.course_id == course_id)
+        .order_by(CurriculumUnit.position)
+    ).all()
+
+
+@router.post("/native/units", status_code=201)
+def create_native_unit(
+    payload: NativeUnitCreate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    if db.get(CurriculumCourse, payload.course_id) is None:
+        raise HTTPException(status_code=404, detail="Course not found.")
+    item = CurriculumUnit(**payload.model_dump())
+    db.add(item)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Unit position already exists for this course.")
+    db.refresh(item)
+    return item
+
+
+@router.get("/native/lessons")
+def list_native_lessons(
+    unit_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    return db.scalars(
+        select(CurriculumLesson)
+        .where(CurriculumLesson.unit_id == unit_id)
+        .order_by(CurriculumLesson.position)
+    ).all()
+
+
+@router.post("/native/lessons", status_code=201)
+def create_native_lesson(
+    payload: NativeLessonCreate,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    if db.get(CurriculumUnit, payload.unit_id) is None:
+        raise HTTPException(status_code=404, detail="Unit not found.")
+    item = CurriculumLesson(**payload.model_dump())
+    db.add(item)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Lesson position already exists for this unit.")
+    db.refresh(item)
+    return item
+
+
+@router.patch("/native/{resource}/{resource_id}/active")
+def toggle_native_active(
+    resource: str,
+    resource_id: str,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    if resource == "specialty":
+        item = db.get(Specialty, resource_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Specialty not found.")
+        item.is_active = not item.is_active
+    elif resource == "course":
+        item = db.get(CurriculumCourse, resource_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Course not found.")
+        item.is_active = not item.is_active
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported active resource.")
+    db.commit()
+    db.refresh(item)
+    return item
