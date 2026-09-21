@@ -11,7 +11,7 @@ from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, Curricu
 from app.db.models import AcademicUnit, Course, Institution, Lecture, Unit
 from .payment_tools import confirm_payment_tool
 from .main_manager import MainManagerService
-from .models import AgentStatus
+from .models import AgentRole, AgentStatus
 
 
 class ToolExecutionError(RuntimeError):
@@ -221,6 +221,24 @@ def manager_provision_teacher_tool(db: Session, input_text: str) -> str:
         raise ToolExecutionError("curriculum_course_id is required.") from exc
     try:
         result = MainManagerService.provision_teacher(db, course_id)
+    except ValueError as exc:
+        raise ToolExecutionError(str(exc)) from exc
+    return json.dumps(result, ensure_ascii=False)
+
+
+def manager_provision_specialist_tool(db: Session, input_text: str) -> str:
+    p = _payload(input_text)
+    role_value = str(p.get("role", "")).strip()
+    if not role_value:
+        raise ToolExecutionError("role is required.")
+    try:
+        role = AgentRole(role_value)
+    except ValueError as exc:
+        raise ToolExecutionError("Unsupported specialist role.") from exc
+    try:
+        result = MainManagerService.provision_specialist(
+            db, role, name=p.get("name"), description=p.get("description")
+        )
     except ValueError as exc:
         raise ToolExecutionError(str(exc)) from exc
     return json.dumps(result, ensure_ascii=False)
@@ -466,6 +484,25 @@ def build_default_registry() -> ToolRegistry:
                     "payload": {"type": "object"},
                 },
                 "required": ["event_name", "payload"],
+                "additionalProperties": False,
+            },
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.provision_specialist",
+            description="Privileged manager action: provision an AI specialist workforce agent for an approved operational domain.",
+            handler=manager_provision_specialist_tool,
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "role": {"type": "string", "enum": [r.value for r in AgentRole if r not in {AgentRole.GENERAL_MANAGER, AgentRole.TEACHER}]},
+                    "name": {"type": ["string", "null"]},
+                    "description": {"type": ["string", "null"]},
+                },
+                "required": ["role"],
                 "additionalProperties": False,
             },
         )
