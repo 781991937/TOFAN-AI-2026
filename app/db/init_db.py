@@ -7,7 +7,7 @@ from .models import (
     Institution, Lecture, OtpChallenge, Unit, User, UserCredential,
     TeachingUsage, TeachingStep, TeachingAssessment, TeachingAssessmentReport,
 )
-from .identity_models import StudentProfile, PaymentTransaction
+from .identity_models import StudentProfile, PaymentTransaction, PaymentAccountSetting
 from .assessment_models import CurriculumAssessmentAttempt, AssessmentResultReport
 from .assessment_question_models import CurriculumAssessmentQuestion
 from .curriculum_models import Curriculum, Specialty, CurriculumStage, CurriculumCourse, CurriculumEntitlement, CoursePrerequisite, LearningOutcome, CurriculumUnit, CurriculumLesson, CourseAssessment, CurriculumProject, ElectiveTrack
