@@ -44,6 +44,15 @@ table{width:100%;border-collapse:collapse;min-width:800px}th,td{padding:12px;bor
 
 <section><div class="section-title">الطلاب</div><div style="padding:14px;display:flex;gap:10px;flex-wrap:wrap"><input id="studentSearch" placeholder="ابحث بالاسم أو البريد أو الهاتف" style="flex:1;min-width:240px;padding:10px;border-radius:8px;background:#181818;color:#fff;border:1px solid #333"><button onclick="loadStudents()">بحث</button></div><div id="students" class="table-wrap"></div></section><div id="studentModal" class="modal" onclick="if(event.target===this)closeStudent()"><div class="modal-card"><div class="modal-head"><div><h2 id="studentTitle">تفاصيل الطالب</h2><div id="studentState" class="sub">—</div></div><button class="modal-close" onclick="closeStudent()">إغلاق</button></div><div id="studentDetails"></div></div></div>
 <section><div class="section-title">الاختبارات</div><div id="assessments" class="table-wrap"></div></section>
+<section><div class="section-title">إعداد نقطة الدفع</div>
+<div class="detail-grid" style="padding:14px">
+<div class="detail"><b>مزود الدفع</b><input id="payProvider" style="width:100%;padding:9px"></div>
+<div class="detail"><b>اسم صاحب الحساب</b><input id="payAccountName" style="width:100%;padding:9px"></div>
+<div class="detail"><b>رقم النقطة / الحساب</b><input id="payAccountNumber" style="width:100%;padding:9px"></div>
+<div class="detail"><b>المبلغ</b><input id="payAmount" type="number" min="0" step="0.01" style="width:100%;padding:9px"></div>
+<div class="detail"><b>العملة</b><input id="payCurrency" style="width:100%;padding:9px"></div>
+<div class="detail"><b>التعليمات</b><textarea id="payInstructions" style="width:100%;padding:9px"></textarea></div>
+</div><div style="padding:0 14px 14px"><button onclick="savePaymentAccount()">حفظ إعدادات الدفع</button><span id="payAccountState" class="sub" style="margin-right:10px"></span></div></section>
 <section><div class="section-title">المدفوعات</div><div id="payments" class="table-wrap"></div></section>
 <section><div class="section-title">آخر أحداث التدقيق</div><div id="audit" class="table-wrap"></div></section>
 </main>
@@ -54,6 +63,7 @@ function table(headers,rows){return '<table><thead><tr>'+headers.map(h=>'<th>'+e
 async function get(path){const r=await fetch(path,{credentials:"same-origin"});if(!r.ok)throw new Error("HTTP "+r.status);return r.json()}
 async function load(){
  document.getElementById("state").textContent="جاري التحديث...";
+ try{const a=await get("/student/payments/account"); if(a.configured){payProvider.value=a.provider_name||"";payAccountName.value=a.account_name||"";payAccountNumber.value=a.account_number||"";payAmount.value=a.amount??"";payCurrency.value=a.currency||"";payInstructions.value=a.instructions||"";}}catch{}
  try{
   const studentQuery=encodeURIComponent(document.getElementById("studentSearch")?.value||"");
   const [d,a,p,l,t,s,c]=await Promise.all([
@@ -70,7 +80,7 @@ async function load(){
   document.getElementById("teachers").innerHTML=table(["المدرس","المقرر","الحالة","إجراء"],t.teachers.map(x=>[x.name,x.curriculum_course_id||"-",x.status,`__HTML__<button onclick="changeStatus('${x.agent_id}','${x.status==="active"?"paused":"active"}')">${x.status==="active"?"إيقاف مؤقت":"تفعيل"}</button>`]));
   document.getElementById("students").innerHTML=table(["الاسم","النوع","الحالة","التحقق","التاريخ","إجراء"],s.students.map(x=>[x.name,x.user_type,x.profile_status,x.biometric_verified?"نعم":"لا",x.updated_at,"__HTML__<button onclick="viewStudent('"+x.user_id+"')">عرض</button>"]));
   document.getElementById("assessments").innerHTML=table(["الطالب","النسبة","النتيجة","الحالة","التاريخ"],a.assessments.map(x=>[x.user_id,x.percentage??"-",x.passed===true?"ناجح":x.passed===false?"غير ناجح":"-",x.status,x.submitted_at||x.started_at]));
-  document.getElementById("payments").innerHTML=table(["المعاملة","الطالب","المنتج","الحالة","المبلغ","إجراء"],p.payments.map(x=>[x.transaction_id,x.user_id,x.product_key,x.status,(x.amount??"-")+" "+(x.currency??""),x.status==="pending" ? `__HTML__<button onclick="confirmPayment('${x.transaction_id}')">تأكيد</button>` : "—"]));
+  document.getElementById("payments").innerHTML=table(["المعاملة","الطالب","المنتج","الحالة","المبلغ","إجراء"],p.payments.map(x=>[x.transaction_id,x.user_id,x.product_key,x.status,(x.amount??"-")+" "+(x.currency??""),x.status==="pending" ? `__HTML__<button onclick="confirmPayment('${x.transaction_id}')">تأكيد</button> <button onclick="rejectPayment('${x.transaction_id}')">رفض</button>` : "—"]));
   document.getElementById("audit").innerHTML=table(["الإجراء","المورد","المعرف","المستخدم","التاريخ"],l.events.map(x=>[x.action,x.resource_type||"-",x.resource_id||"-",x.user_id||"-",x.created_at]));
   document.getElementById("state").textContent="تم التحديث بنجاح";
  }catch(e){document.getElementById("state").textContent="تعذر تحميل البيانات: "+e.message}
@@ -112,9 +122,18 @@ async function changeStatus(id,status){
  await post("/manager/teachers/"+encodeURIComponent(id)+"/status?status="+encodeURIComponent(status),{});
  await load();
 }
+async function savePaymentAccount(){
+ const body={provider_name:payProvider.value,account_name:payAccountName.value||null,account_number:payAccountNumber.value,amount:payAmount.value?Number(payAmount.value):null,currency:payCurrency.value||null,instructions:payInstructions.value||null,active:true};
+ try{await fetch("/student/payments/account",{method:"PUT",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify(body)}).then(async r=>{if(!r.ok)throw new Error(await r.text())});payAccountState.textContent="تم حفظ إعدادات الدفع";}catch(e){payAccountState.textContent="فشل الحفظ: "+e.message}
+}
 async function confirmPayment(id){
  if(!confirm("تأكيد هذه المعاملة؟"))return;
  await post("/manager/payments/"+encodeURIComponent(id)+"/confirm",{});
+ await load();
+}
+async function rejectPayment(id){
+ const reason=prompt("سبب الرفض (اختياري):")||"Payment rejected by manager";
+ await post("/manager/payments/"+encodeURIComponent(id)+"/reject",{reason});
  await load();
 }
 async function post(path,body){
