@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 
 from .models import Agent, AgentRun, AgentStatus, AgentTool
 from .tools import ToolExecutionError, ToolRegistry
+from .models import AgentRole
+from .workforce_policy import SPECIALIST_TOOL_ALLOWLIST
 
 
 class AgentRuntimeError(RuntimeError):
@@ -41,6 +43,12 @@ class AgentRuntime:
         tool = self.registry.get(tool_name)
         if tool.allowed_agent_slug and agent.slug != tool.allowed_agent_slug:
             raise AgentRuntimeError("This tool is restricted to its authorized agent.")
+        # Defense in depth: database AgentTool rows cannot expand a specialist's
+        # role beyond the canonical workforce policy.
+        if agent.role not in {AgentRole.GENERAL_MANAGER, AgentRole.TEACHER}:
+            allowed = SPECIALIST_TOOL_ALLOWLIST.get(agent.role, ())
+            if tool_name not in allowed:
+                raise AgentRuntimeError("Tool is outside this specialist's role policy.")
         run = AgentRun(
             agent_id=agent.id,
             actor_user_id=actor_user_id,
