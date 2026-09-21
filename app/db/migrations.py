@@ -211,8 +211,15 @@ def migrate_payment_proofs(engine: Engine) -> list[str]:
     return changes
 
 
+def migrate_payment_rejections(engine: Engine) -> list[str]:
+    changes: list[str] = []
+    if add_column_if_missing(engine, "payment_transactions", "rejection_reason", "VARCHAR(500)"):
+        changes.append("payment_transactions.rejection_reason")
+    return changes
+
 def run_migrations(engine: Engine) -> list[str]:
     changes = migrate_payment_proofs(engine)
+    changes.extend(migrate_payment_rejections(engine))
     changes.extend(migrate_payment_accounts(engine)
     changes.extend(migrate_agent_conversation_memory(engine)
     changes.extend(migrate_agent_memory_scopes(engine))
