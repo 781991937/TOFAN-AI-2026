@@ -24,7 +24,7 @@ from app.agents.tools import build_default_registry
 from app.auth.dependencies import get_current_user, get_db
 from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumStage, CurriculumUnit, LearningOutcome, CoursePrerequisite
 from app.db.models import ContentFile, Entitlement, TeachingSource, TeachingAccess, ContentStatus, User, TeachingStep, TeachingStepStatus
-from app.agents.academy_access_policy import has_academy_content_access
+from app.agents.academy_access_policy import has_academy_content_access, has_curriculum_stage_access
 
 
 def teacher_tool_guard(db, agent, tool_name, payload):
@@ -225,17 +225,17 @@ def chat_with_teacher(
                 course_for_access = db.get(CurriculumCourse, agent.curriculum_course_id)
                 stage_for_access = db.get(CurriculumStage, course_for_access.stage_id) if course_for_access else None
                 stage_is_free = bool(stage_for_access and stage_for_access.position == 1)
-            entitlement = db.scalar(
-                __import__("sqlalchemy", fromlist=["select"]).select(Entitlement).where(
-                    Entitlement.user_id == actor.id,
-                    Entitlement.access_type == TeachingAccess.PAID.value,
-                    Entitlement.content_file_id.is_(None),
-                )
-            )
-            if not stage_is_free and (not usage.paid_access or entitlement is None):
+            stage_access = False
+            if agent.curriculum_course_id:
+                course_for_access = db.get(CurriculumCourse, agent.curriculum_course_id)
+                stage_for_access = db.get(CurriculumStage, course_for_access.stage_id) if course_for_access else None
+                stage_access = bool(stage_for_access and has_curriculum_stage_access(
+                    db, user_id=actor.id, stage_id=stage_for_access.id
+                ))
+            if not stage_is_free and not stage_access:
                 raise HTTPException(
                     status_code=403,
-                    detail="This curriculum content requires confirmed paid access.",
+                    detail="This curriculum semester requires confirmed paid access.",
                 )
             if stage_is_free:
                 usage.paid_access = True
