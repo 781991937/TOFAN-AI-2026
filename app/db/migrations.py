@@ -197,8 +197,16 @@ def migrate_content_files(engine: Engine) -> list[str]:
     return changes
 
 
+def migrate_payment_accounts(engine: Engine) -> list[str]:
+    changes: list[str] = []
+    if add_column_if_missing(engine, "payment_account_settings", "amount", "FLOAT"):
+        changes.append("payment_account_settings.amount")
+    return changes
+
+
 def run_migrations(engine: Engine) -> list[str]:
-    changes = migrate_agent_conversation_memory(engine)
+    changes = migrate_payment_accounts(engine)
+    changes.extend(migrate_agent_conversation_memory(engine)
     changes.extend(migrate_agent_memory_scopes(engine))
     changes.extend(migrate_teacher_agent_course(engine))
     changes.extend(migrate_academic_structure(engine))
