@@ -19,3 +19,9 @@ def test_academy_content_routes_are_registered():
     assert "/admin/content" in paths
     assert "/admin/content/lectures/{lecture_id}/files" in paths
     assert "/admin/content/{file_id}/status" in paths
+
+def test_curriculum_specialties_route_is_registered():
+    from app.main import app
+
+    paths = {getattr(route, "path", None) for route in app.routes}
+    assert "/curriculum/specialties" in paths
