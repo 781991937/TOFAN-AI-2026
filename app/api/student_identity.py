@@ -19,6 +19,7 @@ from app.auth.biometric import BiometricAuthError
 from app.db.identity_models import (
     PaymentStatus,
     PaymentTransaction,
+    PaymentAccountSetting,
     ProfileStatus,
     StudentProfile,
     UserType,
@@ -46,6 +47,14 @@ class PaymentRequest(BaseModel):
 
 class PaymentConfirmation(BaseModel):
     transaction_id: str
+
+class PaymentAccountRequest(BaseModel):
+    provider_name: str = Field(min_length=2, max_length=100)
+    account_name: str | None = Field(default=None, max_length=255)
+    account_number: str = Field(min_length=3, max_length=100)
+    instructions: str | None = Field(default=None, max_length=1000)
+    currency: str | None = Field(default=None, max_length=20)
+    active: bool = True
 
 
 class PasskeyRegistrationRequest(BaseModel):
@@ -373,6 +382,48 @@ def verify_profile_biometric_legacy(
     )
 
 
+@router.get("/payments/account")
+def get_payment_account(db: Session = Depends(get_db)):
+    account = db.scalar(
+        select(PaymentAccountSetting).where(PaymentAccountSetting.active.is_(True))
+        .order_by(PaymentAccountSetting.updated_at.desc())
+    )
+    if account is None:
+        return {"configured": False}
+    return {
+        "configured": True,
+        "provider_name": account.provider_name,
+        "account_name": account.account_name,
+        "account_number": account.account_number,
+        "instructions": account.instructions,
+        "currency": account.currency,
+    }
+
+
+@router.put("/payments/account")
+def configure_payment_account(
+    payload: PaymentAccountRequest,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    rows = db.scalars(select(PaymentAccountSetting)).all()
+    for row in rows:
+        row.active = False
+    account = PaymentAccountSetting(**payload.model_dump())
+    db.add(account)
+    db.commit()
+    db.refresh(account)
+    return {
+        "configured": True,
+        "provider_name": account.provider_name,
+        "account_name": account.account_name,
+        "account_number": account.account_number,
+        "instructions": account.instructions,
+        "currency": account.currency,
+        "active": account.active,
+    }
+
+
 @router.post("/payments/request", status_code=201)
 def request_payment(
     payload: PaymentRequest,
@@ -385,6 +436,20 @@ def request_payment(
             status_code=409,
             detail="Complete profile verification before requesting global curriculum access.",
         )
+
+    if payload.product_key.startswith("curriculum_stage:"):
+        stage_id = payload.product_key.split(":", 1)[1].strip()
+        if not stage_id:
+            raise HTTPException(status_code=400, detail="A curriculum stage is required.")
+        from app.db.curriculum_models import CurriculumStage
+        stage = db.get(CurriculumStage, stage_id)
+        if stage is None:
+            raise HTTPException(status_code=404, detail="Curriculum stage not found.")
+        if stage.position == 1:
+            raise HTTPException(status_code=409, detail="The first semester is free.")
+        account = db.scalar(select(PaymentAccountSetting).where(PaymentAccountSetting.active.is_(True)).order_by(PaymentAccountSetting.updated_at.desc()))
+        if account is None:
+            raise HTTPException(status_code=503, detail="Payment account is not configured yet.")
 
     transaction = PaymentTransaction(
         user_id=actor.id,
