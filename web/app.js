@@ -152,10 +152,19 @@ async function openLesson(id,c){
   if(!lesson){toast("Lesson not found");return}
   $("#curriculumPanel").classList.add("hidden");$("#coursePanel").classList.add("hidden");$("#lessonPanel").classList.remove("hidden");
   $("#lessonTitle").textContent=lesson.position+". "+lesson.title;
-  const free=c.stage?.position===1;
-  let teacher=c.teacher||{};
-  $("#lessonBody").innerHTML="<div class='lesson-meta'><span>"+t("lesson")+" "+lesson.position+"</span><span>"+(free?t("freeSemester"):t("paidSemester"))+"</span></div><article class='lesson-content'><p>"+(lesson.description||t("lessonContent"))+"</p></article><div class='teacher-entry'><h3>"+t("teacher")+"</h3><p>"+(teacher.available?t("teacherReady"):t("teacherUnavailable"))+"</p><button class='primary' id='lessonTeacherBtn' "+(teacher.available?"":"disabled")+">"+t("openTeacher")+"</button></div>";
-  $("#lessonTeacherBtn").onclick=()=>startTeaching(teacher.slug,lesson,c);
+  try{
+    const detail=await api("/curriculum/lessons/"+encodeURIComponent(id));
+    const free=c.stage?.position===1;
+    const content=detail.content_markdown||"";
+    const body=content
+      ? "<article class='lesson-content lesson-markdown'><div class='lesson-meta'><span>"+t("lesson")+" "+lesson.position+"</span><span>"+(free?t("freeSemester"):t("paidSemester"))+"</span></div><pre>"+esc(content)+"</pre></article>"
+      : "<article class='lesson-content'><div class='lesson-meta'><span>"+t("lesson")+" "+lesson.position+"</span><span>"+(free?t("freeSemester"):t("paidSemester"))+"</span></div><p>"+(esc(detail.description||t("lessonContent")))+"</p></article>";
+    const teacher=c.teacher||{};
+    $("#lessonBody").innerHTML=body+"<div class='teacher-entry'><h3>"+t("teacher")+"</h3><p>"+(teacher.available?t("teacherReady"):t("teacherUnavailable"))+"</p><button class='primary' id='lessonTeacherBtn' "+(teacher.available?"":"disabled")+">"+t("openTeacher")+"</button></div>";
+    $("#lessonTeacherBtn").onclick=()=>startTeaching(teacher.slug,lesson,c);
+  }catch(e){
+    toast(e.message);
+  }
 }
 
 async function startTeaching(slug,lesson,c){
