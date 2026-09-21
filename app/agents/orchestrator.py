@@ -86,6 +86,7 @@ class MainAgentOrchestrator:
                 messages=conversation,
                 tool_outputs=outputs,
                 system_prompt=agent.system_prompt,
+                tools=definitions,
             )
             if not final.tool_calls:
                 return {
