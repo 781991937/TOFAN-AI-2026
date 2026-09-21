@@ -57,6 +57,19 @@ class StudentProfile(Base):
     )
 
 
+class PaymentAccountSetting(Base):
+    __tablename__ = "payment_account_settings"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    provider_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    account_name: Mapped[str | None] = mapped_column(String(255))
+    account_number: Mapped[str] = mapped_column(String(100), nullable=False)
+    instructions: Mapped[str | None] = mapped_column(String(1000))
+    currency: Mapped[str | None] = mapped_column(String(20))
+    active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class PaymentTransaction(Base):
     __tablename__ = "payment_transactions"
 
