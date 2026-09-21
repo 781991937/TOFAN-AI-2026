@@ -157,8 +157,9 @@ async function openTeacherChat(slug,stepId,lesson,c){
   const panel=$("#lessonBody");
   panel.innerHTML="<div class='teacher-chat'><h3>"+t("teacher")+"</h3><div id='teacherMessages' class='chat-messages'></div><form id='teacherChatForm'><input id='teacherInput' autocomplete='off' placeholder='"+(lang==="ar"?"اكتب إجابتك أو سؤالك…":"Write your answer or question…")+"'><button class='primary' type='submit'>"+(lang==="ar"?"إرسال":"Send")+"</button></form><div class='teacher-actions'><button class='ghost' id='verifyBtn'>"+(lang==="ar"?"تحقق من الفهم":"Verify understanding")+"</button><button class='ghost' id='confirmBtn'>"+(lang==="ar"?"تأكيد فهم الدرس":"Confirm lesson understanding")+"</button></div></div>";
   const messages=$("#teacherMessages");
-  const send=async(msg)=>{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,source:"global_curriculum"})});const text=d.content||d.output||"";messages.insertAdjacentHTML("beforeend","<div class='chat-msg assistant'>"+text+"</div>");return d};
-  $("#teacherChatForm").onsubmit=async e=>{e.preventDefault();const input=$("#teacherInput");const msg=input.value.trim();if(!msg)return;messages.insertAdjacentHTML("beforeend","<div class='chat-msg user'>"+msg+"</div>");input.value="";try{await send(msg)}catch(err){toast(err.message)}};
+  const appendTeacherMessage=(role,content)=>{const node=document.createElement("div");node.className="chat-msg "+role;node.textContent=String(content??"");messages.appendChild(node);messages.scrollTop=messages.scrollHeight};
+  const send=async(msg)=>{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,source:"global_curriculum"})});const text=d.content||d.output||"";appendTeacherMessage("assistant",text);return d};
+  $("#teacherChatForm").onsubmit=async e=>{e.preventDefault();const input=$("#teacherInput");const msg=input.value.trim();if(!msg)return;appendTeacherMessage("user",msg);input.value="";try{await send(msg)}catch(err){toast(err.message)}};
   $("#verifyBtn").onclick=async()=>{try{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps/"+encodeURIComponent(stepId)+"/understanding",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({verified:true})});toast(d.status==="completed"?t("teacherReady"):(lang==="ar"?"تم تسجيل تحقق الفهم":"Understanding check recorded"))}catch(e){toast(e.message)}};
   $("#confirmBtn").onclick=async()=>{try{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps/"+encodeURIComponent(stepId)+"/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmed:true})});toast(d.completed?(lang==="ar"?"تم إكمال الدرس":"Lesson completed"):(lang==="ar"?"تم تسجيل التأكيد":"Confirmation recorded"));if(d.completed){openCourse(c.id)}}catch(e){toast(e.message)}};
 }
@@ -175,10 +176,11 @@ async function openOwnerManager(){
 $("#ownerChatForm").onsubmit=async e=>{
   e.preventDefault();if(!isOwner)return;
   const input=$("#ownerInput"),msg=input.value.trim();if(!msg)return;
-  const box=$("#ownerMessages");box.insertAdjacentHTML("beforeend","<div class='chat-msg user'>"+msg+"</div>");input.value="";
+  const appendMessage=(role,content)=>{const node=document.createElement("div");node.className="chat-msg "+role;node.textContent=String(content??"");box.appendChild(node);box.scrollTop=box.scrollHeight};
+  appendMessage("user",msg);input.value="";
   try{
     const d=await api("/admin/agent/tofan-main/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg})});
     const content=d.content||d.output||JSON.stringify(d);
-    box.insertAdjacentHTML("beforeend","<div class='chat-msg assistant'>"+content+"</div>");
-  }catch(err){box.insertAdjacentHTML("beforeend","<div class='chat-msg assistant'>تعذر تنفيذ الطلب: "+err.message+"</div>")}
+    appendMessage("assistant",content);
+  }catch(err){appendMessage("assistant","تعذر تنفيذ الطلب: "+err.message)}
 };
