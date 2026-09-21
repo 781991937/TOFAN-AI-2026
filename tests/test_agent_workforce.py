@@ -74,3 +74,18 @@ def test_bulk_teacher_provisioning_is_manager_only():
     tool = registry.get("manager.provision_all_teachers")
     assert tool.allowed_agent_slug == "tofan-main"
     assert tool.sensitive is True
+
+
+def test_general_manager_deterministic_routing_selects_specialist_delegate():
+    from app.agents.orchestrator import MainAgentOrchestrator
+    manager = Agent(id="gm", name="GM", slug="tofan-main", kind=AgentKind.ORCHESTRATOR, role=AgentRole.GENERAL_MANAGER, status=AgentStatus.ACTIVE)
+    decision = MainAgentOrchestrator(None, None).decide(None, manager, "اعرض لي حالة المدفوعات")
+    assert decision.tool_name == "manager.delegate_specialist"
+    assert '"finance"' in decision.tool_input
+
+
+def test_specialist_cannot_route_to_manager_delegate():
+    from app.agents.orchestrator import MainAgentOrchestrator
+    specialist = Agent(id="s", name="Finance", slug="specialist-tofan-finance", kind=AgentKind.SPECIALIST, role=AgentRole.FINANCE, status=AgentStatus.ACTIVE)
+    decision = MainAgentOrchestrator(None, None).decide(None, specialist, "اعرض المدفوعات")
+    assert decision.tool_name != "manager.delegate_specialist"
