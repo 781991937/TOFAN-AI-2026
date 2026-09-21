@@ -16,6 +16,7 @@ async function loadDashboard(){try{const [on,sp]=await Promise.all([api("/studen
 async function renderSpecialties(items){const box=$("#specialties");box.innerHTML="";for(const s of items){let x;try{x=await api("/specialties/"+s.id+"/experience?lang="+lang)}catch{x={theme:{accent:"#c8a85b"},specialty:{name:s.name,description:""}}}const th=x.theme||{},name=x.specialty?.name||s.name;const card=document.createElement("article");card.className="specialty card";card.style.setProperty("--accent",th.accent||"#c8a85b");card.innerHTML="<div class='icon'>"+(th.icon||"◆")+"</div><h3>"+name+"</h3><p>"+(x.specialty?.description||"")+"</p><div class='modules'>"+(th.dashboard_modules||[]).slice(0,4).map(m=>"<span>"+m.replaceAll("_"," ")+"</span>").join("")+"</div>";card.onclick=()=>openCurriculum();box.appendChild(card)}}
 async function openCurriculum(){try{$("#coursePanel").classList.add("hidden");const c=await api("/curriculum/ai-tofan-curriculum-v1");$("#curriculumPanel").classList.remove("hidden");$("#curriculumTitle").textContent=c.name+" · v"+c.version;$("#curriculumBody").innerHTML=c.stages.map(s=>"<div class='stage'><h3>"+s.name+"</h3>"+s.courses.map(x=>"<button class='course course-button' data-course-id='"+x.id+"'><b>"+x.code+"</b> — "+x.name+" <small>"+(x.outcomes?.length||0)+" outcomes</small></button>").join("")+"</div>").join("");$$(".course-button").forEach(b=>b.onclick=()=>openCourse(b.dataset.courseId))}catch(err){toast(err.message)}}
 async function openCourse(courseId){try{const c=await api("/curriculum/courses/"+encodeURIComponent(courseId));$("#curriculumPanel").classList.add("hidden");$("#coursePanel").classList.remove("hidden");$("#courseTitle").textContent=c.code+" — "+c.name;const type=c.course_type==="elective"?t("elective"):t("required");const prereq=c.prerequisite_course_ids?.length?c.prerequisite_course_ids.map(id=>"<span class='tag'>"+id+"</span>").join(""):"<span class='muted'>"+t("noPrereq")+"</span>";const outcomes=(c.outcomes||[]).map((x,i)=>"<li>"+x+"</li>").join("")||"<li>—</li>";const units=(c.units||[]).map(u=>"<section class='unit'><div class='unit-head'><div><span class='eyebrow'>"+t("units")+" "+u.position+"</span><h3>"+u.title+"</h3></div><span class='count'>"+u.lessons.length+" "+t("lessons")+"</span></div>"+(u.lessons.length?u.lessons.map(l=>"<button class='lesson-row lesson-button' data-lesson-id='"+l.id+"'><span>"+l.position+". "+l.title+"</span><span>"+(l.has_content?"●":"○")+"</span></button>").join(""):"<div class='muted'>"+t("noLessons")+"</div>")+"</section>").join("");$("#courseBody").innerHTML="<div class='course-meta'><span>"+type+"</span><span>"+t("courseType")+"</span></div><div class='detail-grid'><section><h3>"+t("outcomes")+"</h3><ol class='outcome-list'>"+outcomes+"</ol></section><section><h3>"+t("prerequisites")+"</h3><div class='tags'>"+prereq+"</div></section></div><div class='section-head'><h3>"+t("units")+"</h3></div>"+units+"<div class='teacher-entry'><p>"+t("lessonContent")+"</p><button class='primary' id='courseTeacherBtn'>"+t("openTeacher")+"</button></div>";$("#courseTeacherBtn").onclick=()=>toast(t("teacherReady"));
+    await loadCourseProgress(c);
     if(c.assessment?.id){
       const quizBtn=document.createElement("button");
       quizBtn.className="primary";
@@ -27,6 +28,22 @@ async function openCourse(courseId){try{const c=await api("/curriculum/courses/"
     $(".lesson-button").forEach(b=>b.onclick=()=>openLesson(b.dataset.lessonId,c))}catch(err){toast(err.message)}}
 $("#backCurriculum").onclick=()=>openCurriculum();
 $("#backCourse").onclick=()=>{$("#lessonPanel").classList.add("hidden");$("#coursePanel").classList.remove("hidden")};
+async function loadCourseProgress(c){
+  if(!c.teacher?.slug) return null;
+  try{
+    const p=await api("/agent/teacher/"+encodeURIComponent(c.teacher.slug)+"/progress");
+    const box=document.createElement("div"); box.className="course-progress-card";
+    const title=document.createElement("strong"); title.textContent=lang==="ar"?"تقدمك في المقرر":"Your course progress";
+    const meta=document.createElement("span"); meta.textContent=(p.completed_steps||0)+" / "+(p.total_steps||0)+" — "+(p.progress_percentage||0)+"%";
+    const bar=document.createElement("div"); bar.className="progress-track";
+    const fill=document.createElement("div"); fill.className="progress-fill"; fill.style.width=(p.progress_percentage||0)+"%"; bar.appendChild(fill);
+    const current=document.createElement("p"); current.textContent=p.current_step?.lesson_title ? (lang==="ar"?"الدرس الحالي: ":"Current lesson: ")+p.current_step.lesson_title : (p.course_completed?(lang==="ar"?"المقرر مكتمل":"Course completed"):(lang==="ar"?"لم يبدأ بعد":"Not started"));
+    box.append(title,meta,bar,current);
+    const host=document.querySelector("#courseBody"); if(host) host.prepend(box);
+    return p;
+  }catch{return null}
+}
+
 async function startCourseQuiz(c){
   const assessment=c.assessment;
   if(!assessment?.id){toast(lang==="ar"?"لا يوجد اختبار مقرر لهذا المقرر":"No course assessment is configured.");return}
