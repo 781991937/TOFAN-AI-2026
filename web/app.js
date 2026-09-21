@@ -17,6 +17,13 @@ async function renderSpecialties(items){const box=$("#specialties");box.innerHTM
 async function openCurriculum(){try{$("#coursePanel").classList.add("hidden");const c=await api("/curriculum/ai-tofan-curriculum-v1");$("#curriculumPanel").classList.remove("hidden");$("#curriculumTitle").textContent=c.name+" · v"+c.version;$("#curriculumBody").innerHTML=c.stages.map(s=>"<div class='stage'><h3>"+s.name+"</h3>"+s.courses.map(x=>"<button class='course course-button' data-course-id='"+x.id+"'><b>"+x.code+"</b> — "+x.name+" <small>"+(x.outcomes?.length||0)+" outcomes</small></button>").join("")+"</div>").join("");$$(".course-button").forEach(b=>b.onclick=()=>openCourse(b.dataset.courseId))}catch(err){toast(err.message)}}
 async function openCourse(courseId){try{const c=await api("/curriculum/courses/"+encodeURIComponent(courseId));$("#curriculumPanel").classList.add("hidden");$("#coursePanel").classList.remove("hidden");$("#courseTitle").textContent=c.code+" — "+c.name;const type=c.course_type==="elective"?t("elective"):t("required");const prereq=c.prerequisite_course_ids?.length?c.prerequisite_course_ids.map(id=>"<span class='tag'>"+id+"</span>").join(""):"<span class='muted'>"+t("noPrereq")+"</span>";const outcomes=(c.outcomes||[]).map((x,i)=>"<li>"+x+"</li>").join("")||"<li>—</li>";const units=(c.units||[]).map(u=>"<section class='unit'><div class='unit-head'><div><span class='eyebrow'>"+t("units")+" "+u.position+"</span><h3>"+u.title+"</h3></div><span class='count'>"+u.lessons.length+" "+t("lessons")+"</span></div>"+(u.lessons.length?u.lessons.map(l=>"<button class='lesson-row lesson-button' data-lesson-id='"+l.id+"'><span>"+l.position+". "+l.title+"</span><span>"+(l.has_content?"●":"○")+"</span></button>").join(""):"<div class='muted'>"+t("noLessons")+"</div>")+"</section>").join("");$("#courseBody").innerHTML="<div class='course-meta'><span>"+type+"</span><span>"+t("courseType")+"</span></div><div class='detail-grid'><section><h3>"+t("outcomes")+"</h3><ol class='outcome-list'>"+outcomes+"</ol></section><section><h3>"+t("prerequisites")+"</h3><div class='tags'>"+prereq+"</div></section></div><div class='section-head'><h3>"+t("units")+"</h3></div>"+units+"<div class='teacher-entry'><p>"+t("lessonContent")+"</p><button class='primary' id='courseTeacherBtn'>"+t("openTeacher")+"</button></div>";$("#courseTeacherBtn").onclick=()=>toast(t("teacherReady"));
     await loadCourseProgress(c);
+    if(c.access?.tier==="paid"){
+      const payBtn=document.createElement("button");
+      payBtn.className="secondary";
+      payBtn.textContent=lang==="ar"?"طلب تفعيل الوصول المدفوع":"Request paid access";
+      payBtn.onclick=()=>requestCurriculumPayment(c);
+      const host=document.querySelector("#courseBody"); if(host) host.prepend(payBtn);
+    }
     if(c.assessment?.id){
       const quizBtn=document.createElement("button");
       quizBtn.className="primary";
@@ -28,6 +35,16 @@ async function openCourse(courseId){try{const c=await api("/curriculum/courses/"
     $(".lesson-button").forEach(b=>b.onclick=()=>openLesson(b.dataset.lessonId,c))}catch(err){toast(err.message)}}
 $("#backCurriculum").onclick=()=>openCurriculum();
 $("#backCourse").onclick=()=>{$("#lessonPanel").classList.add("hidden");$("#coursePanel").classList.remove("hidden")};
+async function requestCurriculumPayment(c){
+  const stageId=c.stage_id||c.stage?.id;
+  if(!stageId){toast(lang==="ar"?"لا يمكن تحديد الفصل المطلوب للدفع":"The semester could not be identified.");return}
+  try{
+    const result=await api("/student/payments/request",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({product_key:"curriculum_stage:"+stageId})});
+    toast(lang==="ar"?"تم تسجيل طلب الدفع. بانتظار تأكيد الإدارة.":"Payment request recorded. Waiting for admin confirmation.");
+    return result;
+  }catch(err){toast(err.message)}
+}
+
 async function loadCourseProgress(c){
   if(!c.teacher?.slug) return null;
   try{
