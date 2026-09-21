@@ -1,23 +1,9 @@
-
-def test_every_specialist_policy_has_fixed_domain_operational_tool():
-    for role, tools in SPECIALIST_TOOL_ALLOWLIST.items():
-        assert f"specialist.{role.value}.operations" in tools
-
-
-def test_specialist_operational_tools_are_registered_and_non_sensitive():
-    registry = build_default_registry()
-    for role in SPECIALIST_TOOL_ALLOWLIST:
-        tool = registry.get(f"specialist.{role.value}.operations")
-        assert tool.sensitive is False
-        assert tool.allowed_agent_slug is None
-
-
 """Tests for TOFAN AI workforce roles and tool boundaries."""
 
-from app.agents.models import AgentKind, AgentRole, AgentStatus
-from app.agents.tools import build_default_registry
-from app.agents.workforce_policy import SPECIALIST_TOOL_ALLOWLIST
+from app.agents.models import Agent, AgentKind, AgentRole, AgentStatus
+from app.agents.orchestrator import MainAgentOrchestrator
 from app.agents.tools import build_default_registry, tools_for_specialist
+from app.agents.workforce_policy import SPECIALIST_TOOL_ALLOWLIST
 
 
 def test_workforce_roles_are_explicit():
@@ -76,16 +62,41 @@ def test_bulk_teacher_provisioning_is_manager_only():
     assert tool.sensitive is True
 
 
+def test_every_specialist_policy_has_fixed_domain_operational_tool():
+    for role, tools in SPECIALIST_TOOL_ALLOWLIST.items():
+        assert f"specialist.{role.value}.operations" in tools
+
+
+def test_specialist_operational_tools_are_registered_and_non_sensitive():
+    registry = build_default_registry()
+    for role in SPECIALIST_TOOL_ALLOWLIST:
+        tool = registry.get(f"specialist.{role.value}.operations")
+        assert tool.sensitive is False
+        assert tool.allowed_agent_slug is None
+
+
 def test_general_manager_deterministic_routing_selects_specialist_delegate():
-    from app.agents.orchestrator import MainAgentOrchestrator
-    manager = Agent(id="gm", name="GM", slug="tofan-main", kind=AgentKind.ORCHESTRATOR, role=AgentRole.GENERAL_MANAGER, status=AgentStatus.ACTIVE)
+    manager = Agent(
+        id="gm",
+        name="GM",
+        slug="tofan-main",
+        kind=AgentKind.ORCHESTRATOR,
+        role=AgentRole.GENERAL_MANAGER,
+        status=AgentStatus.ACTIVE,
+    )
     decision = MainAgentOrchestrator(None, None).decide(None, manager, "اعرض لي حالة المدفوعات")
     assert decision.tool_name == "manager.delegate_specialist"
     assert '"finance"' in decision.tool_input
 
 
 def test_specialist_cannot_route_to_manager_delegate():
-    from app.agents.orchestrator import MainAgentOrchestrator
-    specialist = Agent(id="s", name="Finance", slug="specialist-tofan-finance", kind=AgentKind.SPECIALIST, role=AgentRole.FINANCE, status=AgentStatus.ACTIVE)
+    specialist = Agent(
+        id="s",
+        name="Finance",
+        slug="specialist-tofan-finance",
+        kind=AgentKind.SPECIALIST,
+        role=AgentRole.FINANCE,
+        status=AgentStatus.ACTIVE,
+    )
     decision = MainAgentOrchestrator(None, None).decide(None, specialist, "اعرض المدفوعات")
     assert decision.tool_name != "manager.delegate_specialist"
