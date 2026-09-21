@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.curriculum_models import CurriculumCourse, CurriculumStage, LearningOutcome, CoursePrerequisite
 from app.db.models import AcademicUnit, Course, Institution
-from .models import Agent, AgentKind, AgentStatus, AgentTool
+from .models import Agent, AgentKind, AgentRole, AgentStatus, AgentTool
 
 
 DEFAULT_TEACHER_PROMPT = """أنت مدرس ذكاء اصطناعي داخل أكاديمية طوفان الذكية.
@@ -71,6 +71,7 @@ def create_curriculum_teacher_agent(
         name=name.strip(),
         slug=slug.strip(),
         kind=AgentKind.TEACHER,
+        role=AgentRole.TEACHER,
         status=AgentStatus.DRAFT,
         description=description or f"AI teacher for TOFAN course: {course.name}",
         system_prompt=DEFAULT_TEACHER_PROMPT + context,
