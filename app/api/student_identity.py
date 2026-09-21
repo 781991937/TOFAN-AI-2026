@@ -417,6 +417,7 @@ def confirm_payment(
     if not (
         transaction.product_key == "global_curriculum"
         or transaction.product_key.startswith("academy_course:")
+        or transaction.product_key.startswith("curriculum_stage:")
     ):
         raise HTTPException(
             status_code=409,
