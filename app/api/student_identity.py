@@ -19,6 +19,7 @@ from app.auth.dependencies import get_current_user, get_db, get_current_roles
 from app.auth.authorization import require_owner_or_admin
 from app.auth.models import RoleName
 from app.auth.service import has_role
+from app.auth.authentication import ensure_owner_identity
 from app.auth.webauthn import begin_authentication, begin_registration, finish_authentication, finish_registration
 from app.auth.biometric import BiometricAuthError
 from app.db.identity_models import (
@@ -384,6 +385,9 @@ def passkey_authenticate_complete(
         profile.biometric_verified = True
         profile.profile_status = ProfileStatus.VERIFIED
         profile.verified_at = datetime.utcnow()
+        # A verified platform biometric/passkey assertion is the second owner
+        # recognition factor after the configured owner email account.
+        owner_user = ensure_owner_identity(db, actor)
         db.commit()
         return {
             "verified": True,
@@ -391,6 +395,7 @@ def passkey_authenticate_complete(
             "status": profile.profile_status,
             "biometric_verified": True,
             "credential_id": credential.credential_id,
+            "owner_recognized": owner_user.email is not None and owner_user.email.strip().lower() == os.getenv("TOFAN_OWNER_EMAIL", "raedtofan86@gmail.com").strip().lower(),
         }
     except BiometricAuthError as exc:
         db.rollback()
