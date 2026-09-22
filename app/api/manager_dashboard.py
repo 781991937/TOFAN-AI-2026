@@ -164,16 +164,6 @@ async function uploadLessonFile(){const id=document.getElementById("fileLesson")
 async function loadLessonFiles(){const id=document.getElementById("fileLesson").value;if(!id)return;try{const d=await api("/admin/content?lecture_id="+encodeURIComponent(id));document.getElementById("lessonFiles").innerHTML=d.files.map(x=>'<div class="notice"><b>'+esc(x.original_name)+'</b> · '+esc(x.status)+' · '+esc(x.text_characters)+' حرف · '+esc(x.size_bytes)+' bytes</div>').join("")||'<div class="notice">لا توجد ملفات.</div>'}catch(e){toast(e.message)}}
 
 async function savePaymentAccount(){try{const d={provider_name:payProvider.value.trim(),account_name:payAccountName.value.trim()||null,account_number:payAccountNumber.value.trim(),amount:payAmount.value?Number(payAmount.value):null,currency:payCurrency.value.trim()||null,instructions:payInstructions.value.trim()||null};await api("/student/payments/account",{method:"PUT",body:JSON.stringify(d)});payAccountState.textContent="تم الحفظ";toast("تم حفظ إعدادات الدفع")}catch(e){payAccountState.textContent=e.message}}
-async function viewPaymentProof(id){
- try{
-  const r=await fetch("/student/payments/"+encodeURIComponent(id)+"/proof",{credentials:"same-origin"});
-  if(!r.ok)throw new Error("تعذر فتح إثبات الدفع");
-  const blob=await r.blob();
-  const url=URL.createObjectURL(blob);
-  window.open(url,"_blank","noopener,noreferrer");
-  setTimeout(()=>URL.revokeObjectURL(url),60000);
- }catch(e){toast(e.message)}
-}
 async function confirmPayment(id){if(!confirm("تأكيد الدفع وتفعيل الوصول؟"))return;try{await api("/student/payments/"+id+"/confirm",{method:"POST"});toast("تم تأكيد الدفع");load()}catch(e){toast(e.message)}}
 async function rejectPayment(id){const reason=prompt("سبب الرفض (اختياري)","");try{await api("/student/payments/"+id+"/reject",{method:"POST",body:JSON.stringify({reason:reason||null})});toast("تم رفض الدفع");load()}catch(e){toast(e.message)}}
 async function provisionTeacher(){const course_id=document.getElementById("courseSelect").value;if(!course_id)return toast("اختر مقررًا");try{await api("/manager/teachers/provision",{method:"POST",body:JSON.stringify({course_id})});toast("تم إنشاء المدرس");load()}catch(e){toast(e.message)}}
