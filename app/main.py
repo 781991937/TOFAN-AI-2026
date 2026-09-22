@@ -1,6 +1,7 @@
 """FastAPI application entry point for TOFAN Smart Academy."""
 
 from contextlib import asynccontextmanager
+import os
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
@@ -102,7 +103,12 @@ app.include_router(specialty_experience_router)
 
 def main() -> None:
     import uvicorn
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8000")),
+        reload=False,
+    )
 
 
 if __name__ == "__main__":
