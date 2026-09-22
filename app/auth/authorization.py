@@ -13,6 +13,7 @@ def require_any_role(*required: RoleName):
             raise HTTPException(status_code=403, detail="Insufficient permissions.")
         return roles
 
+    dependency.dependency = dependency
     return dependency
 
 
