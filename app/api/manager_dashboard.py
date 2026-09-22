@@ -68,6 +68,7 @@ input,select,textarea{background:#181818;color:#fff;border:1px solid #363636;bor
 </div><div class="toolbar" style="margin-top:10px"><button onclick="savePaymentAccount()">حفظ إعدادات الدفع</button><span id="payAccountState" class="status"></span></div></div></section>
 <section><div class="section-title">المدفوعات</div><div id="payments" class="table-wrap"></div></section>
 <section><div class="section-title">آخر أحداث التدقيق</div><div id="audit" class="table-wrap"></div></section>
+<section><div class="section-title">إدارة وكلاء الذكاء الاصطناعي</div><div class="panel"><div class="toolbar"><button onclick="loadAgents()">تحديث الوكلاء</button><button class="ghost" onclick="bootstrapMainAgent()">تهيئة المدير العام</button></div><div id="agents" class="table-wrap"></div><div class="notice">تغيير حالة الوكيل وإدارة أدواته يمر عبر صلاحيات المدير فقط.</div></div></section>
 <section><div class="section-title">إدارة الإشعارات</div><div class="panel"><div class="form-grid">
 <div class="field"><label>العنوان</label><input id="noticeTitle" maxlength="255"></div>
 <div class="field"><label>نوع الحدث</label><input id="noticeEvent" value="admin.broadcast" maxlength="100"></div>
@@ -168,6 +169,22 @@ let dragData=null;function dragStart(e){const n=e.currentTarget;dragData={id:n.d
 async function uploadLessonFile(){const id=document.getElementById("fileLesson").value,f=document.getElementById("lessonFile").files[0];if(!id||!f)return toast("اختر المحاضرة والملف أولاً");const fd=new FormData();fd.append("file",f);try{await api("/admin/content/lectures/"+id+"/files",{method:"POST",body:fd});toast("تم رفع الملف");await loadLessonFiles()}catch(e){toast(e.message)}}
 async function loadLessonFiles(){const id=document.getElementById("fileLesson").value;if(!id)return;try{const d=await api("/admin/content?lecture_id="+encodeURIComponent(id));document.getElementById("lessonFiles").innerHTML=d.files.map(x=>'<div class="notice"><b>'+esc(x.original_name)+'</b> · '+esc(x.status)+' · '+esc(x.text_characters)+' حرف · '+esc(x.size_bytes)+' bytes</div>').join("")||'<div class="notice">لا توجد ملفات.</div>'}catch(e){toast(e.message)}}
 
+async function loadAgents(){
+ try{
+  const agents=await api("/admin/agents");
+  document.getElementById("agents").innerHTML=table(["الوكيل","النوع","الحالة","المزوّد","النموذج","الذاكرة","إجراء"],agents.map(x=>[
+   esc(x.name),esc(x.kind),esc(x.status),esc(x.model_provider||"-"),esc(x.model_name||"-"),x.memory_enabled?"نعم":"لا",
+   '<button class="ghost" onclick="changeAgentStatus(\\''+x.id+'\\',\\''+(x.status==="active"?"paused":"active")+ '\\')">'+(x.status==="active"?"إيقاف":"تفعيل")+'</button>'
+  ]));
+ }catch(e){document.getElementById("agents").innerHTML='<div class="notice">'+esc(e.message)+'</div>'}
+}
+async function changeAgentStatus(id,status){
+ try{await api("/admin/agents/"+encodeURIComponent(id)+"/status",{method:"PATCH",body:JSON.stringify({status})});toast("تم تحديث حالة الوكيل");await loadAgents()}catch(e){toast(e.message)}
+}
+async function bootstrapMainAgent(){
+ try{const d=await api("/admin/agents/main/bootstrap",{method:"POST"});toast("تمت تهيئة "+d.name);await loadAgents()}catch(e){toast(e.message)}
+}
+
 async function broadcastNotification(){
  const title=document.getElementById("noticeTitle").value.trim();
  const message=document.getElementById("noticeMessage").value.trim();
@@ -201,6 +218,7 @@ async function load(){
   assessments.innerHTML=table(["الطالب","النسبة","النتيجة","الحالة","التاريخ"],a.assessments.map(x=>[esc(x.user_id),esc(x.percentage??"-"),x.passed===true?"ناجح":x.passed===false?"غير ناجح":"-",esc(x.status),esc(x.submitted_at||x.started_at)]));
   payments.innerHTML=table(["المعاملة","المنتج","المبلغ","الحالة","المرجع","الإثبات","التاريخ","إجراء"],p.payments.map(x=>[esc(x.transaction_id),esc(x.product_key),esc((x.amount??"-")+" "+(x.currency||"")),esc(x.status),esc(x.reference||"-"),x.proof_file_id?"متوفر — افتح /student/payments/"+x.transaction_id+"/proof":"لا يوجد",esc(x.created_at),x.status==="pending"?'<button class="ok" onclick="confirmPayment(\''+x.transaction_id+'\')">تأكيد</button> <button class="danger" onclick="rejectPayment(\''+x.transaction_id+'\')">رفض</button>':"—"]));
   audit.innerHTML=table(["الحدث","المستخدم","الوقت"],(l.events||l.audit||[]).map(x=>[esc(x.action||x.event||"-"),esc(x.user_id||"-"),esc(x.created_at||"-")]));
+  loadAgents();
   document.getElementById("state").textContent="تم التحديث";
  }catch(e){document.getElementById("state").textContent=e.message}
  try{const a=await api("/student/payments/account");if(a.configured){payProvider.value=a.provider_name||"";payAccountName.value=a.account_name||"";payAccountNumber.value=a.account_number||"";payAmount.value=a.amount??"";payCurrency.value=a.currency||"";payInstructions.value=a.instructions||""}}catch{}
