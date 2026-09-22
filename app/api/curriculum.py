@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.auth.dependencies import get_db
+from app.auth.dependencies import get_db, get_current_user
 from app.curriculum_registry import CurriculumError, get_curriculum, list_curricula, semester_courses
 from app.agents.models import Agent, AgentKind, AgentStatus
+from app.agents.academy_access_policy import has_curriculum_stage_access
 from app.db.curriculum_models import (
     CourseAssessment, CoursePrerequisite, Curriculum, CurriculumCourse, CurriculumLesson,
     CurriculumProject, CurriculumStage, CurriculumUnit, ElectiveTrack,
@@ -129,7 +130,7 @@ def get_curriculum_course(course_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/lessons/{lesson_id}")
-def get_curriculum_lesson(lesson_id: str, db: Session = Depends(get_db)):
+def get_curriculum_lesson(lesson_id: str, db: Session = Depends(get_db), user=Depends(get_current_user)):
     lesson = db.get(CurriculumLesson, lesson_id)
     if lesson is None:
         raise HTTPException(status_code=404, detail="TOFAN curriculum lesson not found.")
@@ -139,8 +140,7 @@ def get_curriculum_lesson(lesson_id: str, db: Session = Depends(get_db)):
     course = db.get(CurriculumCourse, unit.course_id)
     if course is None or not course.is_active:
         raise HTTPException(status_code=404, detail="Lesson course not found.")
-    stage = db.get(CurriculumStage, course.stage_id)
-    return {
+    stage = db.get(CurriculumStage, course.stage_id)\n    if stage is None or not has_curriculum_stage_access(db, user_id=user.id, stage_id=stage.id):\n        raise HTTPException(status_code=403, detail="You do not have access to this curriculum content.")\n    return {
         "id": lesson.id,
         "title": lesson.title,
         "position": lesson.position,
