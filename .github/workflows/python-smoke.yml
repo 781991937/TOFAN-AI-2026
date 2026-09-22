@@ -39,6 +39,19 @@ jobs:
         run: |
           python -c "from app.main import app; print(app.title); print(len(app.routes))"
           python -c "from app.auth.webauthn import begin_registration, finish_registration, begin_authentication, finish_authentication; from app.agents.main_manager import MainManagerService; from app.agents.teacher import create_curriculum_teacher_agent; print('critical imports OK')"
+      - name: Diagnose application import
+        if: always()
+        env:
+          DATABASE_URL: "sqlite:///./smoke.db"
+        run: |
+          python -c "from app.main import app; print(app.title); print(len(app.routes))" > import-diagnostics.log 2>&1 || true
+          python -c "from app.auth.webauthn import begin_registration, finish_registration, begin_authentication, finish_authentication; from app.agents.main_manager import MainManagerService; from app.agents.teacher import create_curriculum_teacher_agent; print('critical imports OK')" >> import-diagnostics.log 2>&1 || true
+      - name: Upload import diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: import-diagnostics-smoke
+          path: import-diagnostics.log
       - name: Run smoke tests
         env:
           DATABASE_URL: "sqlite:///./smoke.db"
