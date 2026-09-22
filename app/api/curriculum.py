@@ -140,7 +140,10 @@ def get_curriculum_lesson(lesson_id: str, db: Session = Depends(get_db), user=De
     course = db.get(CurriculumCourse, unit.course_id)
     if course is None or not course.is_active:
         raise HTTPException(status_code=404, detail="Lesson course not found.")
-    stage = db.get(CurriculumStage, course.stage_id)\n    if stage is None or not has_curriculum_stage_access(db, user_id=user.id, stage_id=stage.id):\n        raise HTTPException(status_code=403, detail="You do not have access to this curriculum content.")\n    return {
+    stage = db.get(CurriculumStage, course.stage_id)
+    if stage is None or not has_curriculum_stage_access(db, user_id=user.id, stage_id=stage.id):
+        raise HTTPException(status_code=403, detail="You do not have access to this curriculum content.")
+    return {
         "id": lesson.id,
         "title": lesson.title,
         "position": lesson.position,
