@@ -55,7 +55,7 @@ jobs:
           server_pid=$!
           trap 'kill $server_pid || true' EXIT
           for i in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:8000/health && curl -fsS http://127.0.0.1:8000/web/ >/dev/null; then
+            if curl -fsS http://127.0.0.1:8000/health >/dev/null && curl -fsSL http://127.0.0.1:8000/ >/dev/null && curl -fsS http://127.0.0.1:8000/web/ >/dev/null; then
               exit 0
             fi
             sleep 1
