@@ -8,4 +8,4 @@ def build_configured_provider(*, model: str | None = None, provider: str | None 
     selected_provider = (provider or "openai").strip().lower()
     if selected_provider != "openai":
         raise ValueError(f"Unsupported AI provider: {selected_provider}")
-    return OpenAIResponsesProvider(model=model)
+    return OpenAIResponsesProvider(model=model, provider=selected_provider)
