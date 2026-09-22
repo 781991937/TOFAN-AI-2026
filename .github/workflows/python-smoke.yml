@@ -57,7 +57,17 @@ jobs:
           DATABASE_URL: "sqlite:///./smoke.db"
           TOFAN_ENV: development
           TOFAN_STORAGE_BACKEND: local
-        run: python -m pytest -q
+        run: |
+          python -m pytest -q > pytest.log 2>&1
+          status=$?
+          cat pytest.log
+          exit $status
+      - name: Upload pytest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-diagnostics-smoke
+          path: pytest.log
       - name: Start application and verify web routes
         env:
           DATABASE_URL: "sqlite:///./smoke.db"
