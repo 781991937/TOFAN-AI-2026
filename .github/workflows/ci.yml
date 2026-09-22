@@ -24,73 +24,23 @@ jobs:
         run: python -m pip install pytest
       - name: Compile application
         run: python -m compileall -q app
-      - name: Diagnose compile failure
-        if: always()
-        run: python -m compileall app > compile-diagnostics.log 2>&1 || true
-      - name: Upload compile diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: compile-diagnostics
-          path: compile-diagnostics.log
       - name: Validate frontend JavaScript
         run: |
           node --check web/app.js
           node --check web/assessments.js
           node --check web/student-files.js
           node --check web/subscriptions.js
-      - name: Diagnose frontend syntax
-        if: always()
-        run: |
-          : > frontend-diagnostics.log
-          for file in web/app.js web/assessments.js web/student-files.js web/subscriptions.js; do
-            echo "===== $file =====" >> frontend-diagnostics.log
-            node --check "$file" >> frontend-diagnostics.log 2>&1 || true
-          done
-      - name: Upload frontend diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-diagnostics
-          path: frontend-diagnostics.log
       - name: Import FastAPI application
         env:
           DATABASE_URL: "sqlite:///./ci.db"
         run: python -c "from app.main import app; print(app.title)"
-      - name: Diagnose application import
-        if: always()
-        env:
-          DATABASE_URL: "sqlite:///./ci.db"
-        run: python -c "from app.main import app; print(app.title)" > import-diagnostics.log 2>&1 || true
-      - name: Upload import diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: import-diagnostics
-          path: import-diagnostics.log
       - name: Run tests
         env:
           DATABASE_URL: "sqlite:///./ci.db"
           TOFAN_ENV: development
           TOFAN_STORAGE_BACKEND: local
           TOFAN_UPLOAD_DIR: data/ci-uploads
-        run: |
-          python -m pytest -q > pytest.log 2>&1
-          status=$?
-          cat pytest.log
-          exit $status
-      - name: Upload pytest diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: pytest-diagnostics
-          path: pytest.log
-      - name: Upload route lifecycle diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: route-lifecycle-diagnostics
-          path: /tmp/tofan-route-debug.log
+        run: python -m pytest -q
       - name: Release readiness
         env:
           DATABASE_URL: "sqlite:///./ci.db"
