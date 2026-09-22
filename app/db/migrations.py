@@ -227,7 +227,7 @@ def migrate_payment_rejections(engine: Engine) -> list[str]:
 def run_migrations(engine: Engine) -> list[str]:
     changes = migrate_payment_proofs(engine)
     changes.extend(migrate_payment_rejections(engine))
-    changes.extend(migrate_payment_accounts(engine)
+    changes.extend(migrate_payment_accounts(engine))
     changes.extend(migrate_agent_conversation_memory(engine))
     changes.extend(migrate_agent_memory_scopes(engine))
     changes.extend(migrate_agent_workforce_roles(engine))
