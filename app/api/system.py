@@ -1,6 +1,7 @@
 """System readiness and API contract endpoints."""
 from fastapi import APIRouter, Request
 from app.db.session import DATABASE_URL
+import os
 
 router = APIRouter(tags=["system"])
 
@@ -32,7 +33,7 @@ def api_contract(request: Request):
         },
         "data_path": "UI -> API -> database/services -> authorization -> persisted result",
         "database": "postgresql" if DATABASE_URL.startswith("postgresql") else "sqlite-development",
-        "storage": "s3" if __import__("os").getenv("TOFAN_STORAGE_BACKEND", "local") == "s3" else "local-development",
+        "storage": "s3" if os.getenv("TOFAN_STORAGE_BACKEND", "local") == "s3" else "local-development",
         "security": {"baseline_headers": True},
         "route_count": len(route_paths),
         "required_routes_present": all(path in route_paths for path in ["/ready", "/health", "/api/contract", "/student/assessments", "/student/assessments/results/history", "/notifications"]),
