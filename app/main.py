@@ -28,6 +28,7 @@ from app.api.curriculum import router as curriculum_router
 from app.api.specialty_experience import router as specialty_experience_router
 from app.api.main_manager import router as main_manager_router
 from app.api.notifications import router as notifications_router
+from app.api.admin_notifications import router as admin_notifications_router
 from app.api.learning_progress import router as learning_progress_router
 from app.api.certificates import router as certificates_router
 from app.api.student_assessments import router as student_assessments_router
@@ -78,6 +79,7 @@ app.include_router(teacher_chat_router)
 app.include_router(teacher_teaching_router)
 app.include_router(main_manager_router)
 app.include_router(notifications_router)
+app.include_router(admin_notifications_router)
 app.include_router(learning_progress_router)
 app.include_router(certificates_router)
 app.include_router(student_assessments_router)
