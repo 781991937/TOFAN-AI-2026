@@ -15,6 +15,7 @@ from app.db.certificate_models import Certificate
 from .payment_tools import confirm_payment_tool
 from .main_manager import MainManagerService
 from .models import Agent, AgentRole, AgentRun, AgentStatus, AgentTool
+from .workforce_policy import tools_for_specialist
 
 
 class ToolExecutionError(RuntimeError):
