@@ -1,6 +1,6 @@
 """Owner/admin academy structure management API."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -787,7 +787,7 @@ def delete_native_resource(
 def reorder_native_resource(
     resource: str,
     resource_id: str,
-    position: int = Field(ge=1),
+    position: int = Query(ge=1),
     db: Session = Depends(get_db),
     _: list = Depends(require_owner_or_admin),
 ):
