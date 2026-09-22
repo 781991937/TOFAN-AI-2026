@@ -1,5 +1,6 @@
 const I18N={ar:{academy:"الأكاديمية الذكية",heroTitle:"أكاديميتك الذكية للتعلّم المتدرّج",heroText:"منهج عالمي، معلّمون بالذكاء الاصطناعي، تقدّم محفوظ، واختبارات مرتبطة بمخرجات التعلّم.",login:"تسجيل الدخول",register:"إنشاء حساب",email:"البريد الإلكتروني",password:"كلمة المرور",name:"الاسم",logout:"تسجيل الخروج",learning:"التعلّم",specialties:"التخصصات",access:"الوصول",specialtyTitle:"مسارات التخصص",dynamic:"واجهة تتكيّف مع تخصصك",home:"الرئيسية",curriculum:"المنهج",progress:"التقدم",certificates:"الشهادات",profile:"الملف",notifications:"الإشعارات",refresh:"تحديث",markRead:"تحديد كمقروء",back:"العودة",outcomes:"مخرجات التعلّم",prerequisites:"المتطلبات السابقة",units:"الوحدات",lessons:"الدروس",start:"فتح المقرر",noPrereq:"لا توجد متطلبات سابقة مسجلة.",noLessons:"لا توجد دروس مسجلة في هذه الوحدة.",courseType:"نوع المقرر",required:"إلزامي",elective:"اختياري",lessonContent:"محتوى الدرس متاح عبر المعلّم الذكي بعد بدء الخطوة التعليمية.",openTeacher:"بدء التعلّم مع المعلّم الذكي",openLesson:"فتح الدرس",lesson:"الدرس",teacher:"المعلّم الذكي",teacherReady:"المعلّم الذكي مرتبط بالمقرر ويمكن تشغيله من هنا.",freeSemester:"الفصل الأول من السنة الأولى مجاني",paidSemester:"هذا المحتوى ضمن الوصول المدفوع",teacherUnavailable:"المعلّم الذكي لهذا المقرر غير مفعّل بعد.",onboardingTitle:"إعداد حساب الطالب",userType:"نوع الحساب",universityStudent:"طالب جامعي",independentLearner:"متعلم مستقل",fullName:"الاسم الكامل",age:"العمر",university:"الجامعة",college:"الكلية / المركز",major:"التخصص",saveProfile:"حفظ الملف والمتابعة",registerPasskey:"تفعيل بصمة الجهاز / Passkey",authenticatePasskey:"التحقق بالبصمة / Passkey",onboardingDone:"تم التحقق من الحساب. يمكنك الآن الدخول إلى الأكاديمية.",select:"اختر",profileSaved:"تم حفظ الملف. الخطوة التالية هي التحقق من الجهاز.",passkeyDone:"تم التحقق من الجهاز بنجاح.",underConstruction:"غير متاح حاليًا — سيتم إضافته لاحقًا."},en:{academy:"Smart Academy",heroTitle:"Your intelligent academy for mastery-based learning",heroText:"Global knowledge, AI teachers, persistent progress, and assessments tied to learning outcomes.",login:"Sign in",register:"Create account",email:"Email",password:"Password",name:"Name",logout:"Sign out",learning:"Learning",specialties:"Specialties",access:"Access",specialtyTitle:"Specialty paths",dynamic:"An experience that adapts to your specialty",home:"Home",curriculum:"Curriculum",progress:"Progress",certificates:"Certificates",profile:"Profile",notifications:"Notifications",refresh:"Refresh",markRead:"Mark as read",back:"Back",outcomes:"Learning outcomes",prerequisites:"Prerequisites",units:"Units",lessons:"Lessons",start:"Open course",noPrereq:"No prerequisites recorded.",noLessons:"No lessons are registered in this unit.",courseType:"Course type",required:"Required",elective:"Elective",lessonContent:"Lesson content is delivered through the smart teacher after the learning step begins.",openTeacher:"Start learning with the smart teacher",openLesson:"Open lesson",lesson:"Lesson",teacher:"AI Teacher",teacherReady:"The AI teacher is linked to this course and can be started here.",freeSemester:"Year 1 · Semester 1 is free",paidSemester:"This content is part of paid access",teacherUnavailable:"The AI teacher for this course is not active yet.",onboardingTitle:"Student account setup",userType:"Account type",universityStudent:"University student",independentLearner:"Independent learner",fullName:"Full name",age:"Age",university:"University",college:"College / Center",major:"Specialization",saveProfile:"Save profile and continue",registerPasskey:"Enable device passkey",authenticatePasskey:"Verify with passkey",onboardingDone:"Your account is verified. You can now enter the academy.",select:"Select",profileSaved:"Profile saved. The next step is device verification.",passkeyDone:"Device verification completed.",underConstruction:"Not available yet — it will be added later."}};
 let lang=localStorage.getItem("tofan_lang")||"ar",mode="login",token=localStorage.getItem("tofan_token"),isOwner=false,currentSpecialty=null;
+let voiceOutput=localStorage.getItem("tofan_voice_output")!=="off",speechRecognition=null,speechListening=false;
 const $=s=>document.querySelector(s),$$=s=>document.querySelectorAll(s);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 I18N.ar.owner="المدير العام";I18N.en.owner="General Manager";function t(k){return I18N[lang][k]||k}
@@ -228,12 +229,53 @@ async function startTeaching(slug,lesson,c){
     await openTeacherChat(slug,step.id,lesson,c);
   }catch(e){toast(e.message)}
 }
+function speechLocale(){return lang==="ar"?"ar-SA":"en-US"}
+function speakText(text){
+  if(!voiceOutput||!("speechSynthesis" in window)||!String(text||"").trim())return;
+  window.speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(String(text).replace(/[*#_]+/g,""));
+  u.lang=speechLocale();u.rate=0.95;u.pitch=1;
+  const voices=window.speechSynthesis.getVoices();
+  const exact=voices.find(v=>v.lang?.toLowerCase()===u.lang.toLowerCase());
+  const family=voices.find(v=>v.lang?.toLowerCase().startsWith(lang==="ar"?"ar":"en"));
+  if(exact||family)u.voice=exact||family;
+  window.speechSynthesis.speak(u);
+}
+function stopSpeaking(){if("speechSynthesis" in window)window.speechSynthesis.cancel()}
+function createVoiceControls(input){
+  const wrap=document.createElement("div");wrap.className="voice-controls";
+  const mic=document.createElement("button");mic.type="button";mic.className="voice-btn";mic.textContent="🎙️";
+  mic.title=lang==="ar"?"تحدث":"Speak";
+  const speaker=document.createElement("button");speaker.type="button";speaker.className="voice-btn";speaker.textContent=voiceOutput?"🔊":"🔇";
+  speaker.title=lang==="ar"?"الصوت: "+(voiceOutput?"مفعل":"متوقف"):"Voice output: "+(voiceOutput?"on":"off");
+  const stop=document.createElement("button");stop.type="button";stop.className="voice-btn";stop.textContent="⏹";
+  stop.title=lang==="ar"?"إيقاف الصوت":"Stop voice";
+  wrap.append(mic,speaker,stop);
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){mic.disabled=true;mic.title=lang==="ar"?"الإملاء الصوتي غير مدعوم في هذا المتصفح":"Speech input is not supported in this browser";mic.classList.add("disabled")}
+  else{
+    mic.onclick=()=>{
+      if(speechListening){speechRecognition?.stop();return}
+      speechRecognition=new SR();speechRecognition.lang=speechLocale();speechRecognition.interimResults=false;speechRecognition.continuous=false;
+      speechRecognition.onstart=()=>{speechListening=true;mic.textContent="⏺";mic.classList.add("recording")};
+      speechRecognition.onerror=e=>{speechListening=false;mic.textContent="🎙️";mic.classList.remove("recording");if(e.error!=="aborted")toast(lang==="ar"?"تعذر التقاط الصوت: "+e.error:"Voice input failed: "+e.error)};
+      speechRecognition.onend=()=>{speechListening=false;mic.textContent="🎙️";mic.classList.remove("recording")};
+      speechRecognition.onresult=e=>{const text=Array.from(e.results).map(r=>r[0]?.transcript||"").join(" ").trim();if(text){input.value=text;input.focus()}};
+      speechRecognition.start();
+    };
+  }
+  speaker.onclick=()=>{voiceOutput=!voiceOutput;localStorage.setItem("tofan_voice_output",voiceOutput?"on":"off");speaker.textContent=voiceOutput?"🔊":"🔇";if(!voiceOutput)stopSpeaking()};
+  stop.onclick=stopSpeaking;
+  return wrap;
+}
+
 async function openTeacherChat(slug,stepId,lesson,c){
   const panel=$("#lessonBody");
-  panel.innerHTML="<div class='teacher-chat'><h3>"+t("teacher")+"</h3><div id='teacherMessages' class='chat-messages'></div><form id='teacherChatForm'><input id='teacherInput' autocomplete='off' placeholder='"+(lang==="ar"?"اكتب إجابتك أو سؤالك…":"Write your answer or question…")+"'><button class='primary' type='submit'>"+(lang==="ar"?"إرسال":"Send")+"</button></form><div class='teacher-actions'><button class='ghost' id='verifyBtn'>"+(lang==="ar"?"تحقق من الفهم":"Verify understanding")+"</button><button class='ghost' id='confirmBtn'>"+(lang==="ar"?"تأكيد فهم الدرس":"Confirm lesson understanding")+"</button></div></div>";
+  panel.innerHTML="<div class='teacher-chat'><h3>"+t("teacher")+"</h3><div id='teacherMessages' class='chat-messages'></div><form id='teacherChatForm'><div class='voice-input-row'><input id='teacherInput' autocomplete='off' placeholder='"+(lang==="ar"?"اكتب إجابتك أو تحدث…":"Write or speak…")+"'><button class='primary voice-send' type='submit'>"+(lang==="ar"?"إرسال":"Send")+"</button></div><div id='teacherVoiceControls'></div></form><div class='teacher-actions'><button class='ghost' id='verifyBtn'>"+(lang==="ar"?"تحقق من الفهم":"Verify understanding")+"</button><button class='ghost' id='confirmBtn'>"+(lang==="ar"?"تأكيد فهم الدرس":"Confirm lesson understanding")+"</button></div></div>";
   const messages=$("#teacherMessages");
   const appendTeacherMessage=(role,content)=>{const node=document.createElement("div");node.className="chat-msg "+role;node.textContent=String(content??"");messages.appendChild(node);messages.scrollTop=messages.scrollHeight};
-  const send=async(msg)=>{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,source:"global_curriculum"})});const text=d.content||d.output||"";appendTeacherMessage("assistant",text);return d};
+  const send=async(msg)=>{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,source:"global_curriculum"})});const text=d.content||d.output||"";appendTeacherMessage("assistant",text);speakText(text);return d};
+  const teacherInput=$("#teacherInput");$("#teacherVoiceControls").appendChild(createVoiceControls(teacherInput));
   $("#teacherChatForm").onsubmit=async e=>{e.preventDefault();const input=$("#teacherInput");const msg=input.value.trim();if(!msg)return;appendTeacherMessage("user",msg);input.value="";try{await send(msg)}catch(err){toast(err.message)}};
   $("#verifyBtn").onclick=async()=>{try{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps/"+encodeURIComponent(stepId)+"/understanding",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({verified:true})});toast(d.status==="completed"?t("teacherReady"):(lang==="ar"?"تم تسجيل تحقق الفهم":"Understanding check recorded"))}catch(e){toast(e.message)}};
   $("#confirmBtn").onclick=async()=>{try{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps/"+encodeURIComponent(stepId)+"/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmed:true})});toast(d.completed?(lang==="ar"?"تم إكمال الدرس":"Lesson completed"):(lang==="ar"?"تم تسجيل التأكيد":"Confirmation recorded"));if(d.completed){openCourse(c.id)}}catch(e){toast(e.message)}};
