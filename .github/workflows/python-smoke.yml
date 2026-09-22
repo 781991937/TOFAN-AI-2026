@@ -27,6 +27,8 @@ jobs:
           python -m pip install pytest
       - name: Compile Python files
         run: python -m compileall -q app
+      - name: Validate frontend JavaScript
+        run: node --check web/app.js
       - name: Import application and critical modules
         env:
           DATABASE_URL: "sqlite:///./smoke.db"
