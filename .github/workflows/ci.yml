@@ -37,11 +37,21 @@ jobs:
       - name: Run tests
         env:
           DATABASE_URL: "sqlite:///./ci.db"
+          TOFAN_ENV: development
+          TOFAN_STORAGE_BACKEND: local
+          TOFAN_UPLOAD_DIR: data/ci-uploads
         run: |
           set +e
           python -m pytest -q 2>&1 | tee pytest.log
           status=${PIPESTATUS[0]}
           exit $status
+      - name: Release readiness
+        env:
+          DATABASE_URL: "sqlite:///./ci.db"
+          TOFAN_ENV: development
+          TOFAN_STORAGE_BACKEND: local
+          TOFAN_UPLOAD_DIR: data/ci-uploads
+        run: python -c "from fastapi.testclient import TestClient; from app.main import app; c=TestClient(app); assert c.get('/ready').status_code == 200; assert c.get('/api/contract').json()['required_routes_present']"
       - name: Upload pytest diagnostics
         if: always()
         uses: actions/upload-artifact@v4
