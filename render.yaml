@@ -23,6 +23,8 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
+      - key: AUTH_OTP_PEPPER
+        sync: false
       - key: TOFAN_S3_BUCKET
         sync: false
       - key: AWS_ACCESS_KEY_ID
