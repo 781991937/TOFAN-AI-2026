@@ -174,7 +174,7 @@ async function loadAgents(){
   const agents=await api("/admin/agents");
   document.getElementById("agents").innerHTML=table(["الوكيل","النوع","الحالة","المزوّد","النموذج","الذاكرة","إجراء"],agents.map(x=>[
    esc(x.name),esc(x.kind),esc(x.status),esc(x.model_provider||"-"),esc(x.model_name||"-"),x.memory_enabled?"نعم":"لا",
-   '<button class="ghost" onclick="changeAgentStatus(\\''+x.id+'\\',\\''+(x.status==="active"?"paused":"active")+ '\\')">'+(x.status==="active"?"إيقاف":"تفعيل")+'</button>'
+   '<button class="ghost" onclick="changeAgentStatus(&quot;'+esc(x.id)+'&quot;,&quot;'+(x.status==="active"?"paused":"active")+'&quot;)">'+(x.status==="active"?"إيقاف":"تفعيل")+'</button>'
   ]));
  }catch(e){document.getElementById("agents").innerHTML='<div class="notice">'+esc(e.message)+'</div>'}
 }
