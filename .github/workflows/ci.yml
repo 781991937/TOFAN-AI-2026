@@ -25,7 +25,11 @@ jobs:
       - name: Compile application
         run: python -m compileall -q app
       - name: Validate frontend JavaScript
-        run: |\n          node --check web/app.js\n          node --check web/assessments.js\n          node --check web/student-files.js\n          node --check web/subscriptions.js
+        run: |
+          node --check web/app.js
+          node --check web/assessments.js
+          node --check web/student-files.js
+          node --check web/subscriptions.js
       - name: Import FastAPI application
         env:
           DATABASE_URL: "sqlite:///./ci.db"
