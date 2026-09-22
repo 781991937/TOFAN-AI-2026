@@ -10,3 +10,24 @@ services:
     dockerContext: .
     healthCheckPath: /health
     autoDeployTrigger: commit
+    envVars:
+      - key: PORT
+        value: "10000"
+      - key: TOFAN_ENV
+        value: production
+      - key: TOFAN_STORAGE_BACKEND
+        value: s3
+      - key: TOFAN_S3_REGION
+        value: us-east-1
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: TOFAN_S3_BUCKET
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: TOFAN_S3_ENDPOINT_URL
+        sync: false
