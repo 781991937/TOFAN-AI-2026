@@ -101,6 +101,50 @@ app.include_router(curriculum_router)
 app.include_router(specialty_experience_router)
 
 
+def _ensure_api_routers_registered() -> None:
+    """Defensively restore any router whose routes were lost during import/reload."""
+    routers = (
+        auth_router,
+        users_router,
+        student_identity_router,
+        student_onboarding_router,
+        student_files_router,
+        academic_catalog_router,
+        admin_router,
+        academy_admin_router,
+        content_admin_router,
+        admin_users_router,
+        agent_admin_router,
+        agent_chat_router,
+        agent_memory_router,
+        agent_runtime_router,
+        teacher_admin_router,
+        teacher_chat_router,
+        teacher_teaching_router,
+        main_manager_router,
+        notifications_router,
+        admin_notifications_router,
+        learning_progress_router,
+        certificates_router,
+        student_assessments_router,
+        manager_dashboard_router,
+        system_router,
+        curriculum_router,
+        specialty_experience_router,
+    )
+    for router in routers:
+        prefix = (router.prefix or "").rstrip("/")
+        if prefix and not any(
+            getattr(route, "path", "").rstrip("/") == prefix
+            or getattr(route, "path", "").startswith(prefix + "/")
+            for route in app.routes
+        ):
+            app.include_router(router)
+
+
+_ensure_api_routers_registered()
+
+
 def main() -> None:
     import uvicorn
     uvicorn.run(
