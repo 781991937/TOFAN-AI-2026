@@ -77,6 +77,9 @@ class Institution(Base):
     units: Mapped[list["AcademicUnit"]] = relationship(
         back_populates="institution", cascade="all, delete-orphan"
     )
+    periods: Mapped[list["AcademicPeriod"]] = relationship(
+        back_populates="institution", cascade="all, delete-orphan"
+    )
 
 
 class AcademicUnit(Base):
@@ -119,6 +122,7 @@ class AcademicPeriod(Base):
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    institution: Mapped["Institution"] = relationship(back_populates="periods")
     parent: Mapped["AcademicPeriod | None"] = relationship(remote_side=[id])
 
 
