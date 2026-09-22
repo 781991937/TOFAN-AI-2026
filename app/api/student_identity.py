@@ -585,7 +585,8 @@ def confirm_payment(
         "payments.confirmed",
         transaction.user_id,
         {"resource_type": "payment_transaction", "resource_id": transaction_id, "transaction_id": transaction_id},
-    )    return result
+    )
+    return result
 
 
 @router.post("/payments/{transaction_id}/reject")
