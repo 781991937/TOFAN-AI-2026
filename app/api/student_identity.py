@@ -206,6 +206,8 @@ def get_academy_catalog(
     }
 
 
+@router.get("/access/status")
+@router.get("/access")
 def get_student_access(
     db: Session = Depends(get_db),
     actor: User = Depends(get_current_user),
