@@ -11,3 +11,12 @@ def test_student_modules_use_api_calls():
     for file_name in ("web/app.js", "web/assessments.js", "web/student-files.js", "web/subscriptions.js"):
         source = Path(file_name).read_text(encoding="utf-8")
         assert "fetch(" in source or "api(" in source
+
+
+def test_web_shell_exposes_passkey_login():
+    html = Path("web/index.html").read_text(encoding="utf-8")
+    source = Path("web/app.js").read_text(encoding="utf-8")
+    assert "passkeyLoginBtn" in html
+    assert "/auth/passkey/options" in source
+    assert "/auth/passkey/complete" in source
+    assert "navigator.credentials.get" in source
