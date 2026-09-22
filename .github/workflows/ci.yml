@@ -74,7 +74,17 @@ jobs:
           TOFAN_ENV: development
           TOFAN_STORAGE_BACKEND: local
           TOFAN_UPLOAD_DIR: data/ci-uploads
-        run: python -m pytest -q
+        run: |
+          python -m pytest -q > pytest.log 2>&1
+          status=$?
+          cat pytest.log
+          exit $status
+      - name: Upload pytest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-diagnostics
+          path: pytest.log
       - name: Release readiness
         env:
           DATABASE_URL: "sqlite:///./ci.db"
