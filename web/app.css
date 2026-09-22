@@ -10,3 +10,13 @@
 .course-progress-card{display:grid;gap:9px;margin:14px 0 20px;padding:15px;border:1px solid var(--line);border-radius:12px;background:#0b0d10}.course-progress-card span{font-size:13px;opacity:.8}.progress-track{height:9px;overflow:hidden;border-radius:99px;background:#1b1e23}.progress-fill{height:100%;border-radius:99px;background:var(--gold);transition:width .25s ease}.course-progress-card p{margin:0;font-size:14px;line-height:1.7}
 
 .notification-item{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;padding:15px;margin-bottom:10px;border:1px solid var(--line);border-radius:13px;background:#0b0d10}.notification-item.unread{border-color:#4c4025;background:#15130f}.notification-item b{display:block;margin-bottom:5px}.notification-item p{margin:0 0 7px;color:var(--muted);line-height:1.7}.notification-item small{color:var(--muted);font-size:10px}.notification-item .ghost{flex:0 0 auto}@media(max-width:600px){.notification-item{flex-direction:column}.notification-item .ghost{width:100%}}
+
+.secondary{width:100%;margin-top:12px;background:#15130f;color:var(--text);border:1px solid #4c4025;border-radius:11px;padding:12px;font-weight:800;cursor:pointer;min-height:46px}.secondary:hover{border-color:var(--gold)}
+.quiz-option input{width:auto;min-height:auto;flex:0 0 auto}
+@media(max-width:600px){
+  main{padding-bottom:calc(92px + var(--safe-bottom))}
+  .academy-nav{position:fixed;left:10px;right:10px;bottom:calc(10px + var(--safe-bottom));z-index:30;margin:0;padding:5px;border-radius:16px;box-shadow:0 16px 40px #000b;backdrop-filter:blur(16px);background:#0a0c0fee;overflow-x:auto}
+  .nav-btn{flex:0 0 auto;padding:9px 12px;font-size:12px;min-height:40px}
+  .dashboard-head{margin-bottom:18px}
+  .lesson-row,.course-button{padding:14px 12px}
+}
