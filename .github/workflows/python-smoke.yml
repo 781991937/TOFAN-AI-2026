@@ -19,7 +19,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13.5"
+          python-version: "3.12"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -42,16 +42,20 @@ jobs:
       - name: Run smoke tests
         env:
           DATABASE_URL: "sqlite:///./smoke.db"
+          TOFAN_ENV: development
+          TOFAN_STORAGE_BACKEND: local
         run: python -m pytest -q
-      - name: Start application and verify health
+      - name: Start application and verify web routes
         env:
           DATABASE_URL: "sqlite:///./smoke.db"
+          TOFAN_ENV: development
+          TOFAN_STORAGE_BACKEND: local
         run: |
           uvicorn app.main:app --host 127.0.0.1 --port 8000 > smoke-server.log 2>&1 &
           server_pid=$!
           trap 'kill $server_pid || true' EXIT
           for i in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:8000/health; then
+            if curl -fsS http://127.0.0.1:8000/health && curl -fsS http://127.0.0.1:8000/web/ >/dev/null; then
               exit 0
             fi
             sleep 1
