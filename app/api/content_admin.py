@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -16,6 +15,7 @@ from app.auth.dependencies import get_db
 from app.agents.academy_access_policy import validate_content_status
 from app.db.models import ContentFile, ContentStatus, Lecture, TeachingSource
 from app.files.extractor import FileExtractionError, extract_teaching_text
+from app.storage import get_storage
 
 router = APIRouter(prefix="/admin/content", tags=["admin-content"])
 
@@ -94,18 +94,14 @@ async def upload_lecture_file(
             detail="No readable teaching text was found in the file.",
         )
 
-    storage_root = Path(os.getenv("TOFAN_UPLOAD_DIR", "data/uploads"))
-    content_dir = storage_root / "academy"
-    content_dir.mkdir(parents=True, exist_ok=True)
-    storage_name = f"{uuid4().hex}{suffix}"
-    storage_path = content_dir / storage_name
+    storage = get_storage()
+    stored = storage.put_bytes(data, suffix=suffix, prefix="academy")
 
     try:
-        storage_path.write_bytes(data)
         row = ContentFile(
             lecture_id=lecture_id,
             original_name=filename,
-            storage_key=str(storage_path),
+            storage_key=stored.key,
             mime_type=file.content_type,
             status=ContentStatus.DRAFT,
             teaching_source=TeachingSource.GLOBAL_CURRICULUM,
@@ -118,7 +114,7 @@ async def upload_lecture_file(
         db.refresh(row)
     except Exception:
         db.rollback()
-        storage_path.unlink(missing_ok=True)
+        storage.delete(stored.key)
         raise
 
     return _serialize(row)
