@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
@@ -15,6 +14,7 @@ from app.agents.teaching_policy import TeachingAccessError, register_student_fil
 from app.auth.dependencies import get_current_user, get_db
 from app.db.models import ContentFile, ContentStatus, TeachingSource, User
 from app.files.extractor import FileExtractionError, extract_teaching_text
+from app.storage import get_storage
 
 router = APIRouter(prefix="/student/files", tags=["student-files"])
 
@@ -88,16 +88,12 @@ async def upload_student_file(
             detail="The free student-file limit of 3 files for this 24-hour window has been reached.",
         )
 
-    storage_root = Path(os.getenv("TOFAN_UPLOAD_DIR", "data/uploads"))
-    user_dir = storage_root / actor.id
-    user_dir.mkdir(parents=True, exist_ok=True)
-    storage_name = f"{uuid4().hex}{suffix}"
-    storage_path = user_dir / storage_name
-    storage_path.write_bytes(data)
+    storage = get_storage()
+    stored = storage.put_bytes(data, suffix=suffix, prefix=actor.id)
 
     content_file = ContentFile(
         original_name=filename,
-        storage_key=str(storage_path),
+        storage_key=stored.key,
         mime_type=file.content_type,
         status=ContentStatus.PRIVATE,
         extracted_text=extracted_text,
@@ -121,7 +117,7 @@ async def upload_student_file(
         db.refresh(content_file)
     except TeachingAccessError as exc:
         db.rollback()
-        storage_path.unlink(missing_ok=True)
+        storage.delete(stored.key)
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except Exception:
         db.rollback()
