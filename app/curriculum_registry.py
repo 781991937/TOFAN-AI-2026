@@ -60,8 +60,39 @@ def list_curricula() -> list[CurriculumRef]:
 
 def _normalize_curriculum(curriculum: dict[str, Any]) -> dict[str, Any]:
     """Return the canonical semester representation used by TOFAN APIs/seeders."""
-    if isinstance(curriculum.get("semesters"), list) and curriculum["semesters"]:
-        return curriculum
+    def normalize_course(course: Any) -> dict[str, Any] | None:
+        if isinstance(course, dict):
+            item = dict(course)
+        elif isinstance(course, (list, tuple)) and course:
+            item = {
+                "id": str(course[0]),
+                "name_ar": str(course[1]) if len(course) > 1 else str(course[0]),
+            }
+        else:
+            return None
+        item.setdefault("name_ar", item.get("name_en") or item.get("id", ""))
+        item.setdefault("name_en", item.get("name_ar", ""))
+        item.setdefault("description_ar", item.get("description") or "")
+        item.setdefault("description_en", item.get("description") or "")
+        item.setdefault("prerequisites", [])
+        item.setdefault("learning_outcomes", item.get("outcomes", []))
+        return item
+
+    existing_semesters = curriculum.get("semesters")
+    if isinstance(existing_semesters, list) and existing_semesters:
+        normalized = dict(curriculum)
+        normalized["semesters"] = []
+        for semester in existing_semesters:
+            if not isinstance(semester, dict):
+                continue
+            item = dict(semester)
+            item["courses"] = [
+                normalized_course
+                for course in (semester.get("courses") or [])
+                if (normalized_course := normalize_course(course)) is not None
+            ]
+            normalized["semesters"].append(item)
+        return normalized
 
     stages = curriculum.get("stages") or []
     plan = curriculum.get("semester_plan") or []
