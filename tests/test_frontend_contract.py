@@ -20,3 +20,13 @@ def test_web_shell_exposes_passkey_login():
     assert "/auth/passkey/options" in source
     assert "/auth/passkey/complete" in source
     assert "navigator.credentials.get" in source
+
+
+def test_mobile_shell_contains_splash_bottom_navigation_and_manager_entry():
+    html = Path("web/index.html").read_text(encoding="utf-8")
+    assert 'id="splashScreen"' in html
+    assert 'id="mobileBottomNav"' in html
+    for view in ("home", "curriculum", "assessments", "notifications", "profile"):
+        assert f'data-view="{view}"' in html
+    assert '/manager/dashboard-ui' in html
+
