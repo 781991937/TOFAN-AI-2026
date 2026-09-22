@@ -39,6 +39,20 @@ jobs:
           node --check web/assessments.js
           node --check web/student-files.js
           node --check web/subscriptions.js
+      - name: Diagnose frontend syntax
+        if: always()
+        run: |
+          : > frontend-diagnostics.log
+          for file in web/app.js web/assessments.js web/student-files.js web/subscriptions.js; do
+            echo "===== $file =====" >> frontend-diagnostics.log
+            node --check "$file" >> frontend-diagnostics.log 2>&1 || true
+          done
+      - name: Upload frontend diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-diagnostics
+          path: frontend-diagnostics.log
       - name: Import FastAPI application
         env:
           DATABASE_URL: "sqlite:///./ci.db"
