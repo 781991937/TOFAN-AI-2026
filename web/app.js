@@ -73,8 +73,8 @@ async function renderSpecialties(items){
   }
 }
 async function openCurriculum(slug){try{$("#coursePanel").classList.add("hidden");const curriculumSlug=slug||currentSpecialty?.curriculum_slug||"ai-tofan-curriculum-v1";const c=await api("/curriculum/"+encodeURIComponent(curriculumSlug));$("#curriculumPanel").classList.remove("hidden");$("#curriculumTitle").textContent=c.name+" · v"+c.version;const stages=c.stages||c.semesters||[];const byYear={};stages.forEach(s=>{const y=s.year||Math.ceil((s.position||1)/2);(byYear[y]??=[]).push(s)});$("#curriculumBody").innerHTML=Object.entries(byYear).map(([year,items])=>"<section class='year-group'><div class='section-head'><h2>"+(lang==="ar"?"السنة ":"Year ")+year+"</h2><span>"+items.length+" "+(lang==="ar"?"فصول":"semesters")+"</span></div>"+items.map(s=>"<div class='stage'><div class='stage-head'><h3>"+s.name+"</h3><span>"+(lang==="ar"?"الفصل ":"Semester ")+(s.semester||((s.position||1)%2||2))+"</span></div>"+(s.courses||[]).map(x=>"<button class='course course-button' data-course-id='"+esc(x.id)+"'><b>"+esc(x.code)+"</b> — "+esc(x.name)+" <small>"+(x.outcomes?.length||0)+" "+(lang==="ar"?"مخرجات تعلم":"outcomes")+"</small></button>").join("")+"</div>").join("")+"</section>").join("");$$(".course-button").forEach(b=>b.onclick=()=>openCourse(b.dataset.courseId))}catch(err){toast(err.message)}}
-async function openCourse(courseId){try{const c=await api("/curriculum/courses/"+encodeURIComponent(courseId));$("#curriculumPanel").classList.add("hidden");$("#coursePanel").classList.remove("hidden");$("#courseTitle").textContent=c.code+" — "+c.name;const type=c.course_type==="elective"?t("elective"):t("required");const prereq=c.prerequisite_course_ids?.length?c.prerequisite_course_ids.map(id=>"<span class='tag'>"+id+"</span>").join(""):"<span class='muted'>"+t("noPrereq")+"</span>";const outcomes=(c.outcomes||[]).map((x,i)=>"<li>"+x+"</li>").join("")||"<li>—</li>";const units=(c.units||[]).map(u=>"<section class='unit'><div class='unit-head'><div><span class='eyebrow'>"+t("units")+" "+u.position+"</span><h3>"+u.title+"</h3></div><span class='count'>"+u.lessons.length+" "+t("lessons")+"</span></div>"+(u.lessons.length?u.lessons.map(l=>"<button class='lesson-row lesson-button' data-lesson-id='"+l.id+"'><span>"+l.position+". "+l.title+"</span><span>"+(l.has_content?"●":"○")+"</span></button>").join(""):"<div class='muted'>"+t("noLessons")+"</div>")+"</section>").join("");$("#courseBody").innerHTML="<div class='course-meta'><span>"+type+"</span><span>"+t("courseType")+"</span></div><div class='detail-grid'><section><h3>"+t("outcomes")+"</h3><ol class='outcome-list'>"+outcomes+"</ol></section><section><h3>"+t("prerequisites")+"</h3><div class='tags'>"+prereq+"</div></section></div><div class='section-head'><h3>"+t("units")+"</h3></div>"+units+"<div class='teacher-entry'><p>"+t("lessonContent")+"</p><button class='primary' id='courseTeacherBtn'>"+t("openTeacher")+"</button></div>";$("#courseTeacherBtn").onclick=()=>toast(t("teacherReady"));
-    await loadCourseProgress(c);
+async function openCourse(courseId){try{const c=await api("/curriculum/courses/"+encodeURIComponent(courseId));$("#curriculumPanel").classList.add("hidden");$("#coursePanel").classList.remove("hidden");$("#courseTitle").textContent=c.code+" — "+c.name;const type=c.course_type==="elective"?t("elective"):t("required");const prereq=c.prerequisite_course_ids?.length?c.prerequisite_course_ids.map(id=>"<span class='tag'>"+id+"</span>").join(""):"<span class='muted'>"+t("noPrereq")+"</span>";const outcomes=(c.outcomes||[]).map((x,i)=>"<li>"+x+"</li>").join("")||"<li>—</li>";const units=(c.units||[]).map(u=>"<section class='unit'><div class='unit-head'><div><span class='eyebrow'>"+t("units")+" "+u.position+"</span><h3>"+u.title+"</h3></div><span class='count'>"+u.lessons.length+" "+t("lessons")+"</span></div>"+(u.lessons.length?u.lessons.map(l=>"<button class='lesson-row lesson-button' data-lesson-id='"+l.id+"'><span>"+l.position+". "+l.title+"</span><span>"+(l.has_content?"●":"○")+"</span></button>").join(""):"<div class='muted'>"+t("noLessons")+"</div>")+"</section>").join("");$("#courseBody").innerHTML="<div class='course-meta'><span>"+type+"</span><span>"+t("courseType")+"</span></div><div class='detail-grid'><section><h3>"+t("outcomes")+"</h3><ol class='outcome-list'>"+outcomes+"</ol></section><section><h3>"+t("prerequisites")+"</h3><div class='tags'>"+prereq+"</div></section></div><div class='section-head'><h3>"+t("units")+"</h3></div>"+units+"<div class='teacher-entry'><p>"+t("lessonContent")+"</p><button class='primary' id='courseTeacherBtn'>"+t("openTeacher")+"</button></div>";const firstLesson=(c.units||[]).flatMap(u=>u.lessons||[])[0];$("#courseTeacherBtn").onclick=()=>firstLesson?openLesson(firstLesson.id,c):toast(t("noLessons"));if(!firstLesson)$("#courseTeacherBtn").disabled=true;
+    const progress=await loadCourseProgress(c);
     if(c.access?.tier==="paid"){
       const payBtn=document.createElement("button");
       payBtn.className="secondary";
@@ -89,6 +89,10 @@ async function openCourse(courseId){try{const c=await api("/curriculum/courses/"
       quizBtn.textContent=lang==="ar"?"بدء الاختبار النهائي":"Start final assessment";
       $("#courseBody").appendChild(quizBtn);
       quizBtn.onclick=()=>startCourseQuiz(c);
+    }
+    if(progress?.next_step?.action==="course_complete"){
+      const certBtn=document.createElement("button");certBtn.className="secondary";certBtn.textContent=lang==="ar"?"إصدار شهادة المقرر":"Issue course certificate";$("#courseBody").appendChild(certBtn);
+      certBtn.onclick=async()=>{certBtn.disabled=true;try{const cert=await api("/certificates/courses/"+encodeURIComponent(c.id)+"/issue",{method:"POST"});certBtn.textContent=(lang==="ar"?"تم إصدار الشهادة: ":"Certificate issued: ")+cert.certificate_number}catch(e){certBtn.disabled=false;toast(e.message)}};
     }
     $(".lesson-button").forEach(b=>b.onclick=()=>openLesson(b.dataset.lessonId,c))}catch(err){toast(err.message)}}
 $("#backCurriculum").onclick=()=>openCurriculum();
@@ -117,15 +121,19 @@ async function requestCurriculumPayment(c){
 }
 
 async function loadCourseProgress(c){
-  if(!c.teacher?.slug) return null;
   try{
-    const p=await api("/agent/teacher/"+encodeURIComponent(c.teacher.slug)+"/progress");
+    const p=await api("/learning-progress/courses/"+encodeURIComponent(c.id));
+    const completed=p.completed_lessons||0, tracked=p.tracked_lessons||0, pct=Number(p.progress_percentage||0);
     const box=document.createElement("div"); box.className="course-progress-card";
     const title=document.createElement("strong"); title.textContent=lang==="ar"?"تقدمك في المقرر":"Your course progress";
-    const meta=document.createElement("span"); meta.textContent=(p.completed_steps||0)+" / "+(p.total_steps||0)+" — "+(p.progress_percentage||0)+"%";
+    const meta=document.createElement("span"); meta.textContent=tracked?completed+" / "+tracked+" — "+pct+"%":(lang==="ar"?"لم يبدأ بعد":"Not started");
     const bar=document.createElement("div"); bar.className="progress-track";
-    const fill=document.createElement("div"); fill.className="progress-fill"; fill.style.width=(p.progress_percentage||0)+"%"; bar.appendChild(fill);
-    const current=document.createElement("p"); current.textContent=p.current_step?.lesson_title ? (lang==="ar"?"الدرس الحالي: ":"Current lesson: ")+p.current_step.lesson_title : (p.course_completed?(lang==="ar"?"المقرر مكتمل":"Course completed"):(lang==="ar"?"لم يبدأ بعد":"Not started"));
+    const fill=document.createElement("div"); fill.className="progress-fill"; fill.style.width=pct+"%"; bar.appendChild(fill);
+    const current=document.createElement("p");
+    const lessons=(c.units||[]).flatMap(u=>u.lessons||[]);
+    current.textContent=p.next_step?.lesson_id
+      ? (lang==="ar"?"الخطوة التالية: ":"Next step: ")+(lessons.find(l=>l.id===p.next_step.lesson_id)?.title||p.next_step.reason)
+      : (p.next_step?.action==="course_complete"?(lang==="ar"?"المقرر مكتمل":"Course completed"):(lang==="ar"?"لم يبدأ بعد":"Not started"));
     box.append(title,meta,bar,current);
     const host=document.querySelector("#courseBody"); if(host) host.prepend(box);
     return p;
