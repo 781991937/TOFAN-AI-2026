@@ -13,6 +13,15 @@ def test_api_contract_and_readiness():
     assert body["student"]["assessments"] == "/student/assessments"
     assert body["admin"]["agents"] == "/admin/agents"
     assert body["required_routes_present"] is True
+    required = [
+        "/ready", "/health", "/api/contract",
+        "/student/assessments", "/student/assessments/results/history",
+        "/notifications", "/student/access", "/student/payments/request",
+        "/student/files", "/admin/notifications/broadcast", "/admin/agents",
+        "/manager/payments", "/manager/assessments", "/manager/audit-log",
+    ]
+    live_routes = {route.path for route in app.routes if hasattr(route, "path")}
+    assert all(path in live_routes for path in required)
     assert body["security"]["baseline_headers"] is True
     ready = client.get("/ready")
     assert ready.status_code == 200
