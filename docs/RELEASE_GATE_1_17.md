@@ -35,5 +35,5 @@ A file existing in the repository is not considered proof of completion. Each ga
 - application `/ready`
 - API contract verification
 
-## Remaining production prerequisite
-Object storage must be configured with a production adapter (S3-compatible or equivalent) and local filesystem storage must remain development-only. This is intentionally a hard release gate rather than a silent fallback.
+## Production deployment prerequisite
+Production now hard-fails unless `TOFAN_STORAGE_BACKEND=s3` and a bucket are configured. The remaining deployment action is supplying the real S3-compatible credentials/bucket in the production environment. Local filesystem storage remains development-only.
