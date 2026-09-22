@@ -29,7 +29,8 @@ from app.db.identity_models import (
     StudentProfile,
     UserType,
 )
-from app.db.models import AcademicUnit, AcademicPeriod, BiometricCredentialRecord, Institution, User, Entitlement, TeachingAccess, Course, Unit, Lecture, ContentFile, ContentStatus, TeachingSource
+from app.db.models import AcademicUnit, AcademicPeriod, BiometricCredentialRecord, Institution, User, Entitlement, TeachingAccess, Course, Unit, Lecture, ContentFile, ContentStatus, TeachingSource, AuditLog
+from app.db.curriculum_models import CurriculumEntitlement, CurriculumStage
 from app.storage import get_storage
 
 router = APIRouter(prefix="/student", tags=["student-identity"])
@@ -217,13 +218,23 @@ def get_student_access(
         .where(PaymentTransaction.user_id == actor.id)
         .order_by(PaymentTransaction.created_at.desc())
     )
-    entitlement = db.scalar(
+    curriculum_entitlement = db.scalar(
+        select(CurriculumEntitlement)
+        .where(
+            CurriculumEntitlement.user_id == actor.id,
+            CurriculumEntitlement.active.is_(True),
+        )
+        .order_by(CurriculumEntitlement.granted_at.desc())
+    )
+    global_entitlement = db.scalar(
         select(Entitlement).where(
             Entitlement.user_id == actor.id,
             Entitlement.content_file_id.is_(None),
             Entitlement.access_type == TeachingAccess.PAID.value,
         )
     )
+    stage = db.get(CurriculumStage, curriculum_entitlement.stage_id) if curriculum_entitlement else None
+    entitled = curriculum_entitlement is not None or global_entitlement is not None
     return {
         "user_id": actor.id,
         "profile": None if profile is None else {
@@ -237,11 +248,14 @@ def get_student_access(
             "product_key": payment.product_key,
             "status": payment.status,
             "confirmed_at": payment.confirmed_at,
+            "rejection_reason": payment.rejection_reason,
         },
         "global_curriculum": {
-            "entitled": entitlement is not None,
-            "access_type": TeachingAccess.PAID.value if entitlement is not None else None,
-            "expires_at": entitlement.expires_at if entitlement is not None else None,
+            "entitled": entitled,
+            "access_type": "curriculum_stage" if curriculum_entitlement else (TeachingAccess.PAID.value if global_entitlement else None),
+            "stage_id": curriculum_entitlement.stage_id if curriculum_entitlement else None,
+            "stage_name": stage.name if stage else None,
+            "expires_at": curriculum_entitlement.expires_at if curriculum_entitlement else (global_entitlement.expires_at if global_entitlement else None),
         },
         "security_rule": "Access is granted only from server-side confirmed payment state.",
     }
@@ -602,6 +616,19 @@ def reject_payment(
         raise HTTPException(status_code=409, detail="Only pending payment transactions can be rejected.")
     transaction.status = PaymentStatus.REJECTED
     transaction.rejection_reason = payload.reason
+    db.add(AuditLog(
+        user_id=transaction.user_id,
+        action="payment.rejected",
+        resource_type="payment_transaction",
+        resource_id=transaction.id,
+        details=payload.reason or "Payment rejected by administrator.",
+    ))
+    MainManagerService.process_event(
+        db,
+        "payments.rejected",
+        transaction.user_id,
+        {"resource_type": "payment_transaction", "resource_id": transaction.id, "transaction_id": transaction.id, "reason": payload.reason},
+    )
     db.commit()
     return {
         "transaction_id": transaction.id,
