@@ -57,6 +57,17 @@ jobs:
         env:
           DATABASE_URL: "sqlite:///./ci.db"
         run: python -c "from app.main import app; print(app.title)"
+      - name: Diagnose application import
+        if: always()
+        env:
+          DATABASE_URL: "sqlite:///./ci.db"
+        run: python -c "from app.main import app; print(app.title)" > import-diagnostics.log 2>&1 || true
+      - name: Upload import diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: import-diagnostics
+          path: import-diagnostics.log
       - name: Run tests
         env:
           DATABASE_URL: "sqlite:///./ci.db"
