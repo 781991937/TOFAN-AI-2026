@@ -21,6 +21,13 @@ class AgentToolChange(BaseModel):
     tool_name: str = Field(min_length=1, max_length=150)
     enabled: bool = True
 
+class AgentConfigChange(BaseModel):
+    model_provider: str = Field(default="openai", min_length=1, max_length=100)
+    model_name: str = Field(min_length=1, max_length=150)
+    system_prompt: str | None = Field(default=None, max_length=20000)
+    memory_enabled: bool | None = None
+
+
 
 @router.post("/main/bootstrap")
 def bootstrap_main_agent(
@@ -113,4 +120,38 @@ def set_agent_tool(
         "agent_id": row.agent_id,
         "tool_name": row.tool_name,
         "enabled": row.enabled,
+    }
+
+@router.patch("/{agent_id}/config")
+def update_agent_config(
+    agent_id: str,
+    payload: AgentConfigChange,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    agent = db.get(Agent, agent_id)
+    if agent is None:
+        raise HTTPException(status_code=404, detail="Agent not found.")
+
+    provider = payload.model_provider.strip().lower()
+    if provider != "openai":
+        raise HTTPException(
+            status_code=400,
+            detail="Only the OpenAI provider is enabled for the native TOFAN AI runtime.",
+        )
+
+    agent.model_provider = provider
+    agent.model_name = payload.model_name.strip()
+    if payload.system_prompt is not None:
+        agent.system_prompt = payload.system_prompt
+    if payload.memory_enabled is not None:
+        agent.memory_enabled = payload.memory_enabled
+    db.commit()
+    db.refresh(agent)
+    return {
+        "id": agent.id,
+        "slug": agent.slug,
+        "model_provider": agent.model_provider,
+        "model_name": agent.model_name,
+        "memory_enabled": agent.memory_enabled,
     }
