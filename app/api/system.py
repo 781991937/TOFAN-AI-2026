@@ -36,7 +36,7 @@ def api_contract(request: Request):
         "storage": "s3" if os.getenv("TOFAN_STORAGE_BACKEND", "local") == "s3" else "local-development",
         "security": {"baseline_headers": True},
         "route_count": len(route_paths),
-        "required_routes_present": all(path in route_paths for path in ["/ready", "/health", "/api/contract", "/student/assessments", "/student/assessments/results/history", "/notifications"]),
+        "required_routes_present": all(path in route_paths for path in ["/ready", "/health", "/api/contract", "/student/assessments", "/student/assessments/results/history", "/notifications", "/student/access", "/student/payments/request", "/student/files", "/admin/notifications/broadcast", "/admin/agents", "/manager/payments", "/manager/assessments", "/manager/audit-log"]),
     }
 
 @router.get("/ready", tags=["system"])
