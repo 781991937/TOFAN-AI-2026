@@ -37,10 +37,10 @@ class MainAgentOrchestrator:
         # bypasses runtime authorization; it only selects the specialist/tool.
         if agent.role == AgentRole.GENERAL_MANAGER:
             specialist_terms = {
-                AgentRole.FINANCE: ("دفع", "دفعة", "رسوم", "مالي", "مالية", "تحويل", "معاملة"),
+                AgentRole.ASSESSMENT: ("اختبار", "تقييم", "درجة", "درجات", "محاولة", "امتحان"),
                 AgentRole.STUDENT_AFFAIRS: ("طالب", "طلاب", "الطلاب", "شؤون", "ملف الطالب"),
                 AgentRole.ACADEMIC: ("منهج", "مناهج", "مقرر", "تخصص", "فصل", "سنة دراسية"),
-                AgentRole.ASSESSMENT: ("اختبار", "تقييم", "درجة", "درجات", "محاولة", "امتحان"),
+                AgentRole.FINANCE: ("دفع", "دفعة", "مدفوعات", "المدفوعات", "رسوم", "مالي", "مالية", "تحويل", "معاملة"),
                 AgentRole.CONTENT: ("محتوى", "ملف", "محاضرة", "درس", "وحدة"),
                 AgentRole.CERTIFICATES: ("شهادة", "شهادات", "تحقق من الشهادة"),
                 AgentRole.NOTIFICATIONS: ("إشعار", "إشعارات", "تنبيه", "إعلان"),
