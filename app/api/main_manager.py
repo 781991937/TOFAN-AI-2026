@@ -8,6 +8,7 @@ from app.agents.models import AgentStatus
 from app.auth.authorization import require_owner_or_admin
 from app.auth.dependencies import get_db
 from app.db.models import User
+from app.db.identity_models import PaymentStatus
 
 router = APIRouter(prefix="/manager", tags=["main-manager"])
 
@@ -66,6 +67,29 @@ def confirm_payment(
         return confirm_payment_transaction(db, transaction_id)
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/payments/{transaction_id}/reject")
+def reject_payment(
+    transaction_id: str,
+    reason: str | None = None,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    from app.db.identity_models import PaymentTransaction
+    transaction = db.get(PaymentTransaction, transaction_id)
+    if transaction is None:
+        raise HTTPException(status_code=404, detail="Payment transaction not found.")
+    if transaction.status != PaymentStatus.PENDING:
+        raise HTTPException(status_code=409, detail="Only pending payment transactions can be rejected.")
+    transaction.status = PaymentStatus.REJECTED
+    transaction.rejection_reason = reason
+    db.commit()
+    return {
+        "transaction_id": transaction.id,
+        "status": transaction.status,
+        "reason": transaction.rejection_reason,
+    }
 
 
 @router.get("/teachers")
