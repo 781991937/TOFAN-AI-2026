@@ -180,10 +180,10 @@ async function broadcastNotification(){
  }catch(e){document.getElementById("noticeState").textContent=e.message}
 }
 async function savePaymentAccount(){try{const d={provider_name:payProvider.value.trim(),account_name:payAccountName.value.trim()||null,account_number:payAccountNumber.value.trim(),amount:payAmount.value?Number(payAmount.value):null,currency:payCurrency.value.trim()||null,instructions:payInstructions.value.trim()||null};await api("/student/payments/account",{method:"PUT",body:JSON.stringify(d)});payAccountState.textContent="تم الحفظ";toast("تم حفظ إعدادات الدفع")}catch(e){payAccountState.textContent=e.message}}
-async function confirmPayment(id){if(!confirm("تأكيد الدفع وتفعيل الوصول؟"))return;try{await api("/student/payments/"+id+"/confirm",{method:"POST"});toast("تم تأكيد الدفع");load()}catch(e){toast(e.message)}}
-async function rejectPayment(id){const reason=prompt("سبب الرفض (اختياري)","");try{await api("/student/payments/"+id+"/reject",{method:"POST",body:JSON.stringify({reason:reason||null})});toast("تم رفض الدفع");load()}catch(e){toast(e.message)}}
-async function provisionTeacher(){const course_id=document.getElementById("courseSelect").value;if(!course_id)return toast("اختر مقررًا");try{await api("/manager/teachers/provision",{method:"POST",body:JSON.stringify({course_id})});toast("تم إنشاء المدرس");load()}catch(e){toast(e.message)}}
-async function changeStatus(id,status){try{await api("/manager/teachers/"+id+"/status",{method:"POST",body:JSON.stringify({status})});load()}catch(e){toast(e.message)}}
+async function confirmPayment(id){if(!confirm("تأكيد الدفع وتفعيل الوصول؟"))return;try{await api("/manager/payments/"+id+"/confirm",{method:"POST"});toast("تم تأكيد الدفع");load()}catch(e){toast(e.message)}}
+async function rejectPayment(id){const reason=prompt("سبب الرفض (اختياري)","");try{await api("/manager/payments/"+id+"/reject?reason="+encodeURIComponent(reason||""),{method:"POST"});toast("تم رفض الدفع");load()}catch(e){toast(e.message)}}
+async function provisionTeacher(){const course_id=document.getElementById("courseSelect").value;if(!course_id)return toast("اختر مقررًا");try{await api("/manager/teachers/"+encodeURIComponent(course_id)+"/provision",{method:"POST"});toast("تم إنشاء المدرس");load()}catch(e){toast(e.message)}}
+async function changeStatus(id,status){try{await api("/manager/teachers/"+encodeURIComponent(id)+"/status?status="+encodeURIComponent(status),{method:"POST"});load()}catch(e){toast(e.message)}}
 async function loadStudents(){load()}
 async function viewStudent(id){toast("عرض تفاصيل الطالب: "+id)}
 
