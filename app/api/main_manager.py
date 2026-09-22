@@ -84,6 +84,20 @@ def reject_payment(
         raise HTTPException(status_code=409, detail="Only pending payment transactions can be rejected.")
     transaction.status = PaymentStatus.REJECTED
     transaction.rejection_reason = reason
+    from app.db.models import AuditLog
+    db.add(AuditLog(
+        user_id=transaction.user_id,
+        action="payment.rejected",
+        resource_type="payment_transaction",
+        resource_id=transaction.id,
+        details=reason or "Payment rejected by administrator.",
+    ))
+    MainManagerService.process_event(
+        db,
+        "payments.rejected",
+        transaction.user_id,
+        {"resource_type": "payment_transaction", "resource_id": transaction.id, "transaction_id": transaction.id, "reason": reason},
+    )
     db.commit()
     return {
         "transaction_id": transaction.id,
