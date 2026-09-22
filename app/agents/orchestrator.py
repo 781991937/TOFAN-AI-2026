@@ -80,7 +80,7 @@ class MainAgentOrchestrator:
 
     def _live_model(self, db: Session, agent: Agent, user_text: str, actor_user_id: str | None,
                     history: list[AgentMessage] | None = None, memory_context: str | None = None) -> dict:
-        provider = self.provider or build_configured_provider()
+        provider = self.provider or build_configured_provider(model=agent.model_name, provider=agent.model_provider)
         if not self.registry:
             raise AgentProviderError("Tool registry is not configured.")
         enabled = self._enabled_tool_names(db, agent)
