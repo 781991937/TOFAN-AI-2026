@@ -68,6 +68,11 @@ input,select,textarea{background:#181818;color:#fff;border:1px solid #363636;bor
 </div><div class="toolbar" style="margin-top:10px"><button onclick="savePaymentAccount()">حفظ إعدادات الدفع</button><span id="payAccountState" class="status"></span></div></div></section>
 <section><div class="section-title">المدفوعات</div><div id="payments" class="table-wrap"></div></section>
 <section><div class="section-title">آخر أحداث التدقيق</div><div id="audit" class="table-wrap"></div></section>
+<section><div class="section-title">إدارة الإشعارات</div><div class="panel"><div class="form-grid">
+<div class="field"><label>العنوان</label><input id="noticeTitle" maxlength="255"></div>
+<div class="field"><label>نوع الحدث</label><input id="noticeEvent" value="admin.broadcast" maxlength="100"></div>
+<div class="field" style="grid-column:1/-1"><label>الرسالة</label><textarea id="noticeMessage" maxlength="5000"></textarea></div>
+</div><div class="toolbar" style="margin-top:10px"><button onclick="broadcastNotification()">إرسال لجميع المستخدمين</button><span id="noticeState" class="status"></span></div></div></section>
 </main>
 
 <div id="editor" class="modal" onclick="if(event.target===this)closeEditor()"><div class="modal-card"><div class="modal-head"><div><h2 id="editorTitle">إضافة</h2><div class="sub">نموذج إدارة أكاديمي</div></div><button class="modal-close" onclick="closeEditor()">إغلاق</button></div><form id="editorForm" onsubmit="saveEditor(event)"><div id="editorFields" class="form-grid" style="margin-top:15px"></div><div class="toolbar" style="margin-top:15px"><button type="submit">حفظ</button><button type="button" class="ghost" onclick="closeEditor()">إلغاء</button><span id="editorState" class="status"></span></div></form></div></div>
@@ -163,6 +168,17 @@ let dragData=null;function dragStart(e){const n=e.currentTarget;dragData={id:n.d
 async function uploadLessonFile(){const id=document.getElementById("fileLesson").value,f=document.getElementById("lessonFile").files[0];if(!id||!f)return toast("اختر المحاضرة والملف أولاً");const fd=new FormData();fd.append("file",f);try{await api("/admin/content/lectures/"+id+"/files",{method:"POST",body:fd});toast("تم رفع الملف");await loadLessonFiles()}catch(e){toast(e.message)}}
 async function loadLessonFiles(){const id=document.getElementById("fileLesson").value;if(!id)return;try{const d=await api("/admin/content?lecture_id="+encodeURIComponent(id));document.getElementById("lessonFiles").innerHTML=d.files.map(x=>'<div class="notice"><b>'+esc(x.original_name)+'</b> · '+esc(x.status)+' · '+esc(x.text_characters)+' حرف · '+esc(x.size_bytes)+' bytes</div>').join("")||'<div class="notice">لا توجد ملفات.</div>'}catch(e){toast(e.message)}}
 
+async function broadcastNotification(){
+ const title=document.getElementById("noticeTitle").value.trim();
+ const message=document.getElementById("noticeMessage").value.trim();
+ const event_type=document.getElementById("noticeEvent").value.trim()||"admin.broadcast";
+ if(!title||!message)return toast("أدخل عنوان الإشعار والرسالة");
+ try{
+  const d=await api("/admin/notifications/broadcast",{method:"POST",body:JSON.stringify({title,message,event_type})});
+  document.getElementById("noticeState").textContent="تم إرسال "+d.created+" إشعار";
+  document.getElementById("noticeMessage").value="";
+ }catch(e){document.getElementById("noticeState").textContent=e.message}
+}
 async function savePaymentAccount(){try{const d={provider_name:payProvider.value.trim(),account_name:payAccountName.value.trim()||null,account_number:payAccountNumber.value.trim(),amount:payAmount.value?Number(payAmount.value):null,currency:payCurrency.value.trim()||null,instructions:payInstructions.value.trim()||null};await api("/student/payments/account",{method:"PUT",body:JSON.stringify(d)});payAccountState.textContent="تم الحفظ";toast("تم حفظ إعدادات الدفع")}catch(e){payAccountState.textContent=e.message}}
 async function confirmPayment(id){if(!confirm("تأكيد الدفع وتفعيل الوصول؟"))return;try{await api("/student/payments/"+id+"/confirm",{method:"POST"});toast("تم تأكيد الدفع");load()}catch(e){toast(e.message)}}
 async function rejectPayment(id){const reason=prompt("سبب الرفض (اختياري)","");try{await api("/student/payments/"+id+"/reject",{method:"POST",body:JSON.stringify({reason:reason||null})});toast("تم رفض الدفع");load()}catch(e){toast(e.message)}}
