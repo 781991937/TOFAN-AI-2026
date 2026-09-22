@@ -242,7 +242,7 @@ function speakText(text){
   window.speechSynthesis.speak(u);
 }
 function stopSpeaking(){if("speechSynthesis" in window)window.speechSynthesis.cancel()}
-function createVoiceControls(input){
+function createVoiceControls(input,onVoiceText=null){
   const wrap=document.createElement("div");wrap.className="voice-controls";
   const mic=document.createElement("button");mic.type="button";mic.className="voice-btn";mic.textContent="🎙️";
   mic.title=lang==="ar"?"تحدث":"Speak";
@@ -260,7 +260,7 @@ function createVoiceControls(input){
       speechRecognition.onstart=()=>{speechListening=true;mic.textContent="⏺";mic.classList.add("recording")};
       speechRecognition.onerror=e=>{speechListening=false;mic.textContent="🎙️";mic.classList.remove("recording");if(e.error!=="aborted")toast(lang==="ar"?"تعذر التقاط الصوت: "+e.error:"Voice input failed: "+e.error)};
       speechRecognition.onend=()=>{speechListening=false;mic.textContent="🎙️";mic.classList.remove("recording")};
-      speechRecognition.onresult=e=>{const text=Array.from(e.results).map(r=>r[0]?.transcript||"").join(" ").trim();if(text){input.value=text;input.focus()}};
+      speechRecognition.onresult=e=>{const text=Array.from(e.results).map(r=>r[0]?.transcript||"").join(" ").trim();if(text){input.value=text;input.focus();if(typeof onVoiceText==="function")onVoiceText(text)}};
       speechRecognition.start();
     };
   }
@@ -271,11 +271,16 @@ function createVoiceControls(input){
 
 async function openTeacherChat(slug,stepId,lesson,c){
   const panel=$("#lessonBody");
-  panel.innerHTML="<div class='teacher-chat'><h3>"+t("teacher")+"</h3><div id='teacherMessages' class='chat-messages'></div><form id='teacherChatForm'><div class='voice-input-row'><input id='teacherInput' autocomplete='off' placeholder='"+(lang==="ar"?"اكتب إجابتك أو تحدث…":"Write or speak…")+"'><button class='primary voice-send' type='submit'>"+(lang==="ar"?"إرسال":"Send")+"</button></div><div id='teacherVoiceControls'></div></form><div class='teacher-actions'><button class='ghost' id='verifyBtn'>"+(lang==="ar"?"تحقق من الفهم":"Verify understanding")+"</button><button class='ghost' id='confirmBtn'>"+(lang==="ar"?"تأكيد فهم الدرس":"Confirm lesson understanding")+"</button></div></div>";
+  panel.innerHTML="<div class='teacher-chat'><h3>"+t("teacher")+"</h3><div id='teacherMessages' class='chat-messages'></div><form id='teacherChatForm'><div class='voice-input-row'><input id='teacherInput' autocomplete='off' placeholder='${lang==="ar"?"اكتب إجابتك أو تحدث…":"Write or speak…"}'><button class='primary voice-send' type='submit'>${lang==="ar"?"إرسال":"Send"}</button></div><div id='teacherVoiceControls'></div><div class='voice-mode-row'><button type='button' class='ghost voice-mode' id='voiceModeBtn'>${lang==="ar"?"🎧 الوضع الصوتي: متوقف":"🎧 Voice mode: Off"}</button><span id='voiceState' class='voice-state'>${lang==="ar"?"يمكنك التحدث ثم الإرسال":"Speak, then send"}</span></div></form><div class='teacher-actions'><button class='ghost' id='verifyBtn'>"+(lang==="ar"?"تحقق من الفهم":"Verify understanding")+"</button><button class='ghost' id='confirmBtn'>"+(lang==="ar"?"تأكيد فهم الدرس":"Confirm lesson understanding")+"</button></div></div>";
   const messages=$("#teacherMessages");
   const appendTeacherMessage=(role,content)=>{const node=document.createElement("div");node.className="chat-msg "+role;node.textContent=String(content??"");messages.appendChild(node);messages.scrollTop=messages.scrollHeight};
   const send=async(msg)=>{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({message:msg,source:"global_curriculum"})});const text=d.content||d.output||"";appendTeacherMessage("assistant",text);speakText(text);return d};
-  const teacherInput=$("#teacherInput");$("#teacherVoiceControls").appendChild(createVoiceControls(teacherInput));
+  const teacherInput=$("#teacherInput");let voiceMode=false;let voiceSending=false;
+  const voiceState=$("#voiceState"),voiceModeBtn=$("#voiceModeBtn");
+  const updateVoiceMode=()=>{voiceModeBtn.textContent=lang==="ar"?"🎧 الوضع الصوتي: "+(voiceMode?"مفعل":"متوقف"):"🎧 Voice mode: "+(voiceMode?"On":"Off");voiceState.textContent=voiceMode?(lang==="ar"?"تحدث الآن — سيتم إرسال كلامك تلقائيًا":"Speak now — your transcript will send automatically"):(lang==="ar"?"يمكنك التحدث ثم الإرسال":"Speak, then send")};
+  voiceModeBtn.onclick=()=>{voiceMode=!voiceMode;updateVoiceMode();if(voiceMode&&window.speechSynthesis)stopSpeaking()};
+  const submitVoiceText=async text=>{if(!voiceMode||voiceSending)return;const msg=String(text||"").trim();if(!msg)return;voiceSending=true;appendTeacherMessage("user",msg);teacherInput.value="";voiceState.textContent=lang==="ar"?"جارٍ إرسال رسالتك…":"Sending your message…";try{await send(msg)}catch(err){toast(err.message)}finally{voiceSending=false;updateVoiceMode()}};
+  $("#teacherVoiceControls").appendChild(createVoiceControls(teacherInput,submitVoiceText));
   $("#teacherChatForm").onsubmit=async e=>{e.preventDefault();const input=$("#teacherInput");const msg=input.value.trim();if(!msg)return;appendTeacherMessage("user",msg);input.value="";try{await send(msg)}catch(err){toast(err.message)}};
   $("#verifyBtn").onclick=async()=>{try{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps/"+encodeURIComponent(stepId)+"/understanding",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({verified:true})});toast(d.status==="completed"?t("teacherReady"):(lang==="ar"?"تم تسجيل تحقق الفهم":"Understanding check recorded"))}catch(e){toast(e.message)}};
   $("#confirmBtn").onclick=async()=>{try{const d=await api("/agent/teacher/"+encodeURIComponent(slug)+"/teaching-steps/"+encodeURIComponent(stepId)+"/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({confirmed:true})});toast(d.completed?(lang==="ar"?"تم إكمال الدرس":"Lesson completed"):(lang==="ar"?"تم تسجيل التأكيد":"Confirmation recorded"));if(d.completed){openCourse(c.id)}}catch(e){toast(e.message)}};
