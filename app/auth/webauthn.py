@@ -42,9 +42,17 @@ def _validate_sign_count(previous: int, current: int) -> int:
 
 
 def _settings() -> tuple[str, str]:
-    rp_id = os.getenv("WEBAUTHN_RP_ID", "localhost")
-    origin = os.getenv("WEBAUTHN_ORIGIN", "http://localhost")
-    return rp_id, origin
+    configured_rp_id = os.getenv("WEBAUTHN_RP_ID", "").strip()
+    configured_origin = os.getenv("WEBAUTHN_ORIGIN", "").strip()
+    if configured_rp_id and configured_origin:
+        return configured_rp_id, configured_origin
+
+    render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+    render_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
+    if render_hostname and render_url:
+        return render_hostname, render_url
+
+    return "localhost", "http://localhost"
 
 
 def _server() -> Fido2Server:
