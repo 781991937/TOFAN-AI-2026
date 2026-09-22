@@ -35,6 +35,20 @@ def _teacher(db: Session, slug: str) -> Agent:
     return agent
 
 
+@router.get("/teachers")
+def list_student_file_teachers(
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    teachers = db.scalars(
+        select(Agent).where(
+            Agent.kind == AgentKind.TEACHER,
+            Agent.status == AgentStatus.ACTIVE,
+        ).order_by(Agent.name)
+    ).all()
+    return {"teachers": [{"slug": t.slug, "name": t.name, "course_id": t.curriculum_course_id} for t in teachers]}
+
+
 @router.post("/upload", status_code=201)
 async def upload_student_file(
     teacher_slug: str,
