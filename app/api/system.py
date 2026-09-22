@@ -1,5 +1,5 @@
 """System readiness and API contract endpoints."""
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from app.db.session import DATABASE_URL
 
 router = APIRouter(tags=["system"])
@@ -7,7 +7,8 @@ router = APIRouter(tags=["system"])
 API_CONTRACT_VERSION = "2026-09-22.v1"
 
 @router.get("/api/contract", tags=["system"])
-def api_contract():
+def api_contract(request: Request):
+    route_paths = {route.path for route in request.app.routes if hasattr(route, "path")}
     return {
         "contract_version": API_CONTRACT_VERSION,
         "base": "/",
@@ -31,6 +32,10 @@ def api_contract():
         },
         "data_path": "UI -> API -> database/services -> authorization -> persisted result",
         "database": "postgresql" if DATABASE_URL.startswith("postgresql") else "sqlite-development",
+        "storage": "s3" if __import__("os").getenv("TOFAN_STORAGE_BACKEND", "local") == "s3" else "local-development",
+        "security": {"baseline_headers": True},
+        "route_count": len(route_paths),
+        "required_routes_present": all(path in route_paths for path in ["/ready", "/health", "/api/contract", "/student/assessments", "/student/assessments/results/history", "/notifications"]),
     }
 
 @router.get("/ready", tags=["system"])
