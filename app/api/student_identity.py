@@ -127,7 +127,6 @@ def get_profile(
     }
 
 
-@router.get("/access")
 @router.get("/academy/catalog")
 def get_academy_catalog(
     db: Session = Depends(get_db),
