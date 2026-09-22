@@ -42,7 +42,10 @@ class AIProvider(Protocol):
 class OpenAIResponsesProvider:
     provider_name = "openai"
 
-    def __init__(self, *, api_key: str | None = None, model: str | None = None) -> None:
+    def __init__(self, *, api_key: str | None = None, model: str | None = None, provider: str = "openai") -> None:
+        selected_provider = (provider or "openai").strip().lower()
+        if selected_provider != "openai":
+            raise AgentProviderError(f"Unsupported AI provider: {selected_provider}")
         self._api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self._api_key:
             raise AgentProviderError("OPENAI_API_KEY is not configured.")
