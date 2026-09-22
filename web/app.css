@@ -20,3 +20,5 @@
   .dashboard-head{margin-bottom:18px}
   .lesson-row,.course-button{padding:14px 12px}
 }
+
+.onboarding-panel{margin:18px 0}.onboarding-panel .section-head{align-items:center}.onboarding-panel form{display:grid;gap:10px;max-width:760px}.onboarding-panel select,.onboarding-panel input{width:100%;min-height:44px;padding:10px 12px;border:1px solid #2a2d34;border-radius:12px;background:#0b0d10;color:inherit}.onboarding-panel label{font-weight:700}.onboarding-panel .success{border:1px solid #2f7d5a;padding:14px;border-radius:12px}.onboarding-panel button{margin-top:8px}@media(max-width:600px){.onboarding-panel{margin:12px 0}.onboarding-panel form{gap:8px}}
