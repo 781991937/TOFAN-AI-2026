@@ -45,6 +45,29 @@ def _can_access(db: Session, user_id: str, course: CurriculumCourse) -> bool:
     return has_curriculum_stage_access(db, user_id=user_id, stage_id=course.stage_id)
 
 
+def _analysis(details: dict[str, dict], questions: list[CurriculumAssessmentQuestion]) -> dict:
+    correct = [p for p, d in details.items() if d.get("correct")]
+    wrong = [p for p, d in details.items() if not d.get("correct")]
+    strengths = [{"topic": f"السؤال {p}", "reason": "إجابة صحيحة."} for p in correct]
+    weak_points = [
+        {
+            "topic": f"السؤال {p}",
+            "reason": d.get("explanation") or f"الإجابة الصحيحة: {d.get('correct_answer', '')}",
+        }
+        for p, d in ((p, details[p]) for p in wrong)
+    ]
+    return {
+        "correct_count": len(correct),
+        "incorrect_count": len(wrong),
+        "strengths": strengths[:10],
+        "weak_points": weak_points[:10],
+        "next_step": (
+            {"reason": "راجع نقاط الضعف ثم أعد الاختبار."}
+            if weak_points else {"reason": "انتقل إلى المقرر التالي أو طبّق ما تعلمته."}
+        ),
+    }
+
+
 def _serialize_question(q):
     return {
         "id": q.id,
@@ -212,6 +235,8 @@ def submit_assessment(
     record_assessment_progress(
         db, user_id=actor.id, course_id=course.id, percentage=percentage, passed=passed
     )
+    analysis = _analysis(details, questions)
+    db.commit()
     MainManagerService.process_event(
         db, "education.curriculum_assessment_result", actor.id,
         {"resource_type": "curriculum_assessment_attempt", "resource_id": attempt.id,
@@ -223,7 +248,7 @@ def submit_assessment(
         "attempt_id": attempt.id, "assessment_id": assessment.id,
         "score": score, "max_score": max_score, "percentage": round(percentage, 2),
         "passed": passed, "details": details,
-        "analysis": get_course_progress(db, actor.id, course.id),
+        "analysis": {**analysis, "course_progress": get_course_progress(db, actor.id, course.id)},
     }
 
 
@@ -234,12 +259,21 @@ def assessment_history(db: Session = Depends(get_db), actor: User = Depends(get_
         .where(CurriculumAssessmentAttempt.user_id == actor.id)
         .order_by(desc(CurriculumAssessmentAttempt.started_at))
     ).all()
-    return {"results": [
-        {
+    results = []
+    for r in rows:
+        questions = db.scalars(
+            select(CurriculumAssessmentQuestion)
+            .where(CurriculumAssessmentQuestion.assessment_id == r.assessment_id)
+            .order_by(CurriculumAssessmentQuestion.position)
+        ).all()
+        answers = json.loads(r.answers_json or "{}")
+        _, _, details = grade_answers(questions, answers)
+        results.append({
             "attempt_id": r.id, "assessment_id": r.assessment_id, "score": r.score,
             "max_score": r.max_score, "percentage": r.percentage, "passed": r.passed,
             "status": r.status, "started_at": r.started_at.isoformat(),
             "submitted_at": r.submitted_at.isoformat() if r.submitted_at else None,
             "graded_at": r.graded_at.isoformat() if r.graded_at else None,
-        } for r in rows
-    ]}
+            "analysis": _analysis(details, questions),
+        })
+    return {"results": results}
