@@ -4,7 +4,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
-from app.auth.authentication import AuthenticationError, login_email, register_email
+from app.auth.authentication import AuthenticationError, ensure_owner_identity, login_email, register_email
+from app.auth.biometric import BiometricAuthError
+from app.auth.webauthn import begin_authentication, finish_authentication
+from app.db.identity_models import StudentProfile, ProfileStatus
+from app.db.models import User
+from sqlalchemy import select
 from app.auth.dependencies import get_current_session, get_db
 from app.auth.sessions import create_session, revoke_session
 
@@ -53,6 +58,48 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     except AuthenticationError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
 
+
+class PasskeyLoginOptionsRequest(BaseModel):
+    email: EmailStr
+
+class PasskeyLoginCompleteRequest(BaseModel):
+    email: EmailStr
+    challenge_id: str
+    response: dict
+
+@router.post("/passkey/options")
+def passkey_login_options(payload: PasskeyLoginOptionsRequest, db: Session = Depends(get_db)):
+    email = str(payload.email).strip().lower()
+    user = db.scalar(select(User).where(User.email == email, User.is_active.is_(True)))
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid account or passkey.")
+    try:
+        result = begin_authentication(db, user)
+        db.commit()
+        return result
+    except BiometricAuthError as exc:
+        db.rollback()
+        raise HTTPException(status_code=401, detail="No usable passkey is registered for this account.") from exc
+
+@router.post("/passkey/complete", response_model=SessionResponse)
+def passkey_login_complete(payload: PasskeyLoginCompleteRequest, db: Session = Depends(get_db)):
+    email = str(payload.email).strip().lower()
+    user = db.scalar(select(User).where(User.email == email, User.is_active.is_(True)))
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid account or passkey.")
+    try:
+        finish_authentication(db, user, payload.challenge_id, payload.response)
+        ensure_owner_identity(db, user)
+        profile = db.scalar(select(StudentProfile).where(StudentProfile.user_id == user.id))
+        if profile is not None:
+            profile.biometric_verified = True
+            profile.profile_status = ProfileStatus.VERIFIED
+        token = create_session(db, user.id, None)
+        db.commit()
+        return SessionResponse(access_token=token)
+    except BiometricAuthError as exc:
+        db.rollback()
+        raise HTTPException(status_code=401, detail="Passkey verification failed.") from exc
 
 @router.post("/logout")
 def logout(current=Depends(get_current_session), db: Session = Depends(get_db)):
