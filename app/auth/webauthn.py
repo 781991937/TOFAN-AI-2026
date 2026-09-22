@@ -31,6 +31,16 @@ from app.db.models import BiometricCredentialRecord, PasskeyChallenge, User
 CHALLENGE_TTL_SECONDS = 300
 
 
+def _validate_sign_count(previous: int, current: int) -> int:
+    if previous < 0 or current < 0:
+        raise BiometricAuthError("Invalid passkey signature counter.")
+    if previous == 0:
+        return current
+    if current <= previous:
+        raise BiometricAuthError("Passkey signature counter did not advance; possible credential clone.")
+    return current
+
+
 def _settings() -> tuple[str, str]:
     rp_id = os.getenv("WEBAUTHN_RP_ID", "localhost")
     origin = os.getenv("WEBAUTHN_ORIGIN", "http://localhost")
@@ -225,9 +235,7 @@ def finish_authentication(
     from fido2.webauthn import AuthenticationResponse
     parsed = AuthenticationResponse.from_dict(response)
     new_sign_count = parsed.response.authenticator_data.sign_count
-    if new_sign_count and new_sign_count <= record.sign_count:
-        raise BiometricAuthError("Passkey signature counter did not advance; possible credential clone.")
-    record.sign_count = max(record.sign_count, new_sign_count)
+    record.sign_count = _validate_sign_count(record.sign_count, new_sign_count)
     record.last_used_at = datetime.utcnow()
     challenge.consumed_at = datetime.utcnow()
     db.flush()
