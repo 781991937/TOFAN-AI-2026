@@ -3,10 +3,9 @@
 from datetime import datetime
 import os
 from pathlib import Path
-from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -31,6 +30,7 @@ from app.db.identity_models import (
     UserType,
 )
 from app.db.models import AcademicUnit, AcademicPeriod, BiometricCredentialRecord, Institution, User, Entitlement, TeachingAccess, Course, Unit, Lecture, ContentFile, ContentStatus, TeachingSource
+from app.storage import get_storage
 
 router = APIRouter(prefix="/student", tags=["student-identity"])
 
@@ -514,13 +514,11 @@ async def upload_payment_proof(
         raise HTTPException(status_code=400, detail="The proof file is empty.")
     if len(data) > max_bytes:
         raise HTTPException(status_code=413, detail="The payment proof exceeds the allowed size.")
-    root = Path(os.getenv("TOFAN_UPLOAD_DIR", "data/uploads")) / actor.id / "payment-proofs"
-    root.mkdir(parents=True, exist_ok=True)
-    path = root / f"{uuid4().hex}{suffix}"
-    path.write_bytes(data)
+    storage = get_storage()
+    stored = storage.put_bytes(data, suffix=suffix, prefix=f"{actor.id}/payment-proofs")
     proof = ContentFile(
         original_name=filename,
-        storage_key=str(path),
+        storage_key=stored.key,
         mime_type=file.content_type,
         status=ContentStatus.PRIVATE,
         size_bytes=len(data),
@@ -546,9 +544,15 @@ def get_payment_proof(
     if not transaction.proof_file_id:
         raise HTTPException(status_code=404, detail="Payment proof not uploaded.")
     proof = db.get(ContentFile, transaction.proof_file_id)
-    if proof is None or not Path(proof.storage_key).is_file():
+    if proof is None:
         raise HTTPException(status_code=404, detail="Payment proof file not found.")
-    return FileResponse(proof.storage_key, media_type=proof.mime_type, filename=proof.original_name)
+    try:
+        data = get_storage().read_bytes(proof.storage_key)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Payment proof file not found.")
+    return Response(content=data, media_type=proof.mime_type, headers={
+        "Content-Disposition": f'attachment; filename="{proof.original_name}"'
+    })
 
 @router.post("/payments/{transaction_id}/confirm")
 def confirm_payment(
