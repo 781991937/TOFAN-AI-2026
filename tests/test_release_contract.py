@@ -12,6 +12,8 @@ def test_api_contract_and_readiness():
     assert body["contract_version"]
     assert body["student"]["assessments"] == "/student/assessments"
     assert body["admin"]["agents"] == "/admin/agents"
+    assert body["required_routes_present"] is True
+    assert body["security"]["baseline_headers"] is True
     ready = client.get("/ready")
     assert ready.status_code == 200
     assert ready.json()["status"] == "ready"
