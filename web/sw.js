@@ -1,5 +1,5 @@
-const CACHE="tofan-academy-v2";
-const SHELL=["/web/","/web/index.html","/web/app.css","/web/app.js","/web/manifest.webmanifest"];
+const CACHE="tofan-academy-v3";
+const SHELL=["/web/","/web/index.html","/web/app.css","/web/app.js","/web/manifest.webmanifest","/web/icons/icon-192.svg","/web/icons/icon-512.svg"];
 
 self.addEventListener("install",event=>{
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)));
