@@ -70,7 +70,28 @@ async function loadOnboardingState(){
   return d;
 }
 
-async function loadDashboard(){try{const [on,sp,roles]=await Promise.all([api("/student/onboarding"),api("/curriculum/specialties"),api("/users/me/roles")]);isOwner=roles.some(x=>["owner","admin"].includes(x.role));$("#ownerNavBtn").classList.toggle("hidden",!isOwner);$("#ownerNavBtn").textContent=t("owner");$("#authView").classList.add("hidden");$("#dashboardView").classList.remove("hidden");$("#logoutBtn").classList.remove("hidden");$("#onboardingText").textContent=on.next_action||"";await loadOnboardingState();$("#statSpecialties").textContent=sp.length;$("#statAccess").textContent=on.global_curriculum?.entitled?"ACTIVE":(on.step||"PENDING").toUpperCase();$("#statLearning").textContent="TOFAN CORE";renderSpecialties(sp)}catch(err){token=null;localStorage.removeItem("tofan_token");$("#authView").classList.remove("hidden");toast(err.message)}}
+async function loadDashboard(){try{
+  const [roles,sp]=await Promise.all([api("/users/me/roles"),api("/curriculum/specialties")]);
+  isOwner=roles.some(x=>["owner","admin"].includes(x.role));
+  $("#ownerNavBtn").classList.toggle("hidden",!isOwner);
+  $("#ownerNavBtn").textContent=t("owner");
+  $("#authView").classList.add("hidden");$("#dashboardView").classList.remove("hidden");$("#logoutBtn").classList.remove("hidden");
+  let on=null;
+  if(isOwner){
+    $("#onboardingPanel").classList.add("hidden");
+    $("#onboardingText").textContent=lang==="ar"?"تم التعرف على حساب المدير العام.":"General Manager account recognized.";
+    $("#statAccess").textContent="OWNER";
+    $("#statLearning").textContent="TOFAN CORE";
+  }else{
+    on=await api("/student/onboarding");
+    $("#onboardingText").textContent=on.next_action||"";
+    await loadOnboardingState();
+    $("#statAccess").textContent=on.global_curriculum?.entitled?"ACTIVE":(on.step||"PENDING").toUpperCase();
+    $("#statLearning").textContent="TOFAN CORE";
+  }
+  $("#statSpecialties").textContent=sp.length;
+  renderSpecialties(sp);
+}catch(err){token=null;localStorage.removeItem("tofan_token");$("#authView").classList.remove("hidden");toast(err.message)}}
 async function renderSpecialties(items){
   const box=$("#specialties");box.innerHTML="";
   for(const s of items){
