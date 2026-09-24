@@ -35,3 +35,22 @@
 .manager-link{display:inline-flex;align-items:center;justify-content:center;margin:0 0 16px;padding:11px 14px;border:1px solid #4c4025;border-radius:11px;background:#15130f;color:var(--text);text-decoration:none;font-weight:800}.manager-link:hover{border-color:var(--gold)}
 .mobile-bottom-nav{display:none}
 @media(max-width:600px){.academy-nav{position:static;display:none}.mobile-bottom-nav{position:fixed;display:grid;grid-template-columns:repeat(5,1fr);left:8px;right:8px;bottom:calc(8px + var(--safe-bottom));z-index:40;padding:5px;border:1px solid var(--line);border-radius:17px;box-shadow:0 16px 40px #000b;backdrop-filter:blur(16px);background:#0a0c0fee}.mobile-bottom-nav .nav-btn{display:grid;place-items:center;gap:2px;padding:7px 3px;min-height:48px;font-size:18px}.mobile-bottom-nav .nav-btn span{font-size:10px;color:var(--muted)}.mobile-bottom-nav .nav-btn.active{background:#1a1d23}.mobile-bottom-nav .nav-btn.active span{color:var(--text)}}
+
+/* TOFAN AI academic visual layer — preserves the existing black/charcoal/gold palette */
+body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.16;background-image:linear-gradient(#c8a85b11 1px,transparent 1px),linear-gradient(90deg,#c8a85b11 1px,transparent 1px);background-size:46px 46px;mask-image:linear-gradient(to bottom,#000,transparent 72%);z-index:-1}
+.dashboard-head{position:relative;padding:24px 26px;border:1px solid #3b3322;border-radius:22px;background:radial-gradient(circle at 8% 0%,#2a2417 0,transparent 42%),linear-gradient(145deg,#12151a,#0c0f13);overflow:hidden}
+.dashboard-head:after{content:"TOFAN AI";position:absolute;inset-inline-end:24px;bottom:10px;color:#c8a85b12;font-size:64px;font-weight:900;letter-spacing:.12em;pointer-events:none}
+.stats .stat{position:relative;overflow:hidden}
+.stats .stat:before{content:"";position:absolute;inset-inline-start:0;top:0;width:3px;height:100%;background:var(--gold);opacity:.8}
+.academy-nav{box-shadow:0 12px 35px #0006}
+.nav-btn.active{box-shadow:inset 0 0 0 1px #4c4025,0 0 18px #c8a85b12}
+.specialty{background:radial-gradient(circle at 100% 0%,#282117 0,transparent 45%),linear-gradient(145deg,#12151a,#0d1014);min-height:190px}
+.specialty:after{content:"AI";position:absolute;inset-inline-end:-10px;top:-18px;font-size:92px;font-weight:900;color:#c8a85b08;pointer-events:none}
+.specialty .icon{width:48px;height:48px;display:grid;place-items:center;border:1px solid #4c4025;border-radius:14px;color:var(--gold);background:#15130f;box-shadow:0 0 24px #c8a85b10}
+.course-panel,.lesson-panel,.curriculum{box-shadow:0 22px 65px #0008}
+.course-button{position:relative}
+.course-button:after{content:"→";color:var(--gold);opacity:.55;transition:.2s}
+.course-button:hover:after{transform:translateX(-4px);opacity:1}
+.teacher-chat{position:relative;border:1px solid #4c4025;border-radius:18px;background:radial-gradient(circle at 0 0,#282117 0,transparent 40%),#0b0d10;padding:18px}
+.teacher-chat:before{content:"TOFAN AI";display:block;color:var(--gold);font-size:11px;font-weight:900;letter-spacing:.16em;margin-bottom:12px}
+@media(max-width:600px){.dashboard-head{padding:20px}.dashboard-head:after{font-size:42px;inset-inline-end:12px}.specialty{min-height:170px}}
