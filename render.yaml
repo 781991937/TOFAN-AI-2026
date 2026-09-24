@@ -25,6 +25,10 @@ services:
         sync: false
       - key: AUTH_OTP_PEPPER
         sync: false
+      - key: WEBAUTHN_RP_ID
+        sync: false
+      - key: WEBAUTHN_ORIGIN
+        sync: false
       - key: TOFAN_S3_BUCKET
         sync: false
       - key: AWS_ACCESS_KEY_ID

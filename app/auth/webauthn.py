@@ -47,10 +47,10 @@ def _settings() -> tuple[str, str]:
     if configured_rp_id and configured_origin:
         return configured_rp_id, configured_origin
 
-    render_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
-    render_url = os.getenv("RENDER_EXTERNAL_URL", "").strip()
-    if render_hostname and render_url:
-        return render_hostname, render_url
+    if os.getenv("TOFAN_ENV", "development").strip().lower() == "production":
+        raise RuntimeError(
+            "WEBAUTHN_RP_ID and WEBAUTHN_ORIGIN are required in production."
+        )
 
     return "localhost", "http://localhost"
 
