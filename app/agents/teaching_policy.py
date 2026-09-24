@@ -63,8 +63,10 @@ def register_student_file(db: Session, *, user_id: str, agent_id: str, content_f
     return usage
 
 
-def remaining_response_chars(db: Session, *, user_id: str, agent_id: str, source: TeachingSource) -> int:
+def remaining_response_chars(db: Session, *, user_id: str, agent_id: str, source: TeachingSource) -> int | None:
     usage = get_or_create_usage(db, user_id, agent_id, source)
+    if source == TeachingSource.GLOBAL_CURRICULUM and usage.paid_access:
+        return None
     return max(0, usage.response_chars_limit - usage.response_chars_used)
 
 
