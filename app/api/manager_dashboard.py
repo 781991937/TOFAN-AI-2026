@@ -173,10 +173,23 @@ async function loadAgents(){
  try{
   const agents=await api("/admin/agents");
   document.getElementById("agents").innerHTML=table(["الوكيل","النوع","الحالة","المزوّد","النموذج","الذاكرة","إجراء"],agents.map(x=>[
-   esc(x.name),esc(x.kind),esc(x.status),esc(x.model_provider||"-"),esc(x.model_name||"-"),x.memory_enabled?"نعم":"لا",
-   '<button class="ghost" onclick="changeAgentStatus(&quot;'+esc(x.id)+'&quot;,&quot;'+(x.status==="active"?"paused":"active")+'&quot;)">'+(x.status==="active"?"إيقاف":"تفعيل")+'</button>'
+   esc(x.name),esc(x.kind),esc(x.status),
+   '<select id="provider-'+esc(x.id)+'"><option value="openai" '+(x.model_provider==="openai"?"selected":"")+'>OpenAI</option><option value="gemini" '+(x.model_provider==="gemini"?"selected":"")+'>Gemini</option></select>',
+   '<input id="model-'+esc(x.id)+'" value="'+esc(x.model_name||"")+'" placeholder="اسم النموذج">',
+   x.memory_enabled?"نعم":"لا",
+   '<button class="ghost" onclick="saveAgentConfig(&quot;'+esc(x.id)+'&quot;)">حفظ AI</button> <button class="ghost" onclick="changeAgentStatus(&quot;'+esc(x.id)+'&quot;,&quot;'+(x.status==="active"?"paused":"active")+'&quot;)">'+(x.status==="active"?"إيقاف":"تفعيل")+'</button>'
   ]));
  }catch(e){document.getElementById("agents").innerHTML='<div class="notice">'+esc(e.message)+'</div>'}
+}
+async function saveAgentConfig(id){
+ const provider=document.getElementById("provider-"+id)?.value;
+ const model=document.getElementById("model-"+id)?.value.trim();
+ if(!provider||!model)return toast("اختر المزوّد واكتب اسم النموذج");
+ try{
+  await api("/admin/agents/"+encodeURIComponent(id)+"/config",{method:"PATCH",body:JSON.stringify({model_provider:provider,model_name:model})});
+  toast("تم حفظ مزود ونموذج الوكيل");
+  await loadAgents();
+ }catch(e){toast(e.message)}
 }
 async function changeAgentStatus(id,status){
  try{await api("/admin/agents/"+encodeURIComponent(id)+"/status",{method:"PATCH",body:JSON.stringify({status})});toast("تم تحديث حالة الوكيل");await loadAgents()}catch(e){toast(e.message)}
