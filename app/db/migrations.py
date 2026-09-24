@@ -105,8 +105,6 @@ def migrate_teaching_limits(engine: Engine) -> list[str]:
         "teaching_usage": (
             ("files_used", "INTEGER DEFAULT 0"),
             ("files_limit", "INTEGER DEFAULT 3"),
-            ("free_steps_used", "INTEGER DEFAULT 0"),
-            ("free_steps_limit", "INTEGER DEFAULT 5"),
             ("response_chars_used", "INTEGER DEFAULT 0"),
             ("response_chars_limit", "INTEGER DEFAULT 2000"),
             ("quota_started_at", "DATETIME"),
