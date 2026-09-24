@@ -121,7 +121,7 @@ async def upload_student_file(
         raise HTTPException(status_code=429, detail=str(exc)) from exc
     except Exception:
         db.rollback()
-        storage_path.unlink(missing_ok=True)
+        storage.delete(stored.key)
         raise
 
     return {
