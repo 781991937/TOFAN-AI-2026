@@ -7,7 +7,7 @@ I18N.ar.owner="المدير العام";I18N.en.owner="General Manager";function
 function applyLang(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?"rtl":"ltr";document.body.classList.toggle("en",lang==='en');$$("[data-i18n]").forEach(e=>e.textContent=t(e.dataset.i18n));$("#langBtn").textContent=lang==='ar'?"EN":"AR"}
 function toast(m){$("#toast").textContent=m;$("#toast").classList.add("show");setTimeout(()=>$("#toast").classList.remove("show"),2600)}
 async function api(path,opt={}){opt.headers={...(opt.headers||{}),...(token?{"Authorization":"Bearer "+token}:{})};const r=await fetch(path,opt);let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.detail||"Request failed");return d}
-function showView(view){$(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));["curriculumPanel","coursePanel","lessonPanel","notificationsPanel","accessPanel","ownerPanel","assessmentPanel","resultsPanel","filesPanel"].forEach(id=>{const e=$("#"+id);if(e)e.classList.add("hidden")});if(view==="home")return;if(view==="curriculum")openCurriculum();if(view==="progress")loadProgress();if(view==="assessments"&&window.loadAssessments)window.loadAssessments();if(view==="results"&&window.loadAssessmentResults)window.loadAssessmentResults();if(view==="files"&&window.loadStudentFiles)window.loadStudentFiles();if(view==="certificates")loadCertificates();if(view==="profile")loadProfile();if(view==="notifications")loadNotifications();if(view==="access"&&window.loadAccess)window.loadAccess();if(view==="owner"&&isOwner)openOwnerManager()}
+function showView(view){$$(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));["curriculumPanel","coursePanel","lessonPanel","notificationsPanel","accessPanel","ownerPanel","assessmentPanel","resultsPanel","filesPanel"].forEach(id=>{const e=$("#"+id);if(e)e.classList.add("hidden")});if(view==="home")return;if(view==="curriculum")openCurriculum();if(view==="progress")loadProgress();if(view==="assessments"&&window.loadAssessments)window.loadAssessments();if(view==="results"&&window.loadAssessmentResults)window.loadAssessmentResults();if(view==="files"&&window.loadStudentFiles)window.loadStudentFiles();if(view==="certificates")loadCertificates();if(view==="profile")loadProfile();if(view==="notifications")loadNotifications();if(view==="access"&&window.loadAccess)window.loadAccess();if(view==="owner"&&isOwner)openOwnerManager()}
 $$(".nav-btn").forEach(b=>b.onclick=()=>showView(b.dataset.view));
 function setMode(m){mode=m;$$(".tab").forEach(x=>x.classList.toggle("active",x.dataset.mode===m));$("#nameWrap").classList.toggle("hidden",m!=="register");$("#authSubmit").textContent=t(m==="login"?"login":"register");$("#authError").textContent=""}
 $$(".tab").forEach(x=>x.onclick=()=>setMode(x.dataset.mode));
@@ -70,7 +70,28 @@ async function loadOnboardingState(){
   return d;
 }
 
-async function loadDashboard(){try{const [on,sp,roles]=await Promise.all([api("/student/onboarding"),api("/curriculum/specialties"),api("/users/me/roles")]);isOwner=roles.some(x=>["owner","admin"].includes(x.role));$("#ownerNavBtn").classList.toggle("hidden",!isOwner);$("#ownerNavBtn").textContent=t("owner");$("#authView").classList.add("hidden");$("#dashboardView").classList.remove("hidden");$("#logoutBtn").classList.remove("hidden");$("#onboardingText").textContent=on.next_action||"";await loadOnboardingState();$("#statSpecialties").textContent=sp.length;$("#statAccess").textContent=on.global_curriculum?.entitled?"ACTIVE":(on.step||"PENDING").toUpperCase();$("#statLearning").textContent="TOFAN CORE";renderSpecialties(sp)}catch(err){token=null;localStorage.removeItem("tofan_token");$("#authView").classList.remove("hidden");toast(err.message)}}
+async function loadDashboard(){try{
+  const [roles,sp]=await Promise.all([api("/users/me/roles"),api("/curriculum/specialties")]);
+  isOwner=roles.some(x=>["owner","admin"].includes(x.role));
+  $("#ownerNavBtn").classList.toggle("hidden",!isOwner);
+  $("#ownerNavBtn").textContent=t("owner");
+  $("#authView").classList.add("hidden");$("#dashboardView").classList.remove("hidden");$("#logoutBtn").classList.remove("hidden");
+  let on=null;
+  if(isOwner){
+    $("#onboardingPanel").classList.add("hidden");
+    $("#onboardingText").textContent=lang==="ar"?"تم التعرف على حساب المدير العام.":"General Manager account recognized.";
+    $("#statAccess").textContent="OWNER";
+    $("#statLearning").textContent="TOFAN CORE";
+  }else{
+    on=await api("/student/onboarding");
+    $("#onboardingText").textContent=on.next_action||"";
+    await loadOnboardingState();
+    $("#statAccess").textContent=on.global_curriculum?.entitled?"ACTIVE":(on.step||"PENDING").toUpperCase();
+    $("#statLearning").textContent="TOFAN CORE";
+  }
+  $("#statSpecialties").textContent=sp.length;
+  renderSpecialties(sp);
+}catch(err){token=null;localStorage.removeItem("tofan_token");$("#authView").classList.remove("hidden");toast(err.message)}}
 async function renderSpecialties(items){
   const box=$("#specialties");box.innerHTML="";
   for(const s of items){
