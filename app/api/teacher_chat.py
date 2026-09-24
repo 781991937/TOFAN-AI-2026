@@ -237,8 +237,6 @@ def chat_with_teacher(
                     status_code=403,
                     detail="This curriculum semester requires confirmed paid access.",
                 )
-            if stage_is_free:
-                usage.paid_access = True
 
         file_step = None
         file_course_name = None
@@ -283,7 +281,7 @@ def chat_with_teacher(
             db, user_id=actor.id, agent_id=agent.id,
             source=payload.source,
         )
-        if remaining <= 0:
+        if remaining is not None and remaining <= 0:
             raise HTTPException(
                 status_code=429,
                 detail="Daily free response limit of 2000 characters has been reached. Try again after the 24-hour window resets.",
@@ -294,7 +292,7 @@ def chat_with_teacher(
             if file_step.understanding_verified and not file_step.student_confirmed and is_explicit_confirmation(payload.message):
                 confirm_student_understanding(db, step_id=file_step.id, confirmed=True)
                 response_text = "تم تسجيل تأكيدك على فهم الملف. انتهت مرحلة الشرح والفهم لهذا الملف، والخطوة التالية هي الاختبار."
-                response_text = response_text[:remaining]
+                response_text = response_text[:remaining] if remaining is not None else response_text
                 append_message(db, conversation.id, "user", payload.message)
                 append_message(db, conversation.id, "assistant", response_text)
                 consume_response_chars(db, user_id=actor.id, agent_id=agent.id, source=payload.source, characters=len(response_text))
