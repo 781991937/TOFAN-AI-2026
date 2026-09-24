@@ -35,3 +35,18 @@ def test_required_student_frontend_modules_are_referenced():
     html = open("web/index.html", encoding="utf-8").read()
     for module in ("app.js", "assessments.js", "student-files.js", "subscriptions.js"):
         assert module in html
+
+
+def test_student_file_learning_cycle_is_wired():
+    source = open("web/student-files.js", encoding="utf-8").read()
+    for route in (
+        "/student/files/upload",
+        "/agent/teacher/",
+        "/teaching-steps",
+        "/understanding",
+        "/confirm",
+        "/file-exams/",
+    ):
+        assert route in source
+    assert "source:"student_files"" in source
+    assert "تم إرسال النتيجة إلى المدير العام." in source
