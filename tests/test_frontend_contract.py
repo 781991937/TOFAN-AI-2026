@@ -45,3 +45,14 @@ def test_navigation_uses_collection_for_all_nav_buttons():
     source = Path("web/app.js").read_text(encoding="utf-8")
     assert '$$(".nav-btn").forEach' in source
     assert 'function showView(view){$(".nav-btn").forEach' not in source
+
+
+def test_owner_dashboard_does_not_depend_on_student_onboarding():
+    source = Path("web/app.js").read_text(encoding="utf-8")
+    start = source.index("async function loadDashboard()")
+    end = source.index("async function renderSpecialties", start)
+    dashboard = source[start:end]
+    assert 'api("/users/me/roles")' in dashboard
+    assert 'if(isOwner)' in dashboard
+    assert 'await loadOnboardingState()' in dashboard
+    assert dashboard.indexOf('if(isOwner)') < dashboard.indexOf('await loadOnboardingState()')
