@@ -30,3 +30,12 @@ def test_mobile_shell_contains_splash_bottom_navigation_and_manager_entry():
         assert f'data-view="{view}"' in html
     assert '/manager/dashboard-ui' in html
 
+
+
+def test_voice_controls_are_wired_into_teacher_and_file_learning():
+    app_source = Path("web/app.js").read_text(encoding="utf-8")
+    file_source = Path("web/student-files.js").read_text(encoding="utf-8")
+    for marker in ("SpeechRecognition", "speechSynthesis", "createVoiceControls", "voiceOutput"):
+        assert marker in app_source
+    assert "createVoiceControls(input,send)" in file_source
+    assert "speakText" in file_source

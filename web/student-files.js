@@ -37,7 +37,7 @@
     const b=body(); if(!b)return;
     const box=document.createElement("div"); box.className="subscription-card"; box.id="fileTeachingBox";
     box.innerHTML='<h3>شرح الملف</h3><div id="fileTeachingStatus" class="muted">جارٍ بدء دورة التعلم…</div><div id="fileChatMessages" class="detail-item" style="margin-top:10px;max-height:360px;overflow:auto"></div>'+
-      '<div style="margin-top:10px"><input id="fileChatInput" placeholder="اكتب إجابتك أو سؤالك" style="width:100%"><button id="fileChatSend" class="primary" style="margin-top:8px">إرسال</button></div>'+
+      '<div style="margin-top:10px"><input id="fileChatInput" placeholder="اكتب إجابتك أو تحدث" style="width:100%"><button id="fileChatSend" class="primary" style="margin-top:8px">إرسال</button><div id="fileVoiceControls" style="margin-top:8px"></div></div>'+
       '<div class="teacher-actions" style="margin-top:10px"><button class="ghost" id="fileVerify">تحقق من الفهم</button><button class="ghost" id="fileConfirm">تأكيد فهم الدرس</button></div>'+
       '<div id="fileExamArea" style="margin-top:12px"></div>';
     b.prepend(box);
@@ -75,6 +75,9 @@
       }catch(e){status.textContent=apiError(e)}
     };
 
+    if(typeof createVoiceControls==="function"){
+      box.querySelector("#fileVoiceControls").appendChild(createVoiceControls(input,send));
+    }
     box.querySelector("#fileChatSend").onclick=()=>send(input.value);
     input.onkeydown=e=>{if(e.key==="Enter"){e.preventDefault();send(input.value)}};
 
