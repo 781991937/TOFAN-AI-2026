@@ -175,6 +175,7 @@ def record_exam_result(
 def grant_paid_global_access(db: Session, *, user_id: str, agent_id: str) -> TeachingUsage:
     usage = get_or_create_usage(db, user_id, agent_id, TeachingSource.GLOBAL_CURRICULUM)
     usage.paid_access = True
-    usage.response_chars_limit = PAID_GLOBAL_RESPONSE_CHAR_LIMIT
+    usage.response_chars_limit = 0
+    usage.response_chars_used = 0
     db.flush()
     return usage
