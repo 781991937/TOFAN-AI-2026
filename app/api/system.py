@@ -1,6 +1,7 @@
 """System readiness and API contract endpoints."""
-from fastapi import APIRouter, Request
-from app.db.session import DATABASE_URL
+from fastapi import APIRouter, Request, HTTPException
+from sqlalchemy import text
+from app.db.session import DATABASE_URL, SessionLocal
 import os
 
 router = APIRouter(tags=["system"])
@@ -41,4 +42,10 @@ def api_contract(request: Request):
 
 @router.get("/ready", tags=["system"])
 def readiness():
+    """Readiness probe verifies the configured database is reachable."""
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail="Database is not ready.") from exc
     return {"status": "ready", "contract_version": API_CONTRACT_VERSION}
