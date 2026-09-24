@@ -55,4 +55,4 @@ def test_owner_dashboard_does_not_depend_on_student_onboarding():
     assert 'api("/users/me/roles")' in dashboard
     assert 'if(isOwner)' in dashboard
     assert 'await loadOnboardingState()' in dashboard
-    assert dashboard.indexOf('if(isOwner)') < dashboard.indexOf('await loadOnboardingState()')
+    assert dashboard.index('if(isOwner)') < dashboard.index('await loadOnboardingState()')
