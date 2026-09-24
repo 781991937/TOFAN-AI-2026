@@ -150,7 +150,7 @@ async function openCourse(courseId){try{const c=await api("/curriculum/courses/"
       const certBtn=document.createElement("button");certBtn.className="secondary";certBtn.textContent=lang==='ar'?"إصدار شهادة المقرر":"Issue course certificate";$("#courseBody").appendChild(certBtn);
       certBtn.onclick=async()=>{certBtn.disabled=true;try{const cert=await api("/certificates/courses/"+encodeURIComponent(c.id)+"/issue",{method:"POST"});certBtn.textContent=(lang==='ar'?"تم إصدار الشهادة: ":"Certificate issued: ")+cert.certificate_number}catch(e){certBtn.disabled=false;toast(e.message)}};
     }
-    $(".lesson-button").forEach(b=>b.onclick=()=>openLesson(b.dataset.lessonId,c))}catch(err){toast(err.message)}}
+    $$(".lesson-button").forEach(b=>b.onclick=()=>openLesson(b.dataset.lessonId,c))}catch(err){toast(err.message)}}
 $("#backCurriculum").onclick=()=>openCurriculum();
 $("#backCourse").onclick=()=>{$("#lessonPanel").classList.add("hidden");$("#coursePanel").classList.remove("hidden")};
 async function requestCurriculumPayment(c){
