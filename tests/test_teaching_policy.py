@@ -164,3 +164,11 @@ def test_student_file_metadata_is_bound_to_user_and_teacher():
     assert content.teaching_agent_id == agent.id
     assert content.teaching_source == TeachingSource.STUDENT_FILES
     assert content.extracted_text.startswith("Python variables")
+
+def test_confirmed_global_access_has_no_response_quota():
+    db, user, agent = setup()
+    from app.agents.teaching_policy import grant_paid_global_access, consume_response_chars, remaining_response_chars
+    grant_paid_global_access(db, user_id=user.id, agent_id=agent.id)
+    assert remaining_response_chars(db, user_id=user.id, agent_id=agent.id, source=TeachingSource.GLOBAL_CURRICULUM) is None
+    consume_response_chars(db, user_id=user.id, agent_id=agent.id, source=TeachingSource.GLOBAL_CURRICULUM, characters=100000)
+    assert remaining_response_chars(db, user_id=user.id, agent_id=agent.id, source=TeachingSource.GLOBAL_CURRICULUM) is None

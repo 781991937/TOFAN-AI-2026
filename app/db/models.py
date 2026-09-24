@@ -288,8 +288,6 @@ class TeachingUsage(Base):
     source: Mapped[TeachingSource] = mapped_column(String(40), nullable=False)
     files_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     files_limit: Mapped[int] = mapped_column(Integer, default=3, nullable=False)
-    free_steps_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    free_steps_limit: Mapped[int] = mapped_column(Integer, default=5, nullable=False)
     response_chars_used: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     response_chars_limit: Mapped[int] = mapped_column(Integer, default=2000, nullable=False)
     quota_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
