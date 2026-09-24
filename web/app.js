@@ -7,8 +7,31 @@ I18N.ar.owner="المدير العام";I18N.en.owner="General Manager";function
 function applyLang(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?"rtl":"ltr";document.body.classList.toggle("en",lang==='en');$$("[data-i18n]").forEach(e=>e.textContent=t(e.dataset.i18n));$("#langBtn").textContent=lang==='ar'?"EN":"AR"}
 function toast(m){$("#toast").textContent=m;$("#toast").classList.add("show");setTimeout(()=>$("#toast").classList.remove("show"),2600)}
 async function api(path,opt={}){opt.headers={...(opt.headers||{}),...(token?{"Authorization":"Bearer "+token}:{})};const r=await fetch(path,opt);let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.detail||"Request failed");return d}
-function showView(view){$$(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));["curriculumPanel","coursePanel","lessonPanel","notificationsPanel","accessPanel","ownerPanel","assessmentPanel","resultsPanel","filesPanel"].forEach(id=>{const e=$("#"+id);if(e)e.classList.add("hidden")});if(view==="home")return;if(view==="curriculum")openCurriculum();if(view==="progress")loadProgress();if(view==="assessments"&&window.loadAssessments)window.loadAssessments();if(view==="results"&&window.loadAssessmentResults)window.loadAssessmentResults();if(view==="files"&&window.loadStudentFiles)window.loadStudentFiles();if(view==="certificates")loadCertificates();if(view==="profile")loadProfile();if(view==="notifications")loadNotifications();if(view==="access"&&window.loadAccess)window.loadAccess();if(view==="owner"&&isOwner)openOwnerManager()}
-$$(".nav-btn").forEach(b=>b.onclick=()=>showView(b.dataset.view));
+async function showView(view){
+  const valid=["home","curriculum","progress","assessments","results","files","certificates","profile","notifications","access","owner"];
+  if(!valid.includes(view))return;
+  $(".nav-btn").forEach(b=>b.classList.toggle("active",b.dataset.view===view));
+  ["curriculumPanel","coursePanel","lessonPanel","notificationsPanel","accessPanel","ownerPanel","assessmentPanel","resultsPanel","filesPanel"].forEach(id=>{const e=$("#"+id);if(e)e.classList.add("hidden")});
+  try{
+    if(view==="home")return;
+    if(view==="curriculum")await openCurriculum();
+    else if(view==="progress")await loadProgress();
+    else if(view==="assessments"&&typeof window.loadAssessments==="function")await window.loadAssessments();
+    else if(view==="results"&&typeof window.loadAssessmentResults==="function")await window.loadAssessmentResults();
+    else if(view==="files"&&typeof window.loadStudentFiles==="function")await window.loadStudentFiles();
+    else if(view==="certificates")await loadCertificates();
+    else if(view==="profile")await loadProfile();
+    else if(view==="notifications")await loadNotifications();
+    else if(view==="access"&&typeof window.loadAccess==="function")await window.loadAccess();
+    else if(view==="owner"&&isOwner)await openOwnerManager();
+  }catch(err){console.error("TOFAN navigation error",view,err);toast(err?.message||"تعذر فتح الواجهة المطلوبة");}
+}
+document.addEventListener("click",event=>{
+  const button=event.target.closest?.(".nav-btn");
+  if(!button||button.disabled)return;
+  event.preventDefault();
+  showView(button.dataset.view);
+});
 function setMode(m){mode=m;$$(".tab").forEach(x=>x.classList.toggle("active",x.dataset.mode===m));$("#nameWrap").classList.toggle("hidden",m!=="register");$("#authSubmit").textContent=t(m==="login"?"login":"register");$("#authError").textContent=""}
 $$(".tab").forEach(x=>x.onclick=()=>setMode(x.dataset.mode));
 $("#langBtn").onclick=()=>{lang=lang==='ar'?"en":"ar";localStorage.setItem("tofan_lang",lang);applyLang();setMode(mode);if(token)loadDashboard()};
