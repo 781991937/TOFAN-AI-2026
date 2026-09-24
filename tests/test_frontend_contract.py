@@ -39,3 +39,9 @@ def test_voice_controls_are_wired_into_teacher_and_file_learning():
         assert marker in app_source
     assert "createVoiceControls(input,send)" in file_source
     assert "speakText" in file_source
+
+
+def test_navigation_uses_collection_for_all_nav_buttons():
+    source = Path("web/app.js").read_text(encoding="utf-8")
+    assert '$$(".nav-btn").forEach' in source
+    assert 'function showView(view){$(".nav-btn").forEach' not in source
