@@ -46,7 +46,7 @@ def list_student_file_teachers(
             Agent.status == AgentStatus.ACTIVE,
         ).order_by(Agent.name)
     ).all()
-    return {"teachers": [{"slug": t.slug, "name": t.name, "course_id": t.curriculum_course_id} for t in teachers]}
+    return {"teachers": [{"id": t.id, "slug": t.slug, "name": t.name, "course_id": t.curriculum_course_id} for t in teachers]}
 
 
 @router.post("/upload", status_code=201)
