@@ -70,13 +70,16 @@ def remaining_response_chars(db: Session, *, user_id: str, agent_id: str, source
     return max(0, usage.response_chars_limit - usage.response_chars_used)
 
 
-def consume_response_chars(db: Session, *, user_id: str, agent_id: str, source: TeachingSource, characters: int) -> int:
+def consume_response_chars(db: Session, *, user_id: str, agent_id: str, source: TeachingSource, characters: int) -> int | None:
     if characters < 0:
         raise TeachingAccessError("Character usage cannot be negative.")
     usage = get_or_create_usage(db, user_id, agent_id, source)
-    limit = DAILY_RESPONSE_CHAR_LIMIT if source == TeachingSource.STUDENT_FILES else (
-        PAID_GLOBAL_RESPONSE_CHAR_LIMIT if usage.paid_access else DAILY_RESPONSE_CHAR_LIMIT
-    )
+    if source == TeachingSource.GLOBAL_CURRICULUM and usage.paid_access:
+        usage.response_chars_limit = 0
+        usage.response_chars_used += characters
+        db.flush()
+        return None
+    limit = DAILY_RESPONSE_CHAR_LIMIT
     usage.response_chars_limit = limit
     if usage.response_chars_used + characters > limit:
         raise TeachingAccessError(f"Daily response limit of {limit} characters has been reached.")
