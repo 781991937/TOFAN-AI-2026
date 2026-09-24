@@ -35,3 +35,21 @@ def test_required_student_frontend_modules_are_referenced():
     html = open("web/index.html", encoding="utf-8").read()
     for module in ("app.js", "assessments.js", "student-files.js", "subscriptions.js"):
         assert module in html
+
+
+def test_readiness_is_database_backed(monkeypatch):
+    from app.api import system
+
+    class BrokenSession:
+        def __enter__(self):
+            return self
+        def __exit__(self, *args):
+            return False
+        def execute(self, statement):
+            raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(system, "SessionLocal", lambda: BrokenSession())
+    from fastapi.testclient import TestClient
+    from app.main import app
+    response = TestClient(app).get("/ready")
+    assert response.status_code == 503
