@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 def test_student_shell_contains_required_modules():
@@ -43,8 +44,11 @@ def test_voice_controls_are_wired_into_teacher_and_file_learning():
 
 def test_navigation_uses_collection_for_all_nav_buttons():
     source = Path("web/app.js").read_text(encoding="utf-8")
-    assert '$$(".nav-btn").forEach' in source
-    assert 'function showView(view){$(".nav-btn").forEach' not in source
+    for selector in (".nav-btn", ".tab", ".course-button", ".lesson-button", ".notification-read"):
+        assert '$("' + selector + '").forEach' in source
+        assert re.search(r'(?<!\$)\$\("' + re.escape(selector) + r'"\)\.forEach', source) is None
+    assert 'document.addEventListener("click",event=>' in source
+    assert "async function showView(view){" in source
 
 
 def test_owner_dashboard_does_not_depend_on_student_onboarding():
