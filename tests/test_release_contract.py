@@ -37,6 +37,20 @@ def test_required_student_frontend_modules_are_referenced():
         assert module in html
 
 
+def test_student_file_learning_cycle_is_wired():
+    source = open("web/student-files.js", encoding="utf-8").read()
+    for route in (
+        "/student/files/upload",
+        "/agent/teacher/",
+        "/teaching-steps",
+        "/understanding",
+        "/confirm",
+        "/file-exams/",
+    ):
+        assert route in source
+    assert 'source:"student_files"' in source
+    assert "تم إرسال النتيجة إلى المدير العام." in source
+
 def test_readiness_is_database_backed(monkeypatch):
     from app.api import system
 
