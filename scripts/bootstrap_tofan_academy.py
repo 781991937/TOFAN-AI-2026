@@ -39,7 +39,7 @@ def main():
                     "منصة تعليمية مستقلة بمنهج طوفان الخاص. "
                     "لا تعتمد الهيكل الجامعي كمنهج إجباري."
                 ),
-                is_active=is_active,
+                is_active=True,
             )
             db.add(academy)
             db.flush()
@@ -64,7 +64,7 @@ def main():
                         "تخصص داخل أكاديمية طوفان. "
                         "تُبنى خطته من أساسيات التخصص ثم المستويات والمسارات والمشاريع."
                     ),
-                    is_active=True,
+                    is_active=is_active,
                 )
                 db.add(item)
             else:
