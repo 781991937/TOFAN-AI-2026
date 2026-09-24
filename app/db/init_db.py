@@ -1,4 +1,4 @@
-"""Create the initial database schema."""
+"""Create the initial database schema and bootstrap core catalog data."""
 
 from .base import Base
 from .models import (
@@ -18,11 +18,15 @@ from app.agents.models import Agent, AgentRun, AgentTool
 from app.agents.memory import AgentConversation, AgentMemoryItem, AgentMemoryPermission, AgentMessageRecord
 from scripts.seed_tofan_curriculum import seed as seed_tofan_curriculum
 from scripts.seed_global_curricula import seed as seed_global_curricula
+from scripts.bootstrap_tofan_academy import main as bootstrap_tofan_academy
+from scripts.bootstrap_sanaa_university import main as bootstrap_sanaa_university
 
 
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     run_migrations(engine)
+    bootstrap_tofan_academy()
+    bootstrap_sanaa_university()
     seed_tofan_curriculum()
     seed_global_curricula()
 
