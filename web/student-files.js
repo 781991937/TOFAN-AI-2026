@@ -9,15 +9,12 @@
     panel.classList.remove("hidden");
     try{
       const [files,teachers]=await Promise.all([api("/student/files"),api("/student/files/teachers")]);
-      const teacherById=new Map((teachers.teachers||[]).map(t=>[String(t.id),t]));
       b.innerHTML='<div class="subscription-card"><h3>رفع ملف للدراسة</h3><p>PDF أو DOCX أو TXT. اختر المدرس الذكي المرتبط بالمقرر. بعد الرفع تبدأ دورة الشرح والفهم ثم الاختبار المجاني.</p><select id="fileTeacher"><option value="">اختر المدرس</option>'+
         (teachers.teachers||[]).map(t=>'<option value="'+esc(t.slug)+'">'+esc(t.name)+'</option>').join("")+
         '</select><input id="studentUpload" type="file" accept=".pdf,.docx,.txt" style="margin-top:10px"><button id="uploadStudentFile" class="primary">رفع الملف</button><div id="fileUploadState" class="muted"></div></div><h3>مكتبة الملفات</h3>'+
         (files.files?.length?files.files.map(f=>{
-          const teacher=teacherById.get(String(f.teaching_agent_id));
-          return '<div class="detail-item"><b>'+esc(f.original_name)+'</b><div class="muted">'+Number(f.size_bytes||0).toLocaleString()+' bytes · '+esc(f.uploaded_at||"")+'</div><div style="margin-top:8px">'+
-            (teacher?'<button class="primary file-teach" data-file="'+esc(f.file_id)+'" data-teacher="'+esc(teacher.slug)+'">بدء الشرح والاختبار</button>':'<span class="muted">المدرس المرتبط بالملف غير متاح حاليًا.</span>')+
-            '</div></div>';
+          const teacherOptions=(teachers.teachers||[]).map(t=>'<option value="'+esc(t.slug)+'">'+esc(t.name)+'</option>').join("");
+          return '<div class="detail-item"><b>'+esc(f.original_name)+'</b><div class="muted">'+Number(f.size_bytes||0).toLocaleString()+' bytes · '+esc(f.uploaded_at||"")+'</div><div style="margin-top:8px"><select class="file-teacher" data-file="'+esc(f.file_id)+'"><option value="">اختر المدرس</option>'+teacherOptions+'</select><button class="primary file-teach" data-file="'+esc(f.file_id)+'" style="margin-top:8px">بدء الشرح والاختبار</button></div></div>';
         }).join(""):'<div class="detail-item">لا توجد ملفات مرفوعة بعد.</div>');
 
       document.getElementById("uploadStudentFile").onclick=async()=>{
@@ -36,7 +33,7 @@
   }
 
   async function openFileTeaching(fileId,teacherSlug){
-    if(!teacherSlug){toast("لم يتم العثور على المدرس المرتبط بهذا الملف.");return}
+    if(!teacherSlug){toast("اختر المدرس المرتبط بالمقرر أولًا.");return}
     const b=body(); if(!b)return;
     const box=document.createElement("div"); box.className="subscription-card"; box.id="fileTeachingBox";
     box.innerHTML='<h3>شرح الملف</h3><div id="fileTeachingStatus" class="muted">جارٍ بدء دورة التعلم…</div><div id="fileChatMessages" class="detail-item" style="margin-top:10px;max-height:360px;overflow:auto"></div>'+
@@ -136,7 +133,10 @@
     const refresh=document.getElementById("refreshFiles");if(refresh)refresh.onclick=loadStudentFiles;
     document.addEventListener("click",e=>{
       const x=e.target.closest(".file-teach");
-      if(x)openFileTeaching(x.dataset.file,x.dataset.teacher);
+      if(x){
+        const select=document.querySelector('.file-teacher[data-file="'+CSS.escape(x.dataset.file)+'"]');
+        openFileTeaching(x.dataset.file,select?.value||"");
+      }
     });
   });
 })();
