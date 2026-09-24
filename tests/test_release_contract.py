@@ -48,5 +48,5 @@ def test_student_file_learning_cycle_is_wired():
         "/file-exams/",
     ):
         assert route in source
-    assert "source:"student_files"" in source
+    assert 'source:"student_files"' in source
     assert "تم إرسال النتيجة إلى المدير العام." in source
