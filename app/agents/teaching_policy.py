@@ -49,7 +49,6 @@ def _reset_if_expired(usage: TeachingUsage) -> None:
         usage.quota_started_at = now
         usage.files_used = 0
         usage.response_chars_used = 0
-        usage.free_steps_used = 0
 
 
 def register_student_file(db: Session, *, user_id: str, agent_id: str, content_file: ContentFile) -> TeachingUsage:
