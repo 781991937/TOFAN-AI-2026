@@ -1,0 +1,11 @@
+run = "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+entrypoint = "app/main.py"
+
+[deployment]
+run = ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "$PORT"]
+
+[env]
+TOFAN_ENV = "development"
+TOFAN_STORAGE_BACKEND = "local"
+DATABASE_URL = "sqlite:///./tofan.db"
+TOFAN_UPLOAD_DIR = "data/uploads"
