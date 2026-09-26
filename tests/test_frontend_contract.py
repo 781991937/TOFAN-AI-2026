@@ -57,3 +57,13 @@ def test_owner_dashboard_does_not_depend_on_student_onboarding():
     assert 'if(isOwner)' in dashboard
     assert 'await loadOnboardingState()' in dashboard
     assert dashboard.index('if(isOwner)') < dashboard.index('await loadOnboardingState()')
+
+
+def test_manager_dashboard_has_authenticated_frontend_bridge():
+    app_source = Path("web/app.js").read_text(encoding="utf-8")
+    html = Path("web/index.html").read_text(encoding="utf-8")
+    dashboard = Path("app/api/manager_dashboard.py").read_text(encoding="utf-8")
+    assert 'id="managerDashboardLink"' in html
+    assert 'fetch("/manager/dashboard-ui",{headers:{"Authorization":"Bearer "+token}})' in app_source
+    assert 'localStorage.getItem("tofan_token")' in dashboard
+    assert '"Authorization":"Bearer "+token' in dashboard
