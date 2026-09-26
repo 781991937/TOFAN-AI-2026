@@ -98,6 +98,8 @@ async function loadDashboard(){try{
   isOwner=roles.some(x=>["owner","admin"].includes(x.role));
   $("#ownerNavBtn").classList.toggle("hidden",!isOwner);
   $("#ownerNavBtn").textContent=t("owner");
+  const managerLink=$("#managerDashboardLink");
+  if(managerLink)managerLink.onclick=openManagerDashboard;
   $("#authView").classList.add("hidden");$("#dashboardView").classList.remove("hidden");$("#logoutBtn").classList.remove("hidden");
   let on=null;
   if(isOwner){
@@ -359,6 +361,16 @@ async function loadProgress(){try{const d=await api("/learning-progress/courses"
 async function loadCertificates(){try{const d=await api("/certificates");$("#curriculumPanel").classList.remove("hidden");$("#coursePanel").classList.add("hidden");$("#curriculumTitle").textContent=t("certificates");$("#curriculumBody").innerHTML=d.certificates?.length?d.certificates.map(x=>"<div class='certificate'><b>"+x.title+"</b><div>"+x.certificate_number+"</div></div>").join(""):"<div class='detail-item'>No certificates yet.</div>"}catch(e){toast(e.message)}}
 async function loadProfile(){try{const d=await api("/student/onboarding");$("#curriculumPanel").classList.remove("hidden");$("#coursePanel").classList.add("hidden");$("#curriculumTitle").textContent=t("profile");$("#curriculumBody").innerHTML="<div class='metric-grid'><div class='metric'><span>Status</span><b>"+(d.profile?.status||d.step||"—")+"</b></div><div class='metric'><span>Passkey</span><b>"+(d.passkey?.registered?"✓":"—")+"</b></div><div class='metric'><span>Access</span><b>"+(d.global_curriculum?.entitled?"ACTIVE":"PENDING")+"</b></div></div>"}catch(e){toast(e.message)}}
 applyLang();if(token)loadDashboard();
+async function openManagerDashboard(event){
+  if(event)event.preventDefault();
+  if(!isOwner||!token){toast(lang==="ar"?"يجب تسجيل الدخول كمدير عام أولاً.":"Sign in as General Manager first.");return;}
+  try{
+    const r=await fetch("/manager/dashboard-ui",{headers:{"Authorization":"Bearer "+token}});
+    const html=await r.text();
+    if(!r.ok)throw new Error((()=>{try{return JSON.parse(html).detail||"HTTP "+r.status}catch{return "HTTP "+r.status}})());
+    document.open();document.write(html);document.close();
+  }catch(err){toast(err.message||"تعذر فتح لوحة المدير");}
+}
 async function openOwnerManager(){
   if(!isOwner)return;
   $("#curriculumPanel").classList.add("hidden");$("#coursePanel").classList.add("hidden");$("#lessonPanel").classList.add("hidden");$("#ownerPanel").classList.remove("hidden");
