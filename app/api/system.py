@@ -18,6 +18,7 @@ def api_contract(request: Request):
         "student": {
             "curriculum": "/curriculum/{slug}",
             "assessments": "/student/assessments",
+            "assessment_start": "/student/assessments/{assessment_id}/start",
             "assessment_results": "/student/assessments/results/history",
             "notifications": "/notifications",
             "access": "/student/access",
