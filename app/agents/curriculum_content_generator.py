@@ -97,7 +97,7 @@ def _targets(db, specialty_id: str | None) -> list[tuple[str, str, dict[str, Any
                 .where(CurriculumUnit.course_id == course.id)
             ).all()
             outcomes = db.scalars(select(LearningOutcome).where(LearningOutcome.course_id == course.id)).all()
-            if not units or not lessons or any(not _text(x.content_markdown) for x in lessons) or not outcomes:
+            if not units or len(lessons) < len(units) or any(not _text(x.content_markdown) for x in lessons) or not outcomes:
                 targets.append((ref.specialty_id, ref.curriculum_id, data, course, rc))
     return targets
 
