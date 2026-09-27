@@ -76,3 +76,13 @@ def test_search_rejects_invalid_json():
         pass
     else:
         raise AssertionError("Expected invalid JSON to fail")
+
+
+def test_global_curriculum_inventory_requires_no_ids():
+    db = make_db()
+    registry = build_default_registry()
+    result = json.loads(
+        registry.get("manager.global_curriculum_inventory").handler(db, "{}")
+    )
+    assert "curricula" in result
+    assert {row["specialty_id"] for row in result["curricula"]} >= {"AI", "CS", "CYBER", "SE", "DS"}
