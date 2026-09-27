@@ -2,17 +2,28 @@
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
+import json
 import os
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth.authorization import require_owner_or_admin
 from app.auth.dependencies import get_db
 from app.agents.academy_access_policy import validate_content_status
+from app.agents.curriculum_content_generator import (
+    CurriculumContentGenerationError,
+    generate_course_preview,
+    save_course_preview,
+)
+from app.agents.providers import AgentProviderError
 from app.db.models import ContentFile, ContentStatus, Lecture, TeachingSource
 from app.files.extractor import FileExtractionError, extract_teaching_text
 from app.storage import get_storage
@@ -26,6 +37,55 @@ ALLOWED_SUFFIXES = {".pdf", ".docx", ".txt"}
 
 class ContentStatusUpdate(BaseModel):
     status: ContentStatus
+
+
+class CurriculumPreviewRequest(BaseModel):
+    course_id: str = Field(min_length=1, max_length=36)
+    specialty_id: str | None = Field(default=None, min_length=1, max_length=100)
+
+
+class CurriculumPreviewSaveRequest(BaseModel):
+    preview_token: str = Field(min_length=20, max_length=200000)
+
+
+def _preview_secret() -> bytes:
+    configured = os.getenv("TOFAN_PREVIEW_SECRET") or os.getenv("AUTH_OTP_PEPPER")
+    if not configured:
+        if os.getenv("TOFAN_ENV", "development").lower() == "production":
+            raise HTTPException(
+                status_code=503,
+                detail="TOFAN_PREVIEW_SECRET or AUTH_OTP_PEPPER is required in production.",
+            )
+        configured = "tofan-development-preview-secret"
+    return configured.encode("utf-8")
+
+
+def _encode_preview(payload: dict) -> str:
+    raw = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True
+    ).encode("utf-8")
+    encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+    signature = hmac.new(
+        _preview_secret(), encoded.encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    return f"{encoded}.{signature}"
+
+
+def _decode_preview(token: str) -> dict:
+    try:
+        encoded, signature = token.split(".", 1)
+        expected = hmac.new(
+            _preview_secret(), encoded.encode("ascii"), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError
+        raw = base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
+        payload = json.loads(raw.decode("utf-8"))
+    except (ValueError, TypeError, json.JSONDecodeError, UnicodeDecodeError):
+        raise HTTPException(status_code=400, detail="Invalid curriculum preview token.")
+    if not isinstance(payload, dict) or float(payload.get("expires_at", 0)) < time.time():
+        raise HTTPException(status_code=410, detail="The curriculum preview has expired.")
+    return payload
 
 
 def _serialize(row: ContentFile) -> dict:
@@ -140,3 +200,58 @@ def update_content_status(
     db.commit()
     db.refresh(row)
     return _serialize(row)
+
+
+@router.post("/curriculum/generate-preview")
+def generate_curriculum_preview(
+    payload: CurriculumPreviewRequest,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    """Generate and validate content without saving it."""
+    try:
+        result = generate_course_preview(
+            db,
+            course_id=payload.course_id,
+            specialty_id=payload.specialty_id,
+        )
+    except CurriculumContentGenerationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except AgentProviderError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail="The configured AI provider could not generate content.",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502, detail="Curriculum preview generation failed."
+        ) from exc
+
+    expires_at = int(time.time()) + 15 * 60
+    preview_token = _encode_preview({**result, "expires_at": expires_at})
+    return {
+        "status": "preview",
+        "expires_at": expires_at,
+        "preview_token": preview_token,
+        **result,
+    }
+
+
+@router.post("/curriculum/save-preview")
+def save_curriculum_preview(
+    payload: CurriculumPreviewSaveRequest,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    """Revalidate and persist content from an unexpired preview."""
+    preview = _decode_preview(payload.preview_token)
+    try:
+        result = save_course_preview(
+            db,
+            specialty_id=str(preview["specialty_id"]),
+            course_id=str(preview["course_id"]),
+            preview=preview["preview"],
+        )
+    except (KeyError, TypeError, CurriculumContentGenerationError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"status": "saved", **result}
