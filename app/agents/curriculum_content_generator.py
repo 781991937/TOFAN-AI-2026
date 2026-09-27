@@ -1,4 +1,7 @@
-"""TOFAN academic content generator: Generate -> Validate -> Save."""
+"""TOFAN academic content generator: Generate -> Validate -> Save.
+
+Runs in small resumable batches to avoid long-running manager requests.
+"""
 
 from __future__ import annotations
 
