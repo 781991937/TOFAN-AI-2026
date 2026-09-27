@@ -28,6 +28,8 @@ def api_contract(request: Request):
         "admin": {
             "notifications": "/admin/notifications/broadcast",
             "agents": "/admin/agents",
+            "content_preview": "/admin/content/curriculum/generate-preview",
+            "content_save": "/admin/content/curriculum/save-preview",
             "payments": "/manager/payments",
             "assessments": "/manager/assessments",
             "audit": "/manager/audit-log",
