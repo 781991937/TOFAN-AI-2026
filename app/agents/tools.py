@@ -8,7 +8,7 @@ from typing import Callable
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
-from app.db.curriculum_models import CurriculumCourse, CurriculumLesson, CurriculumUnit
+from app.db.curriculum_models import Curriculum, CurriculumCourse, CurriculumLesson, CurriculumUnit
 from app.db.models import AcademicUnit, ContentFile, Course, Institution, Lecture, Notification, Unit
 from app.db.assessment_models import CurriculumAssessmentAttempt
 from app.db.certificate_models import Certificate
@@ -788,6 +788,16 @@ def build_default_registry() -> ToolRegistry:
             sensitive=True,
             allowed_agent_slug="tofan-main",
             parameters={"type":"object","properties":{},"additionalProperties":False},
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.global_curriculum_inventory",
+            description="Privileged manager read: inspect every registered TOFAN global curriculum, all courses, units, lessons, missing lesson content, and missing learning outcomes automatically. Never requires IDs.",
+            handler=manager_global_curriculum_inventory_tool,
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={"type":"object","properties":{"specialty_id":{"type":["string","null"]}},"additionalProperties":False},
         )
     )
     registry.register(
