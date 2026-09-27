@@ -498,6 +498,16 @@ def global_computing_curriculum_tool(_: Session, input_text: str) -> str:
     }, ensure_ascii=False)
 
 
+def manager_generate_global_curriculum_content_tool(db: Session, input_text: str) -> str:
+    p = _payload(input_text)
+    result = generate_next_courses(
+        db,
+        specialty_id=str(p.get("specialty_id") or "").strip() or None,
+        max_courses=max(1, min(int(p.get("max_courses", 1)), 5)),
+    )
+    return json.dumps(result, ensure_ascii=False)
+
+
 def manager_global_curriculum_inventory_tool(db: Session, input_text: str) -> str:
     """Inspect every registered TOFAN curriculum and persisted content without requiring IDs."""
     p = _payload(input_text)
@@ -807,6 +817,23 @@ def build_default_registry() -> ToolRegistry:
                 ),
                 ensure_ascii=False,
             ),
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "specialty_id": {"type": ["string", "null"]},
+                    "max_courses": {"type": "integer", "minimum": 1, "maximum": 5},
+                },
+                "additionalProperties": False,
+            },
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.generate_global_curriculum_content",
+            description="Privileged manager action: automatically generate original lesson content for the next missing TOFAN global curriculum courses, validate it, and persist it. Uses the canonical registry and never requires manual IDs.",
+            handler=manager_generate_global_curriculum_content_tool,
             sensitive=True,
             allowed_agent_slug="tofan-main",
             parameters={
