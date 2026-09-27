@@ -152,6 +152,20 @@ def _prompt(specialty_id: str, curriculum_id: str, data: dict[str, Any], rc: dic
     return system, json.dumps(user, ensure_ascii=False)
 
 
+def _configured_provider(db, provider: AIProvider | None) -> AIProvider:
+    if provider is not None:
+        return provider
+    manager = db.scalar(
+        select(Agent)
+        .where(Agent.role == AgentRole.GENERAL_MANAGER, Agent.status == AgentStatus.ACTIVE)
+        .order_by(Agent.created_at)
+    )
+    return build_configured_provider(
+        model=manager.model_name if manager else None,
+        provider=manager.model_provider if manager else None,
+    )
+
+
 def _validate(payload: dict[str, Any], scope: dict[str, Any]) -> dict[str, Any]:
     units = payload.get("units")
     if not isinstance(units, list) or not units:
@@ -277,18 +291,90 @@ def _save(db, specialty_id: str, curriculum_id: str, data: dict[str, Any], cours
     return {"created_units": created_units, "created_lessons": created_lessons, "updated_lessons": updated_lessons, "learning_outcomes_created": outcomes_created}
 
 
+def generate_course_preview(
+    db,
+    *,
+    course_id: str,
+    specialty_id: str | None = None,
+    provider: AIProvider | None = None,
+) -> dict[str, Any]:
+    """Generate and validate one course without persisting anything.
+
+    The returned payload is deliberately separate from ``_save`` so callers can
+    show an operator a preview before requesting the write operation.
+    """
+    targets = [target for target in _targets(db, specialty_id) if target[3].id == course_id]
+    if not targets:
+        raise CurriculumContentGenerationError(
+            "The requested course is not registered as a missing-content target."
+        )
+
+    specialty, curriculum_id, data, course, registry_course = targets[0]
+    scope = _existing_scope(db, course.id)
+    system, user = _prompt(specialty, curriculum_id, data, registry_course, scope)
+    response = _configured_provider(db, provider).generate(
+        [AgentMessage(role="user", content=user)],
+        system_prompt=system,
+    )
+    validated = _validate(_json(response.content), scope)
+    return {
+        "specialty_id": specialty,
+        "curriculum_id": curriculum_id,
+        "course_id": course.id,
+        "course_code": course.code,
+        "course_name": course.name,
+        "preview": validated,
+    }
+
+
+def save_course_preview(
+    db,
+    *,
+    specialty_id: str,
+    course_id: str,
+    preview: dict[str, Any],
+) -> dict[str, Any]:
+    """Revalidate and persist a previously previewed course payload."""
+    targets = [target for target in _targets(db, specialty_id) if target[3].id == course_id]
+    if not targets:
+        raise CurriculumContentGenerationError(
+            "The requested course is no longer a missing-content target."
+        )
+
+    target_specialty, curriculum_id, data, course, registry_course = targets[0]
+    validated = _validate(preview, _existing_scope(db, course.id))
+    try:
+        with db.begin_nested():
+            saved = _save(
+                db,
+                target_specialty,
+                curriculum_id,
+                data,
+                course,
+                registry_course,
+                validated,
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return {
+        "specialty_id": target_specialty,
+        "curriculum_id": curriculum_id,
+        "course_id": course.id,
+        "course_code": course.code,
+        "course_name": course.name,
+        **saved,
+    }
+
+
 def generate_next_courses(db, *, specialty_id: str | None = None, max_courses: int = 1, provider: AIProvider | None = None) -> dict[str, Any]:
     """Generate the next missing courses automatically; rerunning resumes safely."""
     max_courses = max(1, min(int(max_courses), 5))
     targets = _targets(db, specialty_id)
     if not targets:
         return {"status": "complete", "processed": 0, "remaining": 0, "message": "All registered TOFAN curriculum courses have persisted content."}
-    if provider is None:
-        manager = db.scalar(select(Agent).where(Agent.role == AgentRole.GENERAL_MANAGER, Agent.status == AgentStatus.ACTIVE).order_by(Agent.created_at))
-        provider = build_configured_provider(
-            model=manager.model_name if manager else None,
-            provider=manager.model_provider if manager else None,
-        )
+    provider = _configured_provider(db, provider)
     processed, failed = [], []
     for specialty, curriculum_id, data, course, rc in targets[:max_courses]:
         scope = _existing_scope(db, course.id)
