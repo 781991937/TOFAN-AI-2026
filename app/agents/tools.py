@@ -804,34 +804,6 @@ def build_default_registry() -> ToolRegistry:
     registry.register(
         ToolDefinition(
             name="manager.generate_global_curriculum_content",
-            description="Privileged manager action: automatically generate original lesson content for the next missing TOFAN global curriculum courses, validate it, and persist it. Uses the canonical registry; never requires manual IDs.",
-            handler=lambda db, input_text: generate_next_courses(
-                db,
-                specialty_id=_payload(input_text).get("specialty_id"),
-                max_courses=_payload(input_text).get("max_courses", 1),
-            ).__class__ and json.dumps(
-                generate_next_courses(
-                    db,
-                    specialty_id=_payload(input_text).get("specialty_id"),
-                    max_courses=_payload(input_text).get("max_courses", 1),
-                ),
-                ensure_ascii=False,
-            ),
-            sensitive=True,
-            allowed_agent_slug="tofan-main",
-            parameters={
-                "type": "object",
-                "properties": {
-                    "specialty_id": {"type": ["string", "null"]},
-                    "max_courses": {"type": "integer", "minimum": 1, "maximum": 5},
-                },
-                "additionalProperties": False,
-            },
-        )
-    )
-    registry.register(
-        ToolDefinition(
-            name="manager.generate_global_curriculum_content",
             description="Privileged manager action: automatically generate original lesson content for the next missing TOFAN global curriculum courses, validate it, and persist it. Uses the canonical registry and never requires manual IDs.",
             handler=manager_generate_global_curriculum_content_tool,
             sensitive=True,
