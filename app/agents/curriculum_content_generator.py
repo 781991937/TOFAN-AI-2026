@@ -11,6 +11,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.agents.llm import build_configured_provider
+from app.agents.models import Agent, AgentRole, AgentStatus
 from app.agents.providers import AIProvider, AgentMessage
 from app.curriculum_registry import get_curriculum, list_curricula
 from app.db.curriculum_models import Curriculum, CurriculumCourse, CurriculumLesson, CurriculumUnit, LearningOutcome
@@ -282,7 +283,12 @@ def generate_next_courses(db, *, specialty_id: str | None = None, max_courses: i
     targets = _targets(db, specialty_id)
     if not targets:
         return {"status": "complete", "processed": 0, "remaining": 0, "message": "All registered TOFAN curriculum courses have persisted content."}
-    provider = provider or build_configured_provider()
+    if provider is None:
+        manager = db.scalar(select(Agent).where(Agent.role == AgentRole.GENERAL_MANAGER, Agent.status == AgentStatus.ACTIVE).order_by(Agent.created_at))
+        provider = build_configured_provider(
+            model=manager.model_name if manager else None,
+            provider=manager.model_provider if manager else None,
+        )
     processed, failed = [], []
     for specialty, curriculum_id, data, course, rc in targets[:max_courses]:
         scope = _existing_scope(db, course.id)
