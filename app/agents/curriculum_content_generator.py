@@ -272,7 +272,7 @@ def _save(db, specialty_id: str, curriculum_id: str, data: dict[str, Any], cours
             "learning_outcomes_created": outcomes_created,
         }, ensure_ascii=False),
     ))
-    db.commit()
+    db.flush()
     return {"created_units": created_units, "created_lessons": created_lessons, "updated_lessons": updated_lessons, "learning_outcomes_created": outcomes_created}
 
 
@@ -290,12 +290,12 @@ def generate_next_courses(db, *, specialty_id: str | None = None, max_courses: i
         try:
             response = provider.generate([AgentMessage(role="user", content=user)], system_prompt=system)
             validated = _validate(_json(response.content), scope)
-            savepoint = db.begin_nested()
             try:
-                saved = _save(db, specialty, curriculum_id, data, course, rc, validated)
-                savepoint.commit()
+                with db.begin_nested():
+                    saved = _save(db, specialty, curriculum_id, data, course, rc, validated)
+                db.commit()
             except Exception:
-                savepoint.rollback()
+                db.rollback()
                 raise
             processed.append({"specialty_id": specialty, "curriculum_id": curriculum_id, "course_id": course.id, "course_code": course.code, **saved})
         except Exception as exc:
