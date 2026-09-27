@@ -68,6 +68,8 @@ class MainAgentOrchestrator:
                 f"Deterministic fallback selected the fixed {agent.role.value} operational tool.",
             )
 
+        if any(w in lowered for w in ("بناء المحتوى", "الدروس الناقصة", "المحتوى التعليمي", "محتوى جميع المناهج", "المناهج العالمية")):
+            return AgentDecision("tool", "manager.generate_global_curriculum_content", "{}", "The request requires automatic Generate -> Validate -> Save for registered TOFAN curricula.")
         if any(w in lowered for w in ("هيكل", "الهيكل", "الأقسام", "التخصصات", "الكليات", "الجامعة")):
             return AgentDecision("tool", "academy.structure", "", "The request asks about academy structure.")
         if any(w in lowered for w in ("ابحث", "بحث", "مادة", "محاضرة", "محاضرات", "مقرر", "دورة", "وحدة")):

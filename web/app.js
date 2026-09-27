@@ -6,7 +6,7 @@ const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&
 I18N.ar.owner="المدير العام";I18N.en.owner="General Manager";function t(k){return I18N[lang][k]||k}
 function applyLang(){document.documentElement.lang=lang;document.documentElement.dir=lang==='ar'?"rtl":"ltr";document.body.classList.toggle("en",lang==='en');$$("[data-i18n]").forEach(e=>e.textContent=t(e.dataset.i18n));$("#langBtn").textContent=lang==='ar'?"EN":"AR"}
 function toast(m){$("#toast").textContent=m;$("#toast").classList.add("show");setTimeout(()=>$("#toast").classList.remove("show"),2600)}
-async function api(path,opt={}){opt.headers={...(opt.headers||{}),...(token?{"Authorization":"Bearer "+token}:{})};const r=await fetch(path,opt);let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.detail||"Request failed");return d}
+async function api(path,opt={}){opt.headers={...(opt.headers||{}),...(token?{"Authorization":"Bearer "+token}:{})};let r;try{r=await fetch(path,opt)}catch(err){throw new Error(lang==="ar"?"تعذر الاتصال بالخادم. تحقق من اتصال الشبكة أو أن الخادم يعمل.":"Could not reach the server. Check the network connection and that the server is running.")}let d={};try{d=await r.json()}catch{}if(!r.ok)throw new Error(d.detail||("HTTP "+r.status));return d}
 async function showView(view){
   const valid=["home","curriculum","progress","assessments","results","files","certificates","profile","notifications","access","owner"];
   if(!valid.includes(view))return;
