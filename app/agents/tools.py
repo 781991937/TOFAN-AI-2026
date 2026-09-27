@@ -9,6 +9,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.curriculum_models import Curriculum, CurriculumCourse, CurriculumLesson, CurriculumUnit
+from app.curriculum_registry import get_curriculum, list_curricula
 from app.db.models import AcademicUnit, ContentFile, Course, Institution, Lecture, Notification, Unit
 from app.db.assessment_models import CurriculumAssessmentAttempt
 from app.db.certificate_models import Certificate
