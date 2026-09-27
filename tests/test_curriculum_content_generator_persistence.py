@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.agents.curriculum_content_generator import generate_next_courses
 from app.db.base import Base
+from app.db import models as core_models
 from app.db.curriculum_models import Curriculum, CurriculumCourse, CurriculumStage, CurriculumUnit, CurriculumLesson, LearningOutcome, Specialty
 
 
