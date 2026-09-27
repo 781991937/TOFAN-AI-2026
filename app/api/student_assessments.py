@@ -29,6 +29,7 @@ router = APIRouter(prefix="/student/assessments", tags=["student-assessments"])
 
 class SubmitRequest(BaseModel):
     answers: dict[str, str] = Field(default_factory=dict)
+    attempt_id: str | None = Field(default=None, min_length=1, max_length=36)
 
 
 def _assessment(db: Session, assessment_id: str):
@@ -189,6 +190,51 @@ def generate_assessment(
     }
 
 
+@router.post("/{assessment_id}/start")
+def start_assessment(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    actor: User = Depends(get_current_user),
+):
+    assessment, course = _assessment(db, assessment_id)
+    if not _can_access(db, actor.id, course):
+        raise HTTPException(status_code=403, detail="Assessment access is not enabled for this stage.")
+    questions = db.scalars(
+        select(CurriculumAssessmentQuestion)
+        .where(CurriculumAssessmentQuestion.assessment_id == assessment.id)
+        .order_by(CurriculumAssessmentQuestion.position)
+    ).all()
+    if not questions:
+        raise HTTPException(status_code=409, detail="Generate the assessment before starting it.")
+
+    teacher = db.scalar(
+        select(Agent).where(
+            Agent.kind == AgentKind.TEACHER,
+            Agent.curriculum_course_id == course.id,
+            Agent.status == AgentStatus.ACTIVE,
+        ).order_by(Agent.created_at)
+    )
+    if teacher is None:
+        raise HTTPException(status_code=409, detail="The course teacher is not active yet.")
+
+    attempt = CurriculumAssessmentAttempt(
+        user_id=actor.id,
+        agent_id=teacher.id,
+        assessment_id=assessment.id,
+        status=AssessmentAttemptStatus.IN_PROGRESS,
+    )
+    db.add(attempt)
+    db.commit()
+    db.refresh(attempt)
+    return {
+        "attempt_id": attempt.id,
+        "assessment_id": assessment.id,
+        "status": attempt.status,
+        "started_at": attempt.started_at,
+        "question_count": len(questions),
+    }
+
+
 @router.post("/{assessment_id}/submit")
 def submit_assessment(
     assessment_id: str,
@@ -223,15 +269,40 @@ def submit_assessment(
     score, max_score, details = grade_answers(questions, payload.answers)
     percentage = (score / max_score * 100) if max_score else 0
     passed = assessment.pass_percentage is None or percentage >= assessment.pass_percentage
+    if payload.attempt_id:
+        attempt = db.scalar(
+            select(CurriculumAssessmentAttempt).where(
+                CurriculumAssessmentAttempt.id == payload.attempt_id,
+                CurriculumAssessmentAttempt.user_id == actor.id,
+                CurriculumAssessmentAttempt.assessment_id == assessment.id,
+            )
+        )
+        if attempt is None:
+            raise HTTPException(status_code=404, detail="Assessment attempt not found.")
+        if attempt.status != AssessmentAttemptStatus.IN_PROGRESS:
+            raise HTTPException(status_code=409, detail="This assessment attempt is no longer active.")
+    else:
+        # Keep older API clients working while the frontend uses the explicit
+        # start endpoint and records the complete lifecycle.
+        attempt = CurriculumAssessmentAttempt(
+            user_id=actor.id,
+            agent_id=teacher.id,
+            assessment_id=assessment.id,
+            status=AssessmentAttemptStatus.IN_PROGRESS,
+        )
+        db.add(attempt)
+        db.flush()
+
     now = datetime.utcnow()
-    attempt = CurriculumAssessmentAttempt(
-        user_id=actor.id, agent_id=teacher.id, assessment_id=assessment.id,
-        status=AssessmentAttemptStatus.GRADED, score=score, max_score=max_score,
-        percentage=percentage, passed=passed, answers_json=json.dumps(payload.answers, ensure_ascii=False),
-        submitted_at=now, graded_at=now,
-    )
-    db.add(attempt)
-    db.flush()
+    attempt.status = AssessmentAttemptStatus.SUBMITTED
+    attempt.score = score
+    attempt.max_score = max_score
+    attempt.percentage = percentage
+    attempt.passed = passed
+    attempt.answers_json = json.dumps(payload.answers, ensure_ascii=False)
+    attempt.submitted_at = now
+    attempt.status = AssessmentAttemptStatus.GRADED
+    attempt.graded_at = now
     record_assessment_progress(
         db, user_id=actor.id, course_id=course.id, percentage=percentage, passed=passed
     )
