@@ -22,7 +22,8 @@
       if(!d.questions?.length){
         d=await api("/student/assessments/"+encodeURIComponent(id)+"/generate",{method:"POST"});
       }
-      current=d;
+      const started=await api("/student/assessments/"+encodeURIComponent(id)+"/start",{method:"POST"});
+      current={...d,...started};
       b.innerHTML='<div class="detail-item"><b>'+esc(d.title)+'</b><p>'+esc(d.description||"")+'</p><span>'+d.question_count+' سؤال · النجاح من '+(d.pass_percentage??60)+'%</span></div><form id="assessmentForm"></form>';
       const form=document.getElementById("assessmentForm");
       form.innerHTML=d.questions.map(q=>{
@@ -33,7 +34,7 @@
         e.preventDefault();
         const answers={};d.questions.forEach(q=>{const x=form.querySelector('input[name="q'+q.position+'"]:checked');if(x)answers[String(q.position)]=x.value});
         try{
-          const result=await api("/student/assessments/"+encodeURIComponent(id)+"/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({answers})});
+          const result=await api("/student/assessments/"+encodeURIComponent(id)+"/submit",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({attempt_id:started.attempt_id,answers})});
           showResults(result);
         }catch(err){toast(err.message)}
       };
