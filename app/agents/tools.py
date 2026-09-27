@@ -16,6 +16,7 @@ from .payment_tools import confirm_payment_tool
 from .main_manager import MainManagerService
 from .models import Agent, AgentRole, AgentRun, AgentStatus, AgentTool
 from .workforce_policy import tools_for_specialist
+from .curriculum_content_generator import generate_next_courses
 
 
 class ToolExecutionError(RuntimeError):
@@ -788,6 +789,34 @@ def build_default_registry() -> ToolRegistry:
             sensitive=True,
             allowed_agent_slug="tofan-main",
             parameters={"type":"object","properties":{},"additionalProperties":False},
+        )
+    )
+    registry.register(
+        ToolDefinition(
+            name="manager.generate_global_curriculum_content",
+            description="Privileged manager action: automatically generate original lesson content for the next missing TOFAN global curriculum courses, validate it, and persist it. Uses the canonical registry; never requires manual IDs.",
+            handler=lambda db, input_text: generate_next_courses(
+                db,
+                specialty_id=_payload(input_text).get("specialty_id"),
+                max_courses=_payload(input_text).get("max_courses", 1),
+            ).__class__ and json.dumps(
+                generate_next_courses(
+                    db,
+                    specialty_id=_payload(input_text).get("specialty_id"),
+                    max_courses=_payload(input_text).get("max_courses", 1),
+                ),
+                ensure_ascii=False,
+            ),
+            sensitive=True,
+            allowed_agent_slug="tofan-main",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "specialty_id": {"type": ["string", "null"]},
+                    "max_courses": {"type": "integer", "minimum": 1, "maximum": 5},
+                },
+                "additionalProperties": False,
+            },
         )
     )
     registry.register(
