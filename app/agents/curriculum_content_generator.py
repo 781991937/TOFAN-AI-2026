@@ -23,9 +23,9 @@ class CurriculumContentGenerationError(RuntimeError):
 
 def _json(text: str) -> dict[str, Any]:
     raw = (text or "").strip()
-    if raw.startswith("\`\`\`"):
+    if raw.startswith("```"):
         raw = raw.split("\n", 1)[1] if "\n" in raw else raw
-        raw = raw.rsplit("\`\`\`", 1)[0].strip()
+        raw = raw.rsplit("```", 1)[0].strip()
     start, end = raw.find("{"), raw.rfind("}")
     if start < 0 or end <= start:
         raise CurriculumContentGenerationError("AI did not return a JSON object.")
