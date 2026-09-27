@@ -497,6 +497,50 @@ def global_computing_curriculum_tool(_: Session, input_text: str) -> str:
     }, ensure_ascii=False)
 
 
+def manager_global_curriculum_inventory_tool(db: Session, input_text: str) -> str:
+    """Inspect every registered TOFAN curriculum and persisted content without requiring IDs."""
+    p = _payload(input_text)
+    specialty_filter = str(p.get("specialty_id", "")).strip().upper() or None
+    rows = []
+    for ref in list_curricula():
+        if specialty_filter and ref.specialty_id.upper() != specialty_filter:
+            continue
+        data = get_curriculum(ref.specialty_id)
+        curriculum = db.scalar(select(Curriculum).where(
+            Curriculum.slug == ref.curriculum_id,
+            Curriculum.version == str(data.get("version", "1.0")),
+        ))
+        if curriculum is None:
+            rows.append({"specialty_id": ref.specialty_id, "curriculum_id": ref.curriculum_id, "status": "registry_only"})
+            continue
+        courses = db.scalars(select(CurriculumCourse).where(
+            CurriculumCourse.curriculum_id == curriculum.id,
+            CurriculumCourse.is_active.is_(True),
+        ).order_by(CurriculumCourse.position)).all()
+        units = db.scalars(select(CurriculumUnit).join(CurriculumCourse, CurriculumUnit.course_id == CurriculumCourse.id).where(CurriculumCourse.curriculum_id == curriculum.id)).all()
+        lessons = db.scalars(select(CurriculumLesson).join(CurriculumUnit, CurriculumLesson.unit_id == CurriculumUnit.id).join(CurriculumCourse, CurriculumUnit.course_id == CurriculumCourse.id).where(CurriculumCourse.curriculum_id == curriculum.id)).all()
+        missing_courses = []
+        for course in courses:
+            course_units = [u for u in units if u.course_id == course.id]
+            course_lessons = [l for l in lessons if any(l.unit_id == u.id for u in course_units)]
+            empty_content = sum(1 for l in course_lessons if not (l.content_markdown or "").strip())
+            outcomes = db.query(LearningOutcome).filter(LearningOutcome.course_id == course.id).count()
+            if not course_units or not course_lessons or empty_content or outcomes == 0:
+                missing_courses.append({
+                    "id": course.id, "code": course.code, "name": course.name,
+                    "units": len(course_units), "lessons": len(course_lessons),
+                    "lessons_missing_content": empty_content, "learning_outcomes": outcomes,
+                })
+        rows.append({
+            "specialty_id": ref.specialty_id, "curriculum_id": ref.curriculum_id,
+            "name": data.get("name_ar") or data.get("title_ar"), "status": "registered",
+            "courses": len(courses), "units": len(units), "lessons": len(lessons),
+            "lessons_missing_content": sum(1 for l in lessons if not (l.content_markdown or "").strip()),
+            "courses_needing_content": missing_courses,
+        })
+    return json.dumps({"curricula": rows}, ensure_ascii=False)
+
+
 def manager_create_curriculum_tool(db: Session, input_text: str) -> str:
     from app.db.curriculum_models import Curriculum
     p = _payload(input_text)
