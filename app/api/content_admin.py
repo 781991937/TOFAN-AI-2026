@@ -21,6 +21,7 @@ from app.agents.academy_access_policy import validate_content_status
 from app.agents.curriculum_content_generator import (
     CurriculumContentGenerationError,
     generate_course_preview,
+    list_course_preview_targets,
     save_course_preview,
 )
 from app.agents.providers import AgentProviderError
@@ -113,6 +114,17 @@ def list_content(
         query = query.where(ContentFile.lecture_id == lecture_id)
     rows = db.scalars(query.order_by(ContentFile.uploaded_at.desc())).all()
     return {"files": [_serialize(row) for row in rows]}
+
+
+@router.get("/curriculum/targets")
+def list_curriculum_preview_targets(
+    specialty_id: str | None = None,
+    db: Session = Depends(get_db),
+    _: list = Depends(require_owner_or_admin),
+):
+    return {
+        "targets": list_course_preview_targets(db, specialty_id),
+    }
 
 
 @router.post("/lectures/{lecture_id}/files", status_code=201)
