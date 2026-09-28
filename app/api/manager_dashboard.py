@@ -58,6 +58,18 @@ input,select,textarea{background:#181818;color:#fff;border:1px solid #363636;bor
 <div id="nativeTree" class="tree" style="margin-top:12px"><div class="node">جاري تحميل المنهج...</div></div>
 </div></section>
 
+<section><div class="section-title">مولّد محتوى المنهج</div>
+<div class="panel">
+<div class="toolbar">
+<select id="contentTarget" style="flex:1;min-width:260px"></select>
+<button class="ghost" onclick="loadContentTargets()">تحديث المقررات</button>
+<button onclick="generateContentPreview()">توليد معاينة</button>
+<button class="ok" id="saveContentPreviewButton" onclick="saveContentPreview()" disabled>حفظ المعاينة</button>
+</div>
+<div class="notice">يتم توليد المحتوى والتحقق منه أولًا. لن يُحفظ أي درس حتى تضغط «حفظ المعاينة».</div>
+<div id="contentPreview" class="notice">اختر مقررًا ثم ولّد معاينة.</div>
+</div></section>
+
 <section><div class="section-title">إدارة ملفات المحاضرات</div><div class="panel"><div class="form-grid">
 <div class="field"><label>المحاضرة</label><select id="fileLesson"></select></div>
 <div class="field"><label>ملف PDF / DOCX / TXT</label><input id="lessonFile" type="file" accept=".pdf,.docx,.txt"></div>
@@ -83,10 +95,11 @@ input,select,textarea{background:#181818;color:#fff;border:1px solid #363636;bor
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
 async function api(path,opt={}){const token=localStorage.getItem("tofan_token");const auth=token?{"Authorization":"Bearer "+token}:{};const baseHeaders=opt.body instanceof FormData?{...auth,...(opt.headers||{})}:{"Content-Type":"application/json",...auth,...(opt.headers||{})};const r=await fetch(path,{...opt,credentials:"same-origin",headers:baseHeaders});if(!r.ok){let d={};try{d=await r.json()}catch{}throw new Error(d.detail||"HTTP "+r.status)}return r.status===204?null:r.json()}
 const toast=m=>{const e=document.getElementById("toast");e.textContent=m;e.style.display="block";setTimeout(()=>e.style.display="none",2600)};
-const cardsEl=document.getElementById("cards"),courseSelect=document.getElementById("courseSelect"),teachers=document.getElementById("teachers"),students=document.getElementById("students"),assessments=document.getElementById("assessments"),payments=document.getElementById("payments"),audit=document.getElementById("audit"),payProvider=document.getElementById("payProvider"),payAccountName=document.getElementById("payAccountName"),payAccountNumber=document.getElementById("payAccountNumber"),payAmount=document.getElementById("payAmount"),payCurrency=document.getElementById("payCurrency"),payInstructions=document.getElementById("payInstructions"),payAccountState=document.getElementById("payAccountState");
+const cardsEl=document.getElementById("cards"),courseSelect=document.getElementById("courseSelect"),teachers=document.getElementById("teachers"),students=document.getElementById("students"),assessments=document.getElementById("assessments"),payments=document.getElementById("payments"),audit=document.getElementById("audit"),payProvider=document.getElementById("payProvider"),payAccountName=document.getElementById("payAccountName"),payAccountNumber=document.getElementById("payAccountNumber"),payAmount=document.getElementById("payAmount"),payCurrency=document.getElementById("payCurrency"),payInstructions=document.getElementById("payInstructions"),payAccountState=document.getElementById("payAccountState"),contentTarget=document.getElementById("contentTarget"),contentPreview=document.getElementById("contentPreview"),saveContentPreviewButton=document.getElementById("saveContentPreviewButton");
 const opt=(items,placeholder="اختر...")=>'<option value="">'+placeholder+'</option>'+items.map(x=>'<option value="'+esc(x.id)+'">'+esc(x.name||x.title||x.code)+'</option>').join("");
 let catalog={curricula:[],specialties:[],stages:[],courses:[],units:[],lessons:[]};
 let editorType=null,editorId=null;
+let activeContentPreview=null;
 
 async function refreshCatalog(){
  catalog.curricula=await api("/admin/academy/native/curricula");
@@ -169,6 +182,37 @@ let dragData=null;function dragStart(e){const n=e.currentTarget;dragData={id:n.d
 async function uploadLessonFile(){const id=document.getElementById("fileLesson").value,f=document.getElementById("lessonFile").files[0];if(!id||!f)return toast("اختر المحاضرة والملف أولاً");const fd=new FormData();fd.append("file",f);try{await api("/admin/content/lectures/"+id+"/files",{method:"POST",body:fd});toast("تم رفع الملف");await loadLessonFiles()}catch(e){toast(e.message)}}
 async function loadLessonFiles(){const id=document.getElementById("fileLesson").value;if(!id)return;try{const d=await api("/admin/content?lecture_id="+encodeURIComponent(id));document.getElementById("lessonFiles").innerHTML=d.files.map(x=>'<div class="notice"><b>'+esc(x.original_name)+'</b> · '+esc(x.status)+' · '+esc(x.text_characters)+' حرف · '+esc(x.size_bytes)+' bytes</div>').join("")||'<div class="notice">لا توجد ملفات.</div>'}catch(e){toast(e.message)}}
 
+async function loadContentTargets(){
+ try{
+  const d=await api("/admin/content/curriculum/targets");
+  contentTarget.innerHTML='<option value="">اختر مقررًا يحتاج محتوى…</option>'+d.targets.map(x=>'<option value="'+esc(x.course_id)+'" data-specialty="'+esc(x.specialty_id)+'">'+esc(x.specialty_id)+" · "+esc(x.course_code)+" — "+esc(x.course_name)+"</option>").join("");
+  activeContentPreview=null;saveContentPreviewButton.disabled=true;contentPreview.textContent=d.targets.length?"اختر مقررًا ثم ولّد معاينة.":"لا توجد مقررات ناقصة المحتوى.";
+ }catch(e){contentPreview.textContent=e.message}
+}
+async function generateContentPreview(){
+ const option=contentTarget.selectedOptions[0];
+ if(!option||!option.value)return toast("اختر مقررًا أولًا");
+ contentPreview.textContent="جارٍ التوليد والتحقق…";
+ saveContentPreviewButton.disabled=true;
+ try{
+  const d=await api("/admin/content/curriculum/generate-preview",{method:"POST",body:JSON.stringify({course_id:option.value,specialty_id:option.dataset.specialty})});
+  activeContentPreview=d;
+  const units=d.preview?.units||[];
+  contentPreview.innerHTML="<b>معاينة: "+esc(d.course_code)+" — "+esc(d.course_name)+"</b><p>"+units.length+" وحدات · "+units.reduce((n,u)=>n+(u.lessons||[]).length,0)+" دروس</p>"+units.map(u=>"<div class='notice'><b>الوحدة "+esc(u.position)+": "+esc(u.title)+"</b>"+(u.lessons||[]).map(l=>"<div style='margin-top:8px'><b>"+esc(l.position)+". "+esc(l.title)+"</b><p class='muted'>"+esc((l.content_markdown||"").slice(0,280))+"…</p></div>").join("")+"</div>").join("");
+  saveContentPreviewButton.disabled=false;
+ }catch(e){contentPreview.textContent=e.message}
+}
+async function saveContentPreview(){
+ if(!activeContentPreview?.preview_token)return toast("ولّد معاينة صالحة أولًا");
+ if(!confirm("سيتم حفظ محتوى المعاينة في قاعدة البيانات. هل تتابع؟"))return;
+ saveContentPreviewButton.disabled=true;
+ try{
+  const d=await api("/admin/content/curriculum/save-preview",{method:"POST",body:JSON.stringify({preview_token:activeContentPreview.preview_token})});
+  toast("تم حفظ "+d.created_lessons+" درسًا");
+  activeContentPreview=null;await loadContentTargets();await loadNativeTree();
+ }catch(e){saveContentPreviewButton.disabled=false;toast(e.message)}
+}
+
 async function loadAgents(){
  try{
   const agents=await api("/admin/agents");
@@ -236,6 +280,7 @@ async function load(){
  }catch(e){document.getElementById("state").textContent=e.message}
  try{const a=await api("/student/payments/account");if(a.configured){payProvider.value=a.provider_name||"";payAccountName.value=a.account_name||"";payAccountNumber.value=a.account_number||"";payAmount.value=a.amount??"";payCurrency.value=a.currency||"";payInstructions.value=a.instructions||""}}catch{}
  await loadNativeTree();
+ await loadContentTargets();
 }
 load();
 </script><script>
