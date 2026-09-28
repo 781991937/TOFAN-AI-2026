@@ -327,6 +327,20 @@ def generate_course_preview(
     }
 
 
+def list_course_preview_targets(db, specialty_id: str | None = None) -> list[dict[str, Any]]:
+    """Return registered courses that still need generated academic content."""
+    return [
+        {
+            "specialty_id": specialty,
+            "curriculum_id": curriculum_id,
+            "course_id": course.id,
+            "course_code": course.code,
+            "course_name": course.name,
+        }
+        for specialty, curriculum_id, _data, course, _registry_course in _targets(db, specialty_id)
+    ]
+
+
 def save_course_preview(
     db,
     *,
