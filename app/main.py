@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import RedirectResponse
@@ -46,7 +47,12 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="TOFAN Smart Academy", version="0.1.0", lifespan=lifespan)
-app.mount("/web", StaticFiles(directory="web", html=True), name="web")
+
+# Resolve the frontend directory from the repository root so the /web path
+# remains stable regardless of Replit/uvicorn working-directory changes.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+WEB_DIR = PROJECT_ROOT / "web"
+app.mount("/web", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
 
 
 @app.middleware("http")
